@@ -7,47 +7,20 @@
  * answers immediately with the pairing code / QR link and the approval
  * poll finishes in the background; `/omicos-status` reports the outcome.
  */
-import { HttpCoreTransport, OmicosHttpError, getPlanHealth } from '@omicverse/omicos-client'
-import { ORIGIN_APP } from '@omicverse/omicos-protocol'
-import { beginDeviceCodeLogin, beginWechatLogin, describeUser, loginStatus, logout } from './auth.js'
+import { OmicosHttpError } from '@omicverse/omicos-client'
+import { loginStatus } from './auth.js'
+import { ACCOUNT_URL, LoginBusyError, SUBSCRIBE_URL, type AccountService } from './account.js'
 import type { OmicosPool } from './pool.js'
 import type { CommandResult, Context } from './dsh-compat.js'
 
 export interface CommandDeps {
   pool: OmicosPool
+  account: AccountService
   /** Explicit `config.workspace` override; empty = commands use the host cwd's entry. */
   configWorkspace: string
   upstreamBaseUrl: string
   /** Default channel for a bare `/omicos-login`. */
   authMethod: 'device-code' | 'wechat-qr'
-}
-
-/** cloud_login.json lives in the user-global ~/.omicos, so ONE kernel is enough to push a login through. */
-function loginKernel(deps: CommandDeps) {
-  return deps.pool.entry(deps.configWorkspace || process.cwd()).kernel
-}
-
-/**
- * The commercial loop stays on OUR domain (the production SPA already has
- * the subscription/checkout/settings pages, and WeChat/Alipay checkout is
- * domain-whitelisted) — the plugin only deep-links. `page` is BenchView's
- * verified query param (APP_PAGE_IDS includes 'subscription'/'settings').
- */
-const SUBSCRIBE_URL = `${ORIGIN_APP}/#/bench?page=subscription`
-const ACCOUNT_URL = `${ORIGIN_APP}/#/bench?page=settings`
-
-const PLAN_NAMES: Record<string, string> = {
-  free: 'Free',
-  plus: 'Plus',
-  pro: 'Pro',
-  lab: 'Lab（实验室版）',
-  ent: 'Enterprise（企业版）',
-}
-
-interface LoginState {
-  pending: boolean
-  /** Outcome line of the last finished background login, shown by `/omicos-status`. */
-  lastOutcome?: string
 }
 
 function ok(text: string): CommandResult {
@@ -68,22 +41,7 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
   const commands = ctx.get('commands')
   if (commands === undefined) return []
 
-  const state: LoginState = { pending: false }
-
-  const trackLogin = (done: Promise<{ email?: string; phone?: string; id: string }>): void => {
-    state.pending = true
-    done.then(
-      (user) => {
-        state.pending = false
-        state.lastOutcome = `已登录：${describeUser(user)}（token 由本地 omicos 内核保管）`
-      },
-      (err: unknown) => {
-        state.pending = false
-        state.lastOutcome = `登录失败：${errText(err)}`
-      },
-    )
-  }
-
+  const { account } = deps
   const disposers: Array<() => void> = []
 
   disposers.push(
@@ -91,22 +49,20 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
       name: 'omicos-login',
       description: 'Sign in to OmicOS (input: "wechat" or "device"; default from plugin config)',
       handler: async (invocation) => {
-        if (state.pending) return fail('已有一个登录流程在等待批准，先运行 /omicos-status 查看，或等它完成。')
         const raw = invocation.rawInput.trim().toLowerCase()
         const method = raw === '' ? deps.authMethod : raw
+        const normalized =
+          method === 'wechat' || method === 'wechat-qr'
+            ? ('wechat-qr' as const)
+            : method === 'device' || method === 'device-code'
+              ? ('device-code' as const)
+              : undefined
+        if (normalized === undefined) return fail(`未知登录方式 "${raw}"，可用：wechat / device`)
         try {
-          if (method === 'wechat' || method === 'wechat-qr') {
-            const begun = await beginWechatLogin(loginKernel(deps), deps.upstreamBaseUrl)
-            trackLogin(begun.done)
-            return ok(begun.message)
-          }
-          if (method === 'device' || method === 'device-code') {
-            const begun = await beginDeviceCodeLogin(loginKernel(deps), deps.upstreamBaseUrl)
-            trackLogin(begun.done)
-            return ok(begun.message)
-          }
-          return fail(`未知登录方式 "${raw}"，可用：wechat / device`)
+          const begun = await account.beginLogin(normalized)
+          return ok(begun.message)
         } catch (err) {
+          if (err instanceof LoginBusyError) return fail('已有一个登录流程在等待批准，先运行 /omicos-status 查看，或等它完成。')
           return fail(`无法开始登录：${errText(err)}`)
         }
       },
@@ -119,8 +75,8 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
       description: 'OmicOS kernel + sign-in status',
       handler: async () => {
         const lines: string[] = []
-        if (state.pending) lines.push('登录：等待批准中…')
-        else if (state.lastOutcome) lines.push(`登录：${state.lastOutcome}`)
+        if (account.loginPending) lines.push('登录：等待批准中…')
+        else if (account.loginOutcome) lines.push(`登录：${account.loginOutcome}`)
         const entries = deps.pool.list().filter((e) => e.kernel.baseUrl !== undefined)
         if (entries.length === 0) {
           lines.push('内核：未连接（首次使用 omicos 工具时自动连接/启动）')
@@ -151,28 +107,24 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
       handler: async () => {
         const lines: string[] = []
         try {
-          const kernel = loginKernel(deps)
-          const identity = await loginStatus(kernel)
-          if (!identity.logged_in) {
+          const snap = await account.snapshot()
+          if (!snap.logged_in) {
             lines.push('未登录。运行 /omicos-login（微信扫码：/omicos-login wechat）')
-            lines.push(`注册/登录后即可试用，订阅购买：${SUBSCRIBE_URL}`)
+            lines.push(`注册/登录后即可试用，订阅购买：${snap.subscribe_url}`)
             return ok(lines.join('\n'))
           }
-          lines.push(`账号：${identity.email || identity.user_id}（${identity.server}）`)
-          try {
-            const handle = await kernel.handle()
-            const plan = await getPlanHealth(new HttpCoreTransport(handle.baseUrl))
-            const planName = PLAN_NAMES[plan.plan_code] ?? plan.plan_code
-            lines.push(`套餐：${planName}`)
-            if (typeof plan.token_exp === 'number') {
-              lines.push(`凭证有效期至：${new Date(plan.token_exp * 1000).toLocaleString('zh-CN')}${plan.renewing ? '（自动续期中）' : ''}`)
+          lines.push(`账号：${snap.email || snap.user_id}（${snap.server}）`)
+          if (snap.plan) {
+            lines.push(`套餐：${snap.plan.name}`)
+            if (typeof snap.plan.token_exp === 'number') {
+              lines.push(`凭证有效期至：${new Date(snap.plan.token_exp * 1000).toLocaleString('zh-CN')}${snap.plan.renewing ? '（自动续期中）' : ''}`)
             }
-            if (plan.sessionExpired) lines.push('⚠️ 登录态已过期：请退出后重新登录（/omicos-logout → /omicos-login）')
-          } catch {
+            if (snap.plan.session_expired) lines.push('⚠️ 登录态已过期：请退出后重新登录（/omicos-logout → /omicos-login）')
+          } else {
             lines.push('套餐：查询失败（内核未就绪？）')
           }
-          lines.push(`订阅购买 / 续订：${SUBSCRIBE_URL}`)
-          lines.push(`账号与订阅管理：${ACCOUNT_URL}`)
+          lines.push(`订阅购买 / 续订：${snap.subscribe_url}`)
+          lines.push(`账号与订阅管理：${snap.account_url}`)
           return ok(lines.join('\n'))
         } catch (err) {
           return fail(`账号信息获取失败：${errText(err)}`)
@@ -187,8 +139,7 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
       description: 'Sign this machine\'s OmicOS kernel out',
       handler: async () => {
         try {
-          await logout(loginKernel(deps))
-          state.lastOutcome = undefined
+          await account.logout()
           return ok('已退出登录（仅本机内核；云端 token 未被吊销）。')
         } catch (err) {
           return fail(`退出失败：${errText(err)}`)

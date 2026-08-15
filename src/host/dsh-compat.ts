@@ -41,6 +41,10 @@ export type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands
 
 export type { JobHooks, JobOutcome } from '@deepseek-ai/dsh-jobs'
 
+// Type-only: pulls the webServer Context merge for `ctx.get('webServer')`
+// (optional service — the account-tab routes register only when present).
+export type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+
 /**
  * Register our job kind in dsh's merge-extensible kind map (verified
  * first-party pattern: module specifier is the PACKAGE ROOT, e.g.

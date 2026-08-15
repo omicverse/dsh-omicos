@@ -40,6 +40,11 @@ export interface LoginOptions {
 export interface BegunLogin {
   /** What the user must see immediately (pairing code / QR link) — the command result text. */
   message: string
+  /** Structured display fields for graphical surfaces (the account tab renders the QR as an <img>). */
+  method: 'wechat-qr' | 'device-code'
+  qr_url?: string
+  verification_uri?: string
+  user_code?: string
   /** Resolves once approved AND pushed to the local core; rejects on abort/HTTP failure. */
   done: Promise<PublicUser>
 }
@@ -74,6 +79,9 @@ export async function beginDeviceCodeLogin(
   })()
   return {
     message: `在浏览器打开 ${minted.verification_uri} 并输入配对码 ${minted.user_code}（批准后运行 /omicos-status 查看结果）`,
+    method: 'device-code',
+    verification_uri: minted.verification_uri,
+    user_code: minted.user_code,
     done,
   }
 }
@@ -93,6 +101,8 @@ export async function beginWechatLogin(
   })()
   return {
     message: `打开此链接并用微信扫码登录：${qr.qr_url}（确认后运行 /omicos-status 查看结果）`,
+    method: 'wechat-qr',
+    qr_url: qr.qr_url,
     done,
   }
 }

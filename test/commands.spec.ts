@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
+import { AccountService } from '../src/host/account.js'
 import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosCommands } from '../src/host/commands.js'
 import type { CommandResult, Context } from '../src/host/dsh-compat.js'
@@ -31,10 +32,11 @@ function fakeCtx(withCommands = true): { ctx: Context; commands: RegisteredComma
   return { ctx, commands }
 }
 
-function poolFor(baseUrl: string, spawned = false): { pool: OmicosPool; stop: () => void } {
+function poolFor(baseUrl: string, spawned = false, upstream = 'http://x'): { pool: OmicosPool; account: AccountService; stop: () => void } {
   const stop = vi.fn()
   const handle: CoreHandle = { baseUrl, port: 0, pid: 1, spawned, stop }
-  return { pool: new OmicosPool({ ensureImpl: async () => handle }), stop }
+  const pool = new OmicosPool({ ensureImpl: async () => handle })
+  return { pool, account: new AccountService(pool, '/ws', upstream), stop }
 }
 
 const BASE = { configWorkspace: '/ws', upstreamBaseUrl: 'http://x', authMethod: 'device-code' as const }
@@ -48,14 +50,14 @@ afterEach(async () => {
 describe('registerOmicosCommands', () => {
   it('registers nothing when the commands service is absent (optional peer)', () => {
     const { ctx } = fakeCtx(false)
-    const { pool } = poolFor('http://127.0.0.1:1')
-    expect(registerOmicosCommands(ctx, { ...BASE, pool })).toEqual([])
+    const { pool, account } = poolFor('http://127.0.0.1:1')
+    expect(registerOmicosCommands(ctx, { ...BASE, pool, account })).toEqual([])
   })
 
   it('uses only registrable names (verified /^[a-z][a-z0-9_-]*$/ — the design\'s omicos:login is not)', () => {
     const { ctx, commands } = fakeCtx()
-    const { pool } = poolFor('http://127.0.0.1:1')
-    registerOmicosCommands(ctx, { ...BASE, pool })
+    const { pool, account } = poolFor('http://127.0.0.1:1')
+    registerOmicosCommands(ctx, { ...BASE, pool, account })
     for (const c of commands) expect(c.name).toMatch(/^[a-z][a-z0-9_-]*$/)
     expect(commands.map((c) => c.name)).toEqual(['omicos-login', 'omicos-status', 'omicos-account', 'omicos-logout', 'omicos-stop-kernel'])
   })
@@ -88,8 +90,8 @@ describe('registerOmicosCommands', () => {
     servers.push(auth)
 
     const { ctx, commands } = fakeCtx()
-    const { pool } = poolFor(core.baseUrl)
-    registerOmicosCommands(ctx, { ...BASE, pool, upstreamBaseUrl: auth.baseUrl })
+    const { pool, account } = poolFor(core.baseUrl, false, auth.baseUrl)
+    registerOmicosCommands(ctx, { ...BASE, pool, account, upstreamBaseUrl: auth.baseUrl })
     const [login, status] = commands
 
     const result = await login!.handler({ rawInput: '' })
@@ -114,8 +116,8 @@ describe('registerOmicosCommands', () => {
 
   it('rejects an unknown login channel and a concurrent second login', async () => {
     const { ctx, commands } = fakeCtx()
-    const { pool } = poolFor('http://127.0.0.1:1')
-    registerOmicosCommands(ctx, { ...BASE, pool, upstreamBaseUrl: 'http://127.0.0.1:1' })
+    const { pool, account } = poolFor('http://127.0.0.1:1')
+    registerOmicosCommands(ctx, { ...BASE, pool, account, upstreamBaseUrl: 'http://127.0.0.1:1' })
     const bad = await commands[0]!.handler({ rawInput: 'sms' })
     expect(bad.kind).toBe('error')
     expect(bad.text).toContain('sms')
@@ -132,8 +134,8 @@ describe('registerOmicosCommands', () => {
       respondJson(res, 200, { plan_code: 'lab', token_exp: 1786835514, renewing: false, last_refresh: 0, last_error_detail: null, last_error_reason: null, user_id: 'u1' }),
     )
     const { ctx, commands } = fakeCtx()
-    const { pool } = poolFor(core.baseUrl)
-    registerOmicosCommands(ctx, { ...BASE, pool })
+    const { pool, account: svc } = poolFor(core.baseUrl)
+    registerOmicosCommands(ctx, { ...BASE, pool, account: svc })
     const account = commands.find((c) => c.name === 'omicos-account')!
 
     const r = await account.handler({ rawInput: '' })
@@ -154,7 +156,7 @@ describe('registerOmicosCommands', () => {
     const attached = poolFor('http://127.0.0.1:1', false)
     await attached.pool.entry('/ws').kernel.handle()
     const { ctx, commands } = fakeCtx()
-    registerOmicosCommands(ctx, { ...BASE, pool: attached.pool })
+    registerOmicosCommands(ctx, { ...BASE, pool: attached.pool, account: attached.account })
     const stopCmd = commands[4]!
     const r1 = await stopCmd.handler({ rawInput: '' })
     expect(r1.text).toContain('不会停止')
@@ -163,7 +165,7 @@ describe('registerOmicosCommands', () => {
     const spawned = poolFor('http://127.0.0.1:2', true)
     await spawned.pool.entry('/ws').kernel.handle()
     const ctx2 = fakeCtx()
-    registerOmicosCommands(ctx2.ctx, { ...BASE, pool: spawned.pool })
+    registerOmicosCommands(ctx2.ctx, { ...BASE, pool: spawned.pool, account: spawned.account })
     const r2 = await ctx2.commands[4]!.handler({ rawInput: '' })
     expect(r2.text).toContain('已停止 1 个')
     expect(spawned.stop).toHaveBeenCalledTimes(1)

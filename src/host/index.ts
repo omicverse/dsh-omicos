@@ -14,8 +14,10 @@
  * tools/commands BEFORE SIGTERMing a self-spawned core (D1 — parallel
  * async disposers would race those).
  */
+import { AccountService } from './account.js'
 import { OmicosPool } from './pool.js'
 import { registerOmicosCommands } from './commands.js'
+import { registerOmicosRoutes } from './routes.js'
 import { registerOmicosTools } from './tools.js'
 import { Schema, type Context } from './dsh-compat.js'
 
@@ -54,9 +56,10 @@ export function apply(ctx: Context, config: Config): void {
     npmRegistry: config.npmRegistry || undefined,
     upstreamBaseUrl: config.upstreamBaseUrl,
   })
+  const account = new AccountService(pool, config.workspace, config.upstreamBaseUrl)
 
   ctx.effect(function* () {
-    // LIFO: yielded first -> disposed last (after every registration is gone).
+    // LIFO: yielded first -> disposed last (after every tool is unregistered).
     yield () => pool.dispose()
     for (const dispose of registerOmicosTools(ctx, {
       pool,
@@ -65,13 +68,32 @@ export function apply(ctx: Context, config: Config): void {
     })) {
       yield dispose
     }
-    for (const dispose of registerOmicosCommands(ctx, {
-      pool,
-      configWorkspace: config.workspace,
-      upstreamBaseUrl: config.upstreamBaseUrl,
-      authMethod: config.authMethod,
-    })) {
-      yield dispose
-    }
-  }, 'omicos: kernel pool + tools + commands')
+  }, 'omicos: kernel pool + tools')
+
+  // commands/webServer are OPTIONAL services that may activate after this
+  // plugin (found live: webServer was still pending when apply() ran and a
+  // plain ctx.get() silently skipped route registration). ctx.inject defers
+  // the callback until the service exists; its registrations unwind with
+  // the injected scope.
+  ctx.inject(['commands'], (sub) => {
+    sub.effect(function* () {
+      for (const dispose of registerOmicosCommands(sub, {
+        pool,
+        account,
+        configWorkspace: config.workspace,
+        upstreamBaseUrl: config.upstreamBaseUrl,
+        authMethod: config.authMethod,
+      })) {
+        yield dispose
+      }
+    }, 'omicos: commands')
+  })
+
+  ctx.inject(['webServer'], (sub) => {
+    sub.effect(function* () {
+      for (const dispose of registerOmicosRoutes(sub, { account })) {
+        yield dispose
+      }
+    }, 'omicos: /omicos routes')
+  })
 }
