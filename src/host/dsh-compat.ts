@@ -65,3 +65,14 @@ export const SAVEABLE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/w
 export function dshSessionIdOf(exec: { agent?: { id: string } }): string | undefined {
   return exec.agent?.id
 }
+
+/**
+ * The dsh AGENT's workspace directory: `SessionHeader.cwd` — "Absolute
+ * working directory the session was created in (if any)"
+ * (session/types.ts:73). This — not the host process cwd — is what the
+ * user picked in the dsh workspace UI; binding the omicos kernel to the
+ * host cwd spawned a stray second core on the first real user run.
+ */
+export function sessionCwdOf(exec: { agent?: { session?: { header?: { cwd?: string } } } }): string | undefined {
+  return exec.agent?.session?.header?.cwd
+}

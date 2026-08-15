@@ -7,8 +7,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
-import { KernelManager } from '../src/host/kernel.js'
-import { OmicosRunner } from '../src/host/runner.js'
+import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosTools } from '../src/host/tools.js'
 import type { Context } from '../src/host/dsh-compat.js'
 import { MockCore, fixtureTurn, respondJson, startSse, writeSseFrame } from '../../../packages/client/test/helpers/mockCore.js'
@@ -28,9 +27,9 @@ async function startCore(): Promise<MockCore> {
   return core
 }
 
-function kernelFor(mock: MockCore): KernelManager {
+function poolFor(mock: MockCore): OmicosPool {
   const handle: CoreHandle = { baseUrl: mock.baseUrl, port: 0, pid: 1, spawned: false, stop: () => {} }
-  return new KernelManager({ workspace: '/ws', ensureImpl: async () => handle })
+  return new OmicosPool({ ensureImpl: async () => handle })
 }
 
 interface RegisteredTool {
@@ -76,8 +75,7 @@ function serveHappyTurn(mock: MockCore): void {
 }
 
 function deps(mock: MockCore, maxAttachmentBytes = 4 * 1024 * 1024) {
-  const kernel = kernelFor(mock)
-  return { kernel, runner: new OmicosRunner(kernel), maxAttachmentBytes }
+  return { pool: poolFor(mock), configWorkspace: '/ws', maxAttachmentBytes }
 }
 
 const EXEC = { agent: { id: 'sess-1' }, signal: undefined }
@@ -219,6 +217,32 @@ describe('registerOmicosTools', () => {
     const outcome = (await hooks.done) as { status: string; output?: string }
     expect(outcome.status).toBe('completed')
     expect(outcome.output).toBe('Hello, world')
+  })
+
+  it('workspace routing (regression: host cwd spawned a stray core): config override > session.header.cwd > host cwd', async () => {
+    const mock = await startCore()
+    serveHappyTurn(mock)
+    const handle: CoreHandle = { baseUrl: mock.baseUrl, port: 0, pid: 1, spawned: false, stop: () => {} }
+    const ensuredDirs: string[] = []
+    const pool = new OmicosPool({
+      ensureImpl: async (dir: string) => {
+        ensuredDirs.push(dir)
+        return handle
+      },
+    })
+    const { ctx, tools } = fakeCtx()
+
+    // No config override: the dsh SESSION's workspace wins over the host cwd.
+    registerOmicosTools(ctx, { pool, configWorkspace: '', maxAttachmentBytes: 1 })
+    const execWithWs = { agent: { id: 'sess-1', session: { header: { cwd: '/ws-from-dsh-ui' } } }, signal: undefined }
+    await tools[0]!.execute({ request: 'x' }, execWithWs)
+    expect(ensuredDirs).toEqual(['/ws-from-dsh-ui'])
+
+    // Explicit config override beats the session workspace.
+    const ctx2 = fakeCtx()
+    registerOmicosTools(ctx2.ctx, { pool, configWorkspace: '/ws-forced', maxAttachmentBytes: 1 })
+    await ctx2.tools[0]!.execute({ request: 'y' }, execWithWs)
+    expect(ensuredDirs).toEqual(['/ws-from-dsh-ui', '/ws-forced'])
   })
 
   it('omicos_query_variable throws on a failed turn (error event) instead of returning prose', async () => {

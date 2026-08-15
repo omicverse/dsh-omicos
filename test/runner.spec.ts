@@ -88,6 +88,43 @@ describe('OmicosRunner.runTurn', () => {
   })
 })
 
+describe('OmicosRunner.runTurn cancellation (regression: dsh abort used to orphan the omicos turn)', () => {
+  it('an aborted signal POSTs chat/cancel core-side and resolves with the cancelled partial outcome', async () => {
+    const mock = await startCore()
+    mock.on('POST', '/api/conversations/', (_req, res) => respondJson(res, 200, {}))
+
+    let streamRes: import('node:http').ServerResponse | undefined
+    mock.on('POST', '/api/agent/chat/stream', (_req, res) => {
+      startSse(res)
+      const frames = fixtureTurn(SID)
+      // Serve everything BEFORE done, then hold the stream open (turn still running).
+      for (const frame of frames.slice(0, -1)) writeSseFrame(res, frame)
+      streamRes = res
+    })
+    mock.on('POST', '/api/agent/chat/cancel', (_req, res) => {
+      // Core acks the cancel, then the held stream delivers done(cancelled).
+      respondJson(res, 200, { ok: true })
+      writeSseFrame(streamRes!, {
+        data: { type: 'done', reason: 'cancelled', session_id: SID, request_id: 'req_1', runtime_uid: 'runtime_test', event_seq: 99 },
+        id: 99,
+      })
+      streamRes!.end()
+    })
+
+    const controller = new AbortController()
+    const runner = new OmicosRunner(kernelFor(mock))
+    const pending = runner.runTurn('sess-1', 'long analysis', { signal: controller.signal })
+    // Let the stream start, then abort like a dsh-side stop.
+    await new Promise((r) => setTimeout(r, 50))
+    controller.abort()
+
+    const outcome = await pending
+    expect(outcome.doneReason).toBe('cancelled')
+    expect(outcome.finished).toBe(true)
+    expect(mock.requests.some((r) => r.path === '/api/agent/chat/cancel')).toBe(true)
+  })
+})
+
 describe('OmicosRunner.listGeneratedFiles', () => {
   it('aggregates generated_files across history, deduped, order-stable', async () => {
     const mock = await startCore()

@@ -9,14 +9,21 @@
  */
 import { OmicosHttpError } from '@omicverse/omicos-client'
 import { beginDeviceCodeLogin, beginWechatLogin, describeUser, loginStatus, logout } from './auth.js'
-import type { KernelManager } from './kernel.js'
+import type { OmicosPool } from './pool.js'
 import type { CommandResult, Context } from './dsh-compat.js'
 
 export interface CommandDeps {
-  kernel: KernelManager
+  pool: OmicosPool
+  /** Explicit `config.workspace` override; empty = commands use the host cwd's entry. */
+  configWorkspace: string
   upstreamBaseUrl: string
   /** Default channel for a bare `/omicos-login`. */
   authMethod: 'device-code' | 'wechat-qr'
+}
+
+/** cloud_login.json lives in the user-global ~/.omicos, so ONE kernel is enough to push a login through. */
+function loginKernel(deps: CommandDeps) {
+  return deps.pool.entry(deps.configWorkspace || process.cwd()).kernel
 }
 
 interface LoginState {
@@ -71,12 +78,12 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
         const method = raw === '' ? deps.authMethod : raw
         try {
           if (method === 'wechat' || method === 'wechat-qr') {
-            const begun = await beginWechatLogin(deps.kernel, deps.upstreamBaseUrl)
+            const begun = await beginWechatLogin(loginKernel(deps), deps.upstreamBaseUrl)
             trackLogin(begun.done)
             return ok(begun.message)
           }
           if (method === 'device' || method === 'device-code') {
-            const begun = await beginDeviceCodeLogin(deps.kernel, deps.upstreamBaseUrl)
+            const begun = await beginDeviceCodeLogin(loginKernel(deps), deps.upstreamBaseUrl)
             trackLogin(begun.done)
             return ok(begun.message)
           }
@@ -96,14 +103,16 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
         const lines: string[] = []
         if (state.pending) lines.push('登录：等待批准中…')
         else if (state.lastOutcome) lines.push(`登录：${state.lastOutcome}`)
-        const baseUrl = deps.kernel.baseUrl
-        if (baseUrl === undefined) {
+        const entries = deps.pool.list().filter((e) => e.kernel.baseUrl !== undefined)
+        if (entries.length === 0) {
           lines.push('内核：未连接（首次使用 omicos 工具时自动连接/启动）')
           return ok(lines.join('\n'))
         }
-        lines.push(`内核：${baseUrl}（${deps.kernel.isSpawned ? '由本插件启动' : '挂载到已运行实例'}）`)
+        for (const e of entries) {
+          lines.push(`内核：${e.kernel.baseUrl}（工作区 ${e.workspace}，${e.kernel.isSpawned ? '由本插件启动' : '挂载到已运行实例'}）`)
+        }
         try {
-          const identity = await loginStatus(deps.kernel)
+          const identity = await loginStatus(entries[0]!.kernel)
           lines.push(
             identity.logged_in
               ? `账号：${identity.email || identity.user_id}（${identity.server}）`
@@ -123,7 +132,7 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
       description: 'Sign this machine\'s OmicOS kernel out',
       handler: async () => {
         try {
-          await logout(deps.kernel)
+          await logout(loginKernel(deps))
           state.lastOutcome = undefined
           return ok('已退出登录（仅本机内核；云端 token 未被吊销）。')
         } catch (err) {
@@ -138,13 +147,11 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
       name: 'omicos-stop-kernel',
       description: 'Stop the OmicOS kernel IF this plugin spawned it (an attached kernel is never touched)',
       handler: () => {
-        if (deps.kernel.baseUrl === undefined) return ok('没有已连接的内核。')
-        if (!deps.kernel.isSpawned) {
-          deps.kernel.reset()
-          return ok('该内核由外部启动（桌面 App 或终端），本插件不会停止它；已断开挂载。')
-        }
-        deps.kernel.stopSpawned()
-        return ok('已停止本插件启动的内核（下次使用工具时会重新启动）。')
+        if (deps.pool.list().every((e) => e.kernel.baseUrl === undefined)) return ok('没有已连接的内核。')
+        const stopped = deps.pool.stopSpawned()
+        return stopped > 0
+          ? ok(`已停止 ${stopped} 个本插件启动的内核（下次使用工具时会重新启动）；外部启动的内核未触碰。`)
+          : ok('连接的内核均由外部启动（桌面 App 或终端），本插件不会停止它们；已断开挂载。')
       },
     }),
   )

@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
-import { KernelManager } from '../src/host/kernel.js'
+import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosCommands } from '../src/host/commands.js'
 import type { CommandResult, Context } from '../src/host/dsh-compat.js'
 import { MockAuthServer } from '../../../packages/client/test/helpers/mockAuthServer.js'
@@ -31,11 +31,13 @@ function fakeCtx(withCommands = true): { ctx: Context; commands: RegisteredComma
   return { ctx, commands }
 }
 
-function kernelFor(baseUrl: string, spawned = false): { kernel: KernelManager; stop: () => void } {
+function poolFor(baseUrl: string, spawned = false): { pool: OmicosPool; stop: () => void } {
   const stop = vi.fn()
   const handle: CoreHandle = { baseUrl, port: 0, pid: 1, spawned, stop }
-  return { kernel: new KernelManager({ workspace: '/ws', ensureImpl: async () => handle }), stop }
+  return { pool: new OmicosPool({ ensureImpl: async () => handle }), stop }
 }
+
+const BASE = { configWorkspace: '/ws', upstreamBaseUrl: 'http://x', authMethod: 'device-code' as const }
 
 let servers: Array<{ close(): Promise<void> }> = []
 afterEach(async () => {
@@ -46,14 +48,14 @@ afterEach(async () => {
 describe('registerOmicosCommands', () => {
   it('registers nothing when the commands service is absent (optional peer)', () => {
     const { ctx } = fakeCtx(false)
-    const { kernel } = kernelFor('http://127.0.0.1:1')
-    expect(registerOmicosCommands(ctx, { kernel, upstreamBaseUrl: 'http://x', authMethod: 'device-code' })).toEqual([])
+    const { pool } = poolFor('http://127.0.0.1:1')
+    expect(registerOmicosCommands(ctx, { ...BASE, pool })).toEqual([])
   })
 
   it('uses only registrable names (verified /^[a-z][a-z0-9_-]*$/ — the design\'s omicos:login is not)', () => {
     const { ctx, commands } = fakeCtx()
-    const { kernel } = kernelFor('http://127.0.0.1:1')
-    registerOmicosCommands(ctx, { kernel, upstreamBaseUrl: 'http://x', authMethod: 'device-code' })
+    const { pool } = poolFor('http://127.0.0.1:1')
+    registerOmicosCommands(ctx, { ...BASE, pool })
     for (const c of commands) expect(c.name).toMatch(/^[a-z][a-z0-9_-]*$/)
     expect(commands.map((c) => c.name)).toEqual(['omicos-login', 'omicos-status', 'omicos-logout', 'omicos-stop-kernel'])
   })
@@ -86,8 +88,8 @@ describe('registerOmicosCommands', () => {
     servers.push(auth)
 
     const { ctx, commands } = fakeCtx()
-    const { kernel } = kernelFor(core.baseUrl)
-    registerOmicosCommands(ctx, { kernel, upstreamBaseUrl: auth.baseUrl, authMethod: 'device-code' })
+    const { pool } = poolFor(core.baseUrl)
+    registerOmicosCommands(ctx, { ...BASE, pool, upstreamBaseUrl: auth.baseUrl })
     const [login, status] = commands
 
     const result = await login!.handler({ rawInput: '' })
@@ -112,31 +114,30 @@ describe('registerOmicosCommands', () => {
 
   it('rejects an unknown login channel and a concurrent second login', async () => {
     const { ctx, commands } = fakeCtx()
-    const { kernel } = kernelFor('http://127.0.0.1:1')
-    registerOmicosCommands(ctx, { kernel, upstreamBaseUrl: 'http://127.0.0.1:1', authMethod: 'device-code' })
+    const { pool } = poolFor('http://127.0.0.1:1')
+    registerOmicosCommands(ctx, { ...BASE, pool, upstreamBaseUrl: 'http://127.0.0.1:1' })
     const bad = await commands[0]!.handler({ rawInput: 'sms' })
     expect(bad.kind).toBe('error')
     expect(bad.text).toContain('sms')
   })
 
   it('omicos-stop-kernel never stops an ATTACHED core (F13) but stops a self-spawned one and stays reusable', async () => {
-    const attached = kernelFor('http://127.0.0.1:1', false)
-    await attached.kernel.handle()
+    const attached = poolFor('http://127.0.0.1:1', false)
+    await attached.pool.entry('/ws').kernel.handle()
     const { ctx, commands } = fakeCtx()
-    registerOmicosCommands(ctx, { kernel: attached.kernel, upstreamBaseUrl: 'http://x', authMethod: 'device-code' })
+    registerOmicosCommands(ctx, { ...BASE, pool: attached.pool })
     const stopCmd = commands[3]!
     const r1 = await stopCmd.handler({ rawInput: '' })
     expect(r1.text).toContain('不会停止')
     expect(attached.stop).not.toHaveBeenCalled()
 
-    const spawned = kernelFor('http://127.0.0.1:2', true)
-    await spawned.kernel.handle()
+    const spawned = poolFor('http://127.0.0.1:2', true)
+    await spawned.pool.entry('/ws').kernel.handle()
     const ctx2 = fakeCtx()
-    registerOmicosCommands(ctx2.ctx, { kernel: spawned.kernel, upstreamBaseUrl: 'http://x', authMethod: 'device-code' })
+    registerOmicosCommands(ctx2.ctx, { ...BASE, pool: spawned.pool })
     const r2 = await ctx2.commands[3]!.handler({ rawInput: '' })
-    expect(r2.text).toContain('已停止')
+    expect(r2.text).toContain('已停止 1 个')
     expect(spawned.stop).toHaveBeenCalledTimes(1)
-    // stopSpawned (not dispose): next handle() re-ensures.
-    await expect(spawned.kernel.handle()).resolves.toBeDefined()
+    await expect(spawned.pool.entry('/ws').kernel.handle()).resolves.toBeDefined()
   })
 })

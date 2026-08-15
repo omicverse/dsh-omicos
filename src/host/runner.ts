@@ -30,6 +30,14 @@ export interface RunTurnOptions {
    * Exceptions are swallowed: a broken observer must not kill the turn.
    */
   onEvent?: (event: StreamEvent) => void
+  /**
+   * Cancellation propagation (found the hard way: a dsh-side abort used
+   * to leave the omicos turn running as an orphan). On abort, the active
+   * turn is cancelled CORE-SIDE (`POST chat/cancel`) and this call
+   * resolves with the partial outcome (`doneReason: "cancelled"`) once
+   * core confirms — or rejects if the abort raced send() itself.
+   */
+  signal?: AbortSignal
   /** v0.1 default `"full"`: tools run inside core unprompted — a blocked approval would deadlock the single-shot tool result (§3 Mode A). */
   permissionMode?: PermissionMode | string
   config?: ChatConfig
@@ -96,26 +104,38 @@ export class OmicosRunner {
       permission_mode: opts.permissionMode ?? opts.config?.permission_mode ?? 'full',
     }
 
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     await controller.send(message, config, { steerOnBusy: true })
 
-    const acc = new TurnAccumulator()
-    for await (const event of controller.events()) {
-      if (event.type === 'attach_gap') break
-      acc.consume(event as Parameters<TurnAccumulator['consume']>[0])
-      if (opts.onEvent) {
-        try {
-          opts.onEvent(event as StreamEvent)
-        } catch {
-          // observer errors must not kill the turn
-        }
-      }
-      if (event.type === 'progress' && opts.onProgress) {
-        const label = acc.outcome().progressLabel
-        if (label) opts.onProgress(label)
-      }
-      if (event.type === 'done') break
+    const onAbort = (): void => {
+      // Core-side cancel; the stream then delivers done(reason:"cancelled")
+      // which ends the loop below with a coherent partial outcome.
+      void controller.cancel().catch(() => {})
     }
-    return acc.outcome()
+    opts.signal?.addEventListener('abort', onAbort, { once: true })
+
+    try {
+      const acc = new TurnAccumulator()
+      for await (const event of controller.events()) {
+        if (event.type === 'attach_gap') break
+        acc.consume(event as Parameters<TurnAccumulator['consume']>[0])
+        if (opts.onEvent) {
+          try {
+            opts.onEvent(event as StreamEvent)
+          } catch {
+            // observer errors must not kill the turn
+          }
+        }
+        if (event.type === 'progress' && opts.onProgress) {
+          const label = acc.outcome().progressLabel
+          if (label) opts.onProgress(label)
+        }
+        if (event.type === 'done') break
+      }
+      return acc.outcome()
+    } finally {
+      opts.signal?.removeEventListener('abort', onAbort)
+    }
   }
 
   /**

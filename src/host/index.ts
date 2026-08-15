@@ -14,8 +14,7 @@
  * tools/commands BEFORE SIGTERMing a self-spawned core (D1 — parallel
  * async disposers would race those).
  */
-import { KernelManager } from './kernel.js'
-import { OmicosRunner } from './runner.js'
+import { OmicosPool } from './pool.js'
 import { registerOmicosCommands } from './commands.js'
 import { registerOmicosTools } from './tools.js'
 import { Schema, type Context } from './dsh-compat.js'
@@ -26,7 +25,7 @@ export const name = 'omicos'
 export const inject = ['tools']
 
 export interface Config {
-  /** Workspace directory the omicos kernel binds to; empty = the dsh host's cwd. */
+  /** Explicit workspace override; empty = follow each dsh session's own workspace (`session.header.cwd`). */
   workspace: string
   /** Spawn a local kernel via `npx @omicverse/omicos` when none is attachable. */
   autoStart: boolean
@@ -50,26 +49,29 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
-  const kernel = new KernelManager({
-    workspace: config.workspace || process.cwd(),
+  const pool = new OmicosPool({
     autoStart: config.autoStart,
     npmRegistry: config.npmRegistry || undefined,
     upstreamBaseUrl: config.upstreamBaseUrl,
   })
-  const runner = new OmicosRunner(kernel)
 
   ctx.effect(function* () {
     // LIFO: yielded first -> disposed last (after every registration is gone).
-    yield () => kernel.dispose()
-    for (const dispose of registerOmicosTools(ctx, { kernel, runner, maxAttachmentBytes: config.maxAttachmentBytes })) {
+    yield () => pool.dispose()
+    for (const dispose of registerOmicosTools(ctx, {
+      pool,
+      configWorkspace: config.workspace,
+      maxAttachmentBytes: config.maxAttachmentBytes,
+    })) {
       yield dispose
     }
     for (const dispose of registerOmicosCommands(ctx, {
-      kernel,
+      pool,
+      configWorkspace: config.workspace,
       upstreamBaseUrl: config.upstreamBaseUrl,
       authMethod: config.authMethod,
     })) {
       yield dispose
     }
-  }, 'omicos: kernel + tools + commands')
+  }, 'omicos: kernel pool + tools + commands')
 }

@@ -19,12 +19,12 @@
  */
 import { classifyGeneratedFile, fetchFilePreview } from '@omicverse/omicos-client'
 import type { OmicosTurnOutcome } from './bridge.js'
-import type { KernelManager } from './kernel.js'
-import type { OmicosRunner } from './runner.js'
+import type { OmicosPool, PoolEntry } from './pool.js'
 import {
   SAVEABLE_IMAGE_TYPES,
   defineTool,
   dshSessionIdOf,
+  sessionCwdOf,
   type Context,
   type ContentBlock,
   type ImageAttachmentRef,
@@ -34,14 +34,21 @@ import {
 } from './dsh-compat.js'
 
 export interface ToolDeps {
-  kernel: KernelManager
-  runner: OmicosRunner
+  pool: OmicosPool
+  /** Explicit `config.workspace` override; empty = follow each dsh session's own workspace. */
+  configWorkspace: string
   /** Figures larger than this go path-only instead of into the dsh attachment store (DSH-PLUGIN.md §7). */
   maxAttachmentBytes: number
 }
 
 /** Fallback conversation bucket for a tool call with no owning agent (`ToolExecution.agent` is optional). */
 const SHARED_SESSION = 'shared'
+
+/** config override > the dsh session's own workspace (`session.header.cwd`) > host cwd. */
+function entryFor(deps: ToolDeps, exec: ToolRunContext): PoolEntry {
+  const dir = deps.configWorkspace || sessionCwdOf(exec) || process.cwd()
+  return deps.pool.entry(dir)
+}
 
 interface SavedFigure {
   path: string
@@ -119,8 +126,9 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
     onProgress?: (label: string) => void,
   ): Promise<{ outcome: OmicosTurnOutcome; figures: SavedFigure[] }> => {
     const sessionId = dshSessionIdOf(exec) ?? SHARED_SESSION
-    const outcome = await deps.runner.runTurn(sessionId, message, { onProgress })
-    const handle = await deps.kernel.handle()
+    const entry = entryFor(deps, exec)
+    const outcome = await entry.runner.runTurn(sessionId, message, { onProgress, signal: exec.signal })
+    const handle = await entry.kernel.handle()
     const figures = await saveFigures(
       handle.baseUrl,
       outcome.generatedFiles,
@@ -172,6 +180,7 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
               throw new Error('background analyses need @deepseek-ai/dsh-jobs and @deepseek-ai/dsh-tool-jobs in the profile')
             }
             const sessionId = dshSessionIdOf(exec) ?? SHARED_SESSION
+            const entry = entryFor(deps, exec)
             const jobId = jobs.start({
               kind: 'omicos-analysis',
               label: `omicos: ${args.request.slice(0, 80)}`,
@@ -179,13 +188,13 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
               run: (): JobHooks => {
                 let lastProgress = ''
                 let cancelled = false
-                const turn = deps.runner.runTurn(sessionId, args.request, {
+                const turn = entry.runner.runTurn(sessionId, args.request, {
                   onProgress: (label) => (lastProgress = label),
                 })
                 return {
                   cancel: () => {
                     cancelled = true
-                    void deps.runner.cancel(sessionId)
+                    void entry.runner.cancel(sessionId)
                   },
                   done: turn.then(
                     (outcome) => ({
@@ -275,7 +284,7 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
         },
         async execute(_args, exec) {
           const sessionId = dshSessionIdOf(exec) ?? SHARED_SESSION
-          return { files: await deps.runner.listGeneratedFiles(sessionId) }
+          return { files: await entryFor(deps, exec).runner.listGeneratedFiles(sessionId) }
         },
       }),
     ),
