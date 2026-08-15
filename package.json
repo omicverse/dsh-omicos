@@ -1,0 +1,26 @@
+{
+  "name": "@omicverse/dsh-omicos",
+  "version": "0.1.0",
+  "description": "OmicOS as a deepseek-harness (dsh) plugin — Mode A: omicos analysis tools + jobs for the dsh agent (DSH-PLUGIN.md).",
+  "type": "module",
+  "main": "./lib/host/index.js",
+  "types": "./lib/host/index.d.ts",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@omicverse/omicos-client": "workspace:*",
+    "@omicverse/omicos-launcher": "workspace:*",
+    "@omicverse/omicos-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.8"
+  }
+}
