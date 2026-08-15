@@ -57,7 +57,7 @@ describe('registerOmicosCommands', () => {
     const { pool } = poolFor('http://127.0.0.1:1')
     registerOmicosCommands(ctx, { ...BASE, pool })
     for (const c of commands) expect(c.name).toMatch(/^[a-z][a-z0-9_-]*$/)
-    expect(commands.map((c) => c.name)).toEqual(['omicos-login', 'omicos-status', 'omicos-logout', 'omicos-stop-kernel'])
+    expect(commands.map((c) => c.name)).toEqual(['omicos-login', 'omicos-status', 'omicos-account', 'omicos-logout', 'omicos-stop-kernel'])
   })
 
   it('omicos-login returns the pairing code IMMEDIATELY; approval lands in background and /omicos-status reports it', async () => {
@@ -121,12 +121,41 @@ describe('registerOmicosCommands', () => {
     expect(bad.text).toContain('sms')
   })
 
+  it('omicos-account shows plan + commerce deep links when logged in, and a subscribe link when not', async () => {
+    const core = new MockCore()
+    await core.start()
+    servers.push(core)
+    core.on('GET', '/api/cloud/identity', (_req, res) =>
+      respondJson(res, 200, { logged_in: true, email: 'a@b.com', user_id: 'u1', server: 'https://auth.omicos.cn' }),
+    )
+    core.on('GET', '/api/health/plan', (_req, res) =>
+      respondJson(res, 200, { plan_code: 'lab', token_exp: 1786835514, renewing: false, last_refresh: 0, last_error_detail: null, last_error_reason: null, user_id: 'u1' }),
+    )
+    const { ctx, commands } = fakeCtx()
+    const { pool } = poolFor(core.baseUrl)
+    registerOmicosCommands(ctx, { ...BASE, pool })
+    const account = commands.find((c) => c.name === 'omicos-account')!
+
+    const r = await account.handler({ rawInput: '' })
+    expect(r.kind).toBe('success')
+    expect(r.text).toContain('a@b.com')
+    expect(r.text).toContain('Lab')
+    expect(r.text).toContain('https://app.omicos.cn/#/bench?page=subscription')
+    expect(r.text).toContain('https://app.omicos.cn/#/bench?page=settings')
+
+    // Logged out: no plan lookup, subscribe link + login hint instead.
+    core.on('GET', '/api/cloud/identity', (_req, res) => respondJson(res, 200, { logged_in: false }))
+    const out = await account.handler({ rawInput: '' })
+    expect(out.text).toContain('/omicos-login')
+    expect(out.text).toContain('page=subscription')
+  })
+
   it('omicos-stop-kernel never stops an ATTACHED core (F13) but stops a self-spawned one and stays reusable', async () => {
     const attached = poolFor('http://127.0.0.1:1', false)
     await attached.pool.entry('/ws').kernel.handle()
     const { ctx, commands } = fakeCtx()
     registerOmicosCommands(ctx, { ...BASE, pool: attached.pool })
-    const stopCmd = commands[3]!
+    const stopCmd = commands[4]!
     const r1 = await stopCmd.handler({ rawInput: '' })
     expect(r1.text).toContain('不会停止')
     expect(attached.stop).not.toHaveBeenCalled()
@@ -135,7 +164,7 @@ describe('registerOmicosCommands', () => {
     await spawned.pool.entry('/ws').kernel.handle()
     const ctx2 = fakeCtx()
     registerOmicosCommands(ctx2.ctx, { ...BASE, pool: spawned.pool })
-    const r2 = await ctx2.commands[3]!.handler({ rawInput: '' })
+    const r2 = await ctx2.commands[4]!.handler({ rawInput: '' })
     expect(r2.text).toContain('已停止 1 个')
     expect(spawned.stop).toHaveBeenCalledTimes(1)
     await expect(spawned.pool.entry('/ws').kernel.handle()).resolves.toBeDefined()
