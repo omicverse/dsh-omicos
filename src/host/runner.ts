@@ -9,7 +9,7 @@
  * SSE accumulation) is unit-testable against `mockCore` without a dsh
  * host.
  */
-import type { ChatConfig, PermissionMode } from '@omicverse/omicos-protocol'
+import type { ChatConfig, PermissionMode, StreamEvent } from '@omicverse/omicos-protocol'
 import {
   ConversationsClient,
   HttpCoreTransport,
@@ -23,6 +23,13 @@ import { TurnAccumulator, type OmicosTurnOutcome } from './bridge.js'
 export interface RunTurnOptions {
   /** Live progress snapshots (job-label material, §5) — called with the latest combined label. */
   onProgress?: (label: string) => void
+  /**
+   * Raw live tap: every StreamEvent of the turn, in seq order, before
+   * accumulation (v0.2 activity mirroring — `tools.ts` feeds these to an
+   * `ActivityMirror` and appends the snapshots to dsh's session log).
+   * Exceptions are swallowed: a broken observer must not kill the turn.
+   */
+  onEvent?: (event: StreamEvent) => void
   /** v0.1 default `"full"`: tools run inside core unprompted — a blocked approval would deadlock the single-shot tool result (§3 Mode A). */
   permissionMode?: PermissionMode | string
   config?: ChatConfig
@@ -95,6 +102,13 @@ export class OmicosRunner {
     for await (const event of controller.events()) {
       if (event.type === 'attach_gap') break
       acc.consume(event as Parameters<TurnAccumulator['consume']>[0])
+      if (opts.onEvent) {
+        try {
+          opts.onEvent(event as StreamEvent)
+        } catch {
+          // observer errors must not kill the turn
+        }
+      }
       if (event.type === 'progress' && opts.onProgress) {
         const label = acc.outcome().progressLabel
         if (label) opts.onProgress(label)
