@@ -1,0 +1,153 @@
+/**
+ * Human-facing slash commands (DSH-PLUGIN.md §6). Command names use
+ * hyphens — the registry's verified constraint is `/^[a-z][a-z0-9_-]*$/`,
+ * so the design doc's `omicos:login` spelling is not registrable.
+ *
+ * A handler returns exactly one `CommandResult`, so `/omicos-login`
+ * answers immediately with the pairing code / QR link and the approval
+ * poll finishes in the background; `/omicos-status` reports the outcome.
+ */
+import { OmicosHttpError } from '@omicverse/omicos-client'
+import { beginDeviceCodeLogin, beginWechatLogin, describeUser, loginStatus, logout } from './auth.js'
+import type { KernelManager } from './kernel.js'
+import type { CommandResult, Context } from './dsh-compat.js'
+
+export interface CommandDeps {
+  kernel: KernelManager
+  upstreamBaseUrl: string
+  /** Default channel for a bare `/omicos-login`. */
+  authMethod: 'device-code' | 'wechat-qr'
+}
+
+interface LoginState {
+  pending: boolean
+  /** Outcome line of the last finished background login, shown by `/omicos-status`. */
+  lastOutcome?: string
+}
+
+function ok(text: string): CommandResult {
+  return { kind: 'success', text }
+}
+
+function fail(text: string): CommandResult {
+  return { kind: 'error', text }
+}
+
+function errText(err: unknown): string {
+  if (err instanceof OmicosHttpError) return `HTTP ${err.status}: ${err.message}`
+  return err instanceof Error ? err.message : String(err)
+}
+
+/** Register the command set. Returns disposers (caller owns effect wiring). */
+export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<() => void> {
+  const commands = ctx.get('commands')
+  if (commands === undefined) return []
+
+  const state: LoginState = { pending: false }
+
+  const trackLogin = (done: Promise<{ email?: string; phone?: string; id: string }>): void => {
+    state.pending = true
+    done.then(
+      (user) => {
+        state.pending = false
+        state.lastOutcome = `已登录：${describeUser(user)}（token 由本地 omicos 内核保管）`
+      },
+      (err: unknown) => {
+        state.pending = false
+        state.lastOutcome = `登录失败：${errText(err)}`
+      },
+    )
+  }
+
+  const disposers: Array<() => void> = []
+
+  disposers.push(
+    commands.register({
+      name: 'omicos-login',
+      description: 'Sign in to OmicOS (input: "wechat" or "device"; default from plugin config)',
+      handler: async (invocation) => {
+        if (state.pending) return fail('已有一个登录流程在等待批准，先运行 /omicos-status 查看，或等它完成。')
+        const raw = invocation.rawInput.trim().toLowerCase()
+        const method = raw === '' ? deps.authMethod : raw
+        try {
+          if (method === 'wechat' || method === 'wechat-qr') {
+            const begun = await beginWechatLogin(deps.kernel, deps.upstreamBaseUrl)
+            trackLogin(begun.done)
+            return ok(begun.message)
+          }
+          if (method === 'device' || method === 'device-code') {
+            const begun = await beginDeviceCodeLogin(deps.kernel, deps.upstreamBaseUrl)
+            trackLogin(begun.done)
+            return ok(begun.message)
+          }
+          return fail(`未知登录方式 "${raw}"，可用：wechat / device`)
+        } catch (err) {
+          return fail(`无法开始登录：${errText(err)}`)
+        }
+      },
+    }),
+  )
+
+  disposers.push(
+    commands.register({
+      name: 'omicos-status',
+      description: 'OmicOS kernel + sign-in status',
+      handler: async () => {
+        const lines: string[] = []
+        if (state.pending) lines.push('登录：等待批准中…')
+        else if (state.lastOutcome) lines.push(`登录：${state.lastOutcome}`)
+        const baseUrl = deps.kernel.baseUrl
+        if (baseUrl === undefined) {
+          lines.push('内核：未连接（首次使用 omicos 工具时自动连接/启动）')
+          return ok(lines.join('\n'))
+        }
+        lines.push(`内核：${baseUrl}（${deps.kernel.isSpawned ? '由本插件启动' : '挂载到已运行实例'}）`)
+        try {
+          const identity = await loginStatus(deps.kernel)
+          lines.push(
+            identity.logged_in
+              ? `账号：${identity.email || identity.user_id}（${identity.server}）`
+              : '账号：未登录（运行 /omicos-login）',
+          )
+        } catch (err) {
+          lines.push(`账号：查询失败（${errText(err)}）`)
+        }
+        return ok(lines.join('\n'))
+      },
+    }),
+  )
+
+  disposers.push(
+    commands.register({
+      name: 'omicos-logout',
+      description: 'Sign this machine\'s OmicOS kernel out',
+      handler: async () => {
+        try {
+          await logout(deps.kernel)
+          state.lastOutcome = undefined
+          return ok('已退出登录（仅本机内核；云端 token 未被吊销）。')
+        } catch (err) {
+          return fail(`退出失败：${errText(err)}`)
+        }
+      },
+    }),
+  )
+
+  disposers.push(
+    commands.register({
+      name: 'omicos-stop-kernel',
+      description: 'Stop the OmicOS kernel IF this plugin spawned it (an attached kernel is never touched)',
+      handler: () => {
+        if (deps.kernel.baseUrl === undefined) return ok('没有已连接的内核。')
+        if (!deps.kernel.isSpawned) {
+          deps.kernel.reset()
+          return ok('该内核由外部启动（桌面 App 或终端），本插件不会停止它；已断开挂载。')
+        }
+        deps.kernel.stopSpawned()
+        return ok('已停止本插件启动的内核（下次使用工具时会重新启动）。')
+      },
+    }),
+  )
+
+  return disposers
+}

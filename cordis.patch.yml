@@ -1,0 +1,17 @@
+# The @omicverse/dsh-omicos bundle patch: one insert row activating the
+# omicos plugin when a profile lists this package in dsh.profile.bundles.
+# The id is explicit and stable (D12: patch layers override by id, and an
+# id change would remount the plugin on every config edit).
+#
+# Override config in your profile's own cordis.patch.yml — remember a
+# patch REPLACES the row's whole config (no deep-merge), so restate every
+# key you care about:
+#
+#   - id: omicos
+#     config:
+#       workspace: /path/to/project
+#       authMethod: wechat-qr
+
+- insert:
+    - id: omicos
+      name: '@omicverse/dsh-omicos'

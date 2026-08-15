@@ -81,6 +81,17 @@ export class KernelManager {
     this.current = undefined
   }
 
+  /**
+   * Stop a SELF-SPAWNED core and forget the handle, but keep this manager
+   * usable — the next `handle()` re-discovers/re-spawns. (An attached
+   * core's `stop` is a launcher-level no-op, F13.) This is the
+   * user-facing "stop kernel" semantic; `dispose()` is plugin teardown.
+   */
+  stopSpawned(): void {
+    this.current?.stop()
+    this.current = undefined
+  }
+
   /** Stop a self-spawned core (attached cores are untouched — F13) and refuse further use. */
   dispose(): void {
     this.disposed = true
