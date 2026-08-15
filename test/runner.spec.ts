@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
 import { KernelManager } from '../src/host/kernel.js'
 import { OmicosRunner } from '../src/host/runner.js'
@@ -114,8 +114,11 @@ describe('OmicosRunner.runTurn cancellation (regression: dsh abort used to orpha
     const controller = new AbortController()
     const runner = new OmicosRunner(kernelFor(mock))
     const pending = runner.runTurn('sess-1', 'long analysis', { signal: controller.signal })
-    // Let the stream start, then abort like a dsh-side stop.
-    await new Promise((r) => setTimeout(r, 50))
+    // Abort only once the stream is genuinely open (mid-turn, like a dsh-side
+    // stop) — a fixed sleep raced the pre-send abort check under load.
+    await vi.waitFor(() => {
+      expect(streamRes).toBeDefined()
+    })
     controller.abort()
 
     const outcome = await pending

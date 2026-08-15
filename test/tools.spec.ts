@@ -74,8 +74,8 @@ function serveHappyTurn(mock: MockCore): void {
   })
 }
 
-function deps(mock: MockCore, maxAttachmentBytes = 4 * 1024 * 1024) {
-  return { pool: poolFor(mock), configWorkspace: '/ws', maxAttachmentBytes }
+function deps(mock: MockCore) {
+  return { pool: poolFor(mock), configWorkspace: '/ws' }
 }
 
 const EXEC = { agent: { id: 'sess-1' }, signal: undefined }
@@ -107,58 +107,7 @@ describe('registerOmicosTools', () => {
     expect(blocks[0]).toEqual({ type: 'text', text: 'Hello, world' })
   })
 
-  it('saves figure bytes into the attachments service and renders an ImageBlock', async () => {
-    const mock = await startCore()
-    mock.on('POST', '/api/conversations/', (_req, res) => respondJson(res, 200, {}))
-    mock.on('POST', '/api/agent/chat/stream', (_req, res) => {
-      startSse(res)
-      const frames = fixtureTurn(SID)
-      // Splice a final assistant step carrying generated_files before `done`.
-      const done = frames.pop()!
-      for (const frame of frames) writeSseFrame(res, frame)
-      writeSseFrame(res, {
-        data: {
-          type: 'step',
-          session_id: SID,
-          request_id: 'req_1',
-          runtime_uid: 'runtime_test',
-          event_seq: 98,
-          content: { role: 'assistant', content: 'made a plot', generated_files: ['figures/umap.png', 'results/table.csv'] },
-        },
-        id: 98,
-      })
-      writeSseFrame(res, done)
-      res.end()
-    })
-    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
-    mock.on('GET', '/api/files/preview', (_req, res) => {
-      res.writeHead(200, { 'content-type': 'image/png' })
-      res.end(Buffer.from(PNG))
-    })
-
-    const savedInputs: Array<{ mediaType: string; name?: string; bytes: number }> = []
-    const ref = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 4, width: 1, height: 1 }
-    const { ctx, tools } = fakeCtx({
-      attachments: {
-        saveImage: async (input: { data: Uint8Array; mediaType: string; name?: string }) => {
-          savedInputs.push({ mediaType: input.mediaType, name: input.name, bytes: input.data.byteLength })
-          return ref
-        },
-      },
-    })
-    registerOmicosTools(ctx, deps(mock))
-    const analyze = tools[0]!
-
-    const value = await analyze.execute({ request: 'plot umap' }, EXEC)
-    // Only the .png went through the attachment pipeline; the .csv did not.
-    expect(savedInputs).toEqual([{ mediaType: 'image/png', name: 'umap.png', bytes: 4 }])
-    expect(value.generated_files).toEqual(['figures/umap.png', 'results/table.csv'])
-
-    const blocks = analyze.output.render({}, value as never)
-    expect(blocks.some((b) => b.type === 'image' && (b as { attachment?: unknown }).attachment === ref)).toBe(true)
-  })
-
-  it('a figure larger than maxAttachmentBytes degrades to path-only instead of failing', async () => {
+  it('🔴 result content stays TEXT-ONLY even when figures were generated (DeepSeek adapter rejects image content)', async () => {
     const mock = await startCore()
     mock.on('POST', '/api/conversations/', (_req, res) => respondJson(res, 200, {}))
     mock.on('POST', '/api/agent/chat/stream', (_req, res) => {
@@ -169,24 +118,25 @@ describe('registerOmicosTools', () => {
       writeSseFrame(res, {
         data: {
           type: 'step', session_id: SID, request_id: 'req_1', runtime_uid: 'runtime_test', event_seq: 98,
-          content: { role: 'assistant', content: 'big plot', generated_files: ['huge.png'] },
+          content: { role: 'assistant', content: 'made a plot', generated_files: ['figures/umap.png', 'results/table.csv'] },
         },
         id: 98,
       })
       writeSseFrame(res, done)
       res.end()
     })
-    mock.on('GET', '/api/files/preview', (_req, res) => {
-      res.writeHead(200, { 'content-type': 'image/png' })
-      res.end(Buffer.alloc(64))
-    })
+    const { ctx, tools } = fakeCtx()
+    registerOmicosTools(ctx, deps(mock))
+    const analyze = tools[0]!
 
-    let saveCalls = 0
-    const { ctx, tools } = fakeCtx({ attachments: { saveImage: async () => { saveCalls += 1; return {} } } })
-    registerOmicosTools(ctx, deps(mock, 16))
-    const value = await tools[0]!.execute({ request: 'plot' }, EXEC)
-    expect(saveCalls).toBe(0)
-    expect(value.generated_files).toEqual(['huge.png'])
+    const value = await analyze.execute({ request: 'plot umap' }, EXEC)
+    expect(value.generated_files).toEqual(['figures/umap.png', 'results/table.csv'])
+
+    const blocks = analyze.output.render({}, value as never)
+    // Every block must be text: an ImageBlock here fails the NEXT model call
+    // (UNSUPPORTED_CONTENT from the DeepSeek chat-completions adapter).
+    expect(blocks.every((b) => b.type === 'text')).toBe(true)
+    expect(blocks.some((b) => String(b.text).includes('figures/umap.png'))).toBe(true)
   })
 
   it('background=true without a jobs service is a clear error, with one it returns the job id and wires the hooks', async () => {
@@ -233,16 +183,43 @@ describe('registerOmicosTools', () => {
     const { ctx, tools } = fakeCtx()
 
     // No config override: the dsh SESSION's workspace wins over the host cwd.
-    registerOmicosTools(ctx, { pool, configWorkspace: '', maxAttachmentBytes: 1 })
+    registerOmicosTools(ctx, { pool, configWorkspace: '' })
     const execWithWs = { agent: { id: 'sess-1', session: { header: { cwd: '/ws-from-dsh-ui' } } }, signal: undefined }
     await tools[0]!.execute({ request: 'x' }, execWithWs)
     expect(ensuredDirs).toEqual(['/ws-from-dsh-ui'])
 
     // Explicit config override beats the session workspace.
     const ctx2 = fakeCtx()
-    registerOmicosTools(ctx2.ctx, { pool, configWorkspace: '/ws-forced', maxAttachmentBytes: 1 })
+    registerOmicosTools(ctx2.ctx, { pool, configWorkspace: '/ws-forced' })
     await ctx2.tools[0]!.execute({ request: 'y' }, execWithWs)
     expect(ensuredDirs).toEqual(['/ws-from-dsh-ui', '/ws-forced'])
+  })
+
+  it('presentationMeta carries durable generated_files (settled toolview reads figure paths from result meta)', async () => {
+    const mock = await startCore()
+    const { ctx, tools } = fakeCtx()
+    registerOmicosTools(ctx, deps(mock))
+    const analyze = tools[0] as unknown as { output: { presentationMeta?: (a: unknown, v: unknown) => unknown } }
+    const meta = analyze.output.presentationMeta!({}, { generated_files: ['figures/umap.png', 'x.csv'], answer: 'ok' })
+    expect(meta).toEqual({ omicos: { generated_files: ['figures/umap.png', 'x.csv'] } })
+  })
+
+  it('a live ActivityStore receives snapshots during the turn and is finished after it', async () => {
+    const mock = await startCore()
+    serveHappyTurn(mock)
+    const { ActivityStore } = await import('../src/host/activity-store.js')
+    const activity = new ActivityStore()
+    const { ctx, tools } = fakeCtx()
+    registerOmicosTools(ctx, { ...deps(mock), activity })
+
+    const exec = { agent: { id: 'sess-1' }, signal: undefined, callId: 'call-42' }
+    await tools[0]!.execute({ request: 'analyze' }, exec)
+
+    const feed = activity.get('call-42')
+    expect(feed).toBeDefined()
+    expect(feed!.running).toBe(false)
+    // The fixture turn ran run_python_code — the mirror saw it.
+    expect(feed!.snapshot).toMatchObject({ phase: 'done', outcome: 'ok' })
   })
 
   it('omicos_query_variable throws on a failed turn (error event) instead of returning prose', async () => {

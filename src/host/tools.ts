@@ -17,18 +17,16 @@
  * long-task channel). Live tqdm progress is exposed through the job's
  * `readOutput()` (labels are immutable — verified, no update API).
  */
-import { classifyGeneratedFile, fetchFilePreview } from '@omicverse/omicos-client'
+import { ActivityMirror } from './activity.js'
+import type { ActivityStore } from './activity-store.js'
 import type { OmicosTurnOutcome } from './bridge.js'
 import type { OmicosPool, PoolEntry } from './pool.js'
 import {
-  SAVEABLE_IMAGE_TYPES,
   defineTool,
   dshSessionIdOf,
   sessionCwdOf,
   type Context,
   type ContentBlock,
-  type ImageAttachmentRef,
-  type ImageMediaType,
   type JobHooks,
   type ToolRunContext,
 } from './dsh-compat.js'
@@ -37,8 +35,8 @@ export interface ToolDeps {
   pool: OmicosPool
   /** Explicit `config.workspace` override; empty = follow each dsh session's own workspace. */
   configWorkspace: string
-  /** Figures larger than this go path-only instead of into the dsh attachment store (DSH-PLUGIN.md §7). */
-  maxAttachmentBytes: number
+  /** Live-activity feed the browser toolview polls (v0.2). Optional — tools run fine headless without it. */
+  activity?: ActivityStore
 }
 
 /** Fallback conversation bucket for a tool call with no owning agent (`ToolExecution.agent` is optional). */
@@ -48,48 +46,6 @@ const SHARED_SESSION = 'shared'
 function entryFor(deps: ToolDeps, exec: ToolRunContext): PoolEntry {
   const dir = deps.configWorkspace || sessionCwdOf(exec) || process.cwd()
   return deps.pool.entry(dir)
-}
-
-interface SavedFigure {
-  path: string
-  ref: ImageAttachmentRef
-}
-
-interface AttachmentsLike {
-  saveImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<ImageAttachmentRef>
-}
-
-/**
- * Fetch each image in `files` from core and commit it to the attachment
- * store. Per-file failures degrade that file to path-only (a broken
- * figure must not fail an otherwise-complete analysis turn).
- */
-async function saveFigures(
-  coreBaseUrl: string,
-  files: string[],
-  attachments: AttachmentsLike | undefined,
-  maxBytes: number,
-  signal?: AbortSignal,
-): Promise<SavedFigure[]> {
-  if (!attachments) return []
-  const saved: SavedFigure[] = []
-  for (const path of files) {
-    const { kind, mimeType } = classifyGeneratedFile(path)
-    if (kind !== 'image' || !SAVEABLE_IMAGE_TYPES.has(mimeType)) continue
-    try {
-      const preview = await fetchFilePreview(coreBaseUrl, path, { signal })
-      if (preview.bytes.byteLength > maxBytes) continue
-      const ref = await attachments.saveImage({
-        data: preview.bytes,
-        mediaType: mimeType as ImageMediaType,
-        name: path.split('/').pop(),
-      })
-      saved.push({ path, ref })
-    } catch {
-      // path-only degradation; the file list in the result still names it
-    }
-  }
-  return saved
 }
 
 function outcomeText(outcome: OmicosTurnOutcome): string {
@@ -109,21 +65,19 @@ function turnError(outcome: OmicosTurnOutcome): Error {
   return new Error(`${outcome.error ?? 'omicos turn failed'}${trace}`)
 }
 
-function renderOutcome(value: {
-  answer: string
-  generated_files: unknown
-  figures: unknown
-}): ContentBlock[] {
+/**
+ * 🔴 TEXT-ONLY on purpose (found live, 2026-08-15): tool-result `content`
+ * is replayed into the MODEL's next request, and dsh's DeepSeek
+ * chat-completions adapter rejects image content — an ImageBlock here
+ * fails the whole turn with UNSUPPORTED_CONTENT right after the tool
+ * succeeds. Figures reach the USER via `presentationMeta` + the keyed
+ * toolview's `/omicos/figure` fetch instead; the model gets the paths.
+ */
+function renderOutcome(value: { answer: string; generated_files: unknown }): ContentBlock[] {
   const blocks: ContentBlock[] = [{ type: 'text', text: value.answer }]
   const files = Array.isArray(value.generated_files) ? value.generated_files.map(String) : []
   if (files.length > 0) {
     blocks.push({ type: 'text', text: `Files generated (workspace-relative): ${files.join(', ')}` })
-  }
-  for (const fig of Array.isArray(value.figures) ? value.figures : []) {
-    const saved = fig as unknown as SavedFigure
-    if (saved && typeof saved === 'object' && saved.ref) {
-      blocks.push({ type: 'image', attachment: saved.ref })
-    }
   }
   return blocks
 }
@@ -136,19 +90,34 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
     exec: ToolRunContext,
     message: string,
     onProgress?: (label: string) => void,
-  ): Promise<{ outcome: OmicosTurnOutcome; figures: SavedFigure[] }> => {
+  ): Promise<{ outcome: OmicosTurnOutcome }> => {
     const sessionId = dshSessionIdOf(exec) ?? SHARED_SESSION
     const entry = entryFor(deps, exec)
-    const outcome = await entry.runner.runTurn(sessionId, message, { onProgress, signal: exec.signal })
-    const handle = await entry.kernel.handle()
-    const figures = await saveFigures(
-      handle.baseUrl,
-      outcome.generatedFiles,
-      ctx.get('attachments'),
-      deps.maxAttachmentBytes,
-      exec.signal,
-    )
-    return { outcome, figures }
+    // Live feed for the browser toolview: full-state snapshots per callId,
+    // ephemeral by design (see activity-store.ts for why NOT SessionEvents).
+    const store = deps.activity
+    const mirror = store === undefined ? undefined : new ActivityMirror((snap) => store.publish(exec.callId, snap))
+    try {
+      const outcome = await entry.runner.runTurn(sessionId, message, {
+        onProgress,
+        signal: exec.signal,
+        onEvent: mirror === undefined ? undefined : (event) => mirror.consume(event),
+      })
+      mirror?.finish(outcome.error ? 'error' : 'ok', outcome.error)
+      if (!outcome.error && outcome.generatedFiles.length === 0) {
+        // Turn-level diff can miss files an earlier (orphan/idempotent) turn
+        // already recorded — fall back to the conversation's latest set.
+        try {
+          outcome.generatedFiles = await entry.runner.lastGeneratedFiles(sessionId)
+        } catch {
+          // fallback only; empty stays empty
+        }
+      }
+      return { outcome }
+    } finally {
+      mirror?.finish()
+      store?.finish(exec.callId)
+    }
   }
 
   disposers.push(
@@ -178,11 +147,16 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
             properties: {
               answer: { type: 'string', required: true },
               generated_files: { type: 'array', required: true, items: { type: 'string' } },
-              figures: { type: 'array', required: true, items: { type: 'json' } },
               job_id: { type: 'string' },
             },
           },
           render: (_args, value) => renderOutcome(value),
+          // Durable, replayable presentation facts (rides tool/result meta —
+          // the client toolview reads figure paths from here and fetches
+          // bytes via /omicos/figure, so settled cards survive host restarts).
+          presentationMeta: (_args, value) => ({
+            omicos: { generated_files: Array.isArray(value.generated_files) ? value.generated_files : [] },
+          }),
         },
         isConcurrencySafe: () => false,
         async execute(args, exec) {
@@ -220,15 +194,14 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
                 }
               },
             })
-            return { answer: `Started background omicos analysis (job ${jobId}). Poll it with the job tools.`, generated_files: [], figures: [], job_id: jobId }
+            return { answer: `Started background omicos analysis (job ${jobId}). Poll it with the job tools.`, generated_files: [], job_id: jobId }
           }
 
-          const { outcome, figures } = await runToOutcome(exec, args.request)
+          const { outcome } = await runToOutcome(exec, args.request)
           if (outcome.error) throw turnError(outcome)
           return {
             answer: outcomeText(outcome),
             generated_files: outcome.generatedFiles,
-            figures: figures as unknown as import('@deepseek-ai/dsh-tools').JsonValue[],
           }
         },
       }),

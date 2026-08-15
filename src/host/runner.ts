@@ -167,6 +167,30 @@ export class OmicosRunner {
     return out
   }
 
+  /**
+   * The MOST RECENT non-empty `generated_files` of the conversation.
+   * Fallback for a turn whose own diff came back empty — found live: an
+   * orphan-completed prior turn already recorded the files, so the retry
+   * turn's before/after diff saw nothing new even though the results are
+   * exactly what the user asked for.
+   */
+  async lastGeneratedFiles(dshSessionId: string): Promise<string[]> {
+    const sid = deriveOmicosSessionId(dshSessionId)
+    const transport = await this.getTransport()
+    const convs = new ConversationsClient(transport)
+    let detail
+    try {
+      detail = await convs.get(sid)
+    } catch {
+      return []
+    }
+    for (let i = (detail.history ?? []).length - 1; i >= 0; i -= 1) {
+      const files = detail.history[i]?.generated_files
+      if (Array.isArray(files) && files.length > 0) return files.map(String)
+    }
+    return []
+  }
+
   /** Cancel the session's active turn, if any (used by job stop, §5). */
   async cancel(dshSessionId: string): Promise<void> {
     const sid = deriveOmicosSessionId(dshSessionId)

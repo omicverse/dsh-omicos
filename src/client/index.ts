@@ -16,7 +16,9 @@ import type { Context } from '@deepseek-ai/cordis'
 // into the program so the register call types.
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { AccountTab } from './AccountTab.js'
+import { OmicosToolView } from './OmicosToolView.js'
 
 export const name = 'omicos-client'
 
@@ -32,6 +34,17 @@ export function apply(ctx: Context): void {
         label: () => 'OmicOS',
       },
       AccountTab,
+    ),
+  )
+  // Take over the omicos_analyze card (keyed toolview, D8): live nested-
+  // agent activity while running, text + durable figures when settled.
+  ctx.slots.inject('tool.call.toolview', () =>
+    ctx.slots.register(
+      {
+        name: 'tool.call.toolview',
+        key: 'omicos_analyze',
+      },
+      OmicosToolView,
     ),
   )
 }

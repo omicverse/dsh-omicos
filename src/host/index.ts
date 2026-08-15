@@ -15,6 +15,7 @@
  * async disposers would race those).
  */
 import { AccountService } from './account.js'
+import { ActivityStore } from './activity-store.js'
 import { OmicosPool } from './pool.js'
 import { registerOmicosCommands } from './commands.js'
 import { registerOmicosRoutes } from './routes.js'
@@ -37,7 +38,7 @@ export interface Config {
   npmRegistry: string
   /** Default channel for a bare /omicos-login. */
   authMethod: 'device-code' | 'wechat-qr'
-  /** Figures larger than this stay path-only instead of entering dsh's attachment store. */
+  /** Reserved (v0.2 dropped the dsh-attachment figure path — images now render via /omicos/figure; key kept so existing patch configs stay valid). */
   maxAttachmentBytes: number
 }
 
@@ -57,14 +58,15 @@ export function apply(ctx: Context, config: Config): void {
     upstreamBaseUrl: config.upstreamBaseUrl,
   })
   const account = new AccountService(pool, config.workspace, config.upstreamBaseUrl)
+  const activity = new ActivityStore()
 
   ctx.effect(function* () {
     // LIFO: yielded first -> disposed last (after every tool is unregistered).
     yield () => pool.dispose()
     for (const dispose of registerOmicosTools(ctx, {
       pool,
+      activity,
       configWorkspace: config.workspace,
-      maxAttachmentBytes: config.maxAttachmentBytes,
     })) {
       yield dispose
     }
@@ -91,7 +93,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.inject(['webServer'], (sub) => {
     sub.effect(function* () {
-      for (const dispose of registerOmicosRoutes(sub, { account })) {
+      for (const dispose of registerOmicosRoutes(sub, { account, activity, pool })) {
         yield dispose
       }
     }, 'omicos: /omicos routes')

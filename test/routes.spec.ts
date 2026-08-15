@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
 import { AccountService } from '../src/host/account.js'
+import { ActivityStore } from '../src/host/activity-store.js'
 import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosRoutes } from '../src/host/routes.js'
 import type { Context } from '../src/host/dsh-compat.js'
@@ -112,6 +113,50 @@ describe('registerOmicosRoutes', () => {
       const missing = fakeRes()
       await routes[0]!.handler(fakeReq('GET', '/omicos/nope'), missing)
       expect(missing.statusCode).toBe(404)
+    } finally {
+      await core.close()
+    }
+  })
+
+  it('GET /omicos/activity/<callId> serves the live feed; unknown call answers 404 with a hint', async () => {
+    const { ctx, routes } = fakeCtx()
+    const activity = new ActivityStore({ now: () => 0 })
+    activity.publish('call-1', { n: 3, phase: 'tool', tool: 'run_python_code', progress: ['UMAP 42%'] })
+    registerOmicosRoutes(ctx, { account: accountFor('http://x'), activity })
+
+    const res = fakeRes()
+    await routes[0]!.handler(fakeReq('GET', '/omicos/activity/call-1'), res)
+    expect(res.statusCode).toBe(200)
+    expect(await json(res)).toMatchObject({ running: true, snapshot: { n: 3, tool: 'run_python_code' } })
+
+    const missing = fakeRes()
+    await routes[0]!.handler(fakeReq('GET', '/omicos/activity/nope'), missing)
+    expect(missing.statusCode).toBe(404)
+  })
+
+  it('GET /omicos/figure proxies image bytes with containment (no traversal, no absolute, images only)', async () => {
+    const core = new MockCore()
+    await core.start()
+    try {
+      core.on('GET', '/api/files/preview', (_req, res) => {
+        res.writeHead(200, { 'content-type': 'image/png' })
+        res.end(Buffer.from([0x89, 0x50]))
+      })
+      const handle: CoreHandle = { baseUrl: core.baseUrl, port: 0, pid: 1, spawned: false, stop: vi.fn() }
+      const pool = new OmicosPool({ ensureImpl: async () => handle })
+      const { ctx, routes } = fakeCtx()
+      registerOmicosRoutes(ctx, { account: accountFor(core.baseUrl), pool })
+
+      const ok = fakeRes()
+      await routes[0]!.handler(fakeReq('GET', `/omicos/figure?ws=${encodeURIComponent('/ws')}&path=${encodeURIComponent('figures/umap.png')}`), ok)
+      expect(ok.statusCode).toBe(200)
+      expect(ok.headers['content-type']).toBe('image/png')
+
+      for (const bad of ['../../etc/passwd.png', '/abs/x.png', 'results/table.csv']) {
+        const res = fakeRes()
+        await routes[0]!.handler(fakeReq('GET', `/omicos/figure?ws=${encodeURIComponent('/ws')}&path=${encodeURIComponent(bad)}`), res)
+        expect(res.statusCode).toBe(400)
+      }
     } finally {
       await core.close()
     }

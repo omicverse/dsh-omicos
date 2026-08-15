@@ -9,11 +9,28 @@
  * not be readable when someone binds dsh to 0.0.0.0.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { classifyGeneratedFile, fetchFilePreview } from '@omicverse/omicos-client'
 import { LoginBusyError, type AccountService } from './account.js'
+import type { ActivityStore } from './activity-store.js'
+import type { OmicosPool } from './pool.js'
 import type { Context } from './dsh-compat.js'
 
 export interface RouteDeps {
   account: AccountService
+  /** Live-activity feed for GET /omicos/activity/<callId> (v0.2 toolview). */
+  activity?: ActivityStore
+  /** Figure byte proxy for GET /omicos/figure?ws=&path= (settled toolview cards). */
+  pool?: OmicosPool
+}
+
+/**
+ * Containment for the figure proxy (DSH-PLUGIN.md §7): only workspace-
+ * relative image paths, no traversal, no absolute paths — the route
+ * exists to re-serve files core itself reported in `generated_files`.
+ */
+function safeFigurePath(path: string): boolean {
+  if (path.startsWith('/') || path.includes('..') || path.includes('\\')) return false
+  return classifyGeneratedFile(path).kind === 'image'
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
@@ -79,6 +96,30 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
       if (method === 'POST' && path === '/omicos/logout') {
         await deps.account.logout()
         json(res, 200, { ok: true })
+        return
+      }
+      if (method === 'GET' && path.startsWith('/omicos/activity/')) {
+        const callId = decodeURIComponent(path.slice('/omicos/activity/'.length))
+        const feed = deps.activity?.get(callId)
+        if (feed === undefined) {
+          json(res, 404, { error: 'no live activity for this call (host restarted or feed expired)' })
+          return
+        }
+        json(res, 200, { running: feed.running, snapshot: feed.snapshot })
+        return
+      }
+      if (method === 'GET' && path === '/omicos/figure') {
+        const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
+        const ws = query.get('ws') ?? ''
+        const figurePath = query.get('path') ?? ''
+        if (deps.pool === undefined || ws === '' || !safeFigurePath(figurePath)) {
+          json(res, 400, { error: 'figure route needs ws + a workspace-relative image path' })
+          return
+        }
+        const handle = await deps.pool.entry(ws).kernel.handle()
+        const preview = await fetchFilePreview(handle.baseUrl, figurePath)
+        res.writeHead(200, { 'content-type': preview.contentType, 'cache-control': 'no-store' })
+        res.end(Buffer.from(preview.bytes))
         return
       }
       json(res, 404, { error: `no such omicos route: ${method} ${path}` })
