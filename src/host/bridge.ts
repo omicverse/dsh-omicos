@@ -34,6 +34,14 @@ import type {
 export interface OmicosTurnOutcome {
   /** Final assistant answer text (primary turn). Empty string when the turn produced none. */
   text: string
+  /**
+   * Bounded human/model-readable trace of what the turn did — one line
+   * per notable event (`→ tool`, `✎ narrative`, stdout tail, `✗ error`).
+   * Model-visible debugging material: on failure `tools.ts` appends it to
+   * the tool error so the dsh agent can diagnose WITHOUT the full omicos
+   * trajectory ever entering (and permanently bloating) its context.
+   */
+  trace: string[]
   /** Workspace-relative paths of files the turn created/modified (final assistant step's `generated_files`). */
   generatedFiles: string[]
   /** Summed across every `usage` event of the turn; `undefined` when none arrived. */
@@ -73,6 +81,9 @@ export function formatProgress(e: ProgressEvent): string {
  * (in seq order — the SDK's TurnController already guarantees gap-free
  * ordering across reconnects) and read `outcome()` after `finished`.
  */
+const TRACE_MAX_LINES = 120
+const TRACE_LINE_MAX = 200
+
 export class TurnAccumulator {
   private chunks: string[] = []
   private authoritativeText: string | undefined
@@ -83,6 +94,19 @@ export class TurnAccumulator {
   private errorText: string | undefined
   private reason: string | undefined
   private done = false
+  private traceLines: string[] = []
+  private truncatedTrace = false
+
+  private pushTrace(line: string): void {
+    const clipped = line.length > TRACE_LINE_MAX ? `${line.slice(0, TRACE_LINE_MAX)}…` : line
+    if (this.traceLines.length >= TRACE_MAX_LINES) {
+      // Keep the most recent activity: drop from the FRONT (the tail is
+      // where a failure's cause usually lives).
+      this.traceLines.shift()
+      this.truncatedTrace = true
+    }
+    this.traceLines.push(clipped)
+  }
 
   consume(event: StreamEvent): void {
     switch (event.type) {
@@ -96,7 +120,18 @@ export class TurnAccumulator {
         return
       case 'tool_started': {
         const e = event as ToolStartedEvent
-        if (isPrimary(e)) this.tools.push(e.tool_name)
+        if (isPrimary(e)) {
+          this.tools.push(e.tool_name)
+          this.pushTrace(`→ ${e.tool_name}`)
+        }
+        return
+      }
+      case 'tool_output_chunk': {
+        const chunk = (event as { chunk?: string }).chunk ?? ''
+        for (const line of chunk.split('\n')) {
+          const trimmed = line.trimEnd()
+          if (trimmed !== '') this.pushTrace(`  ${trimmed}`)
+        }
         return
       }
       case 'usage': {
@@ -118,6 +153,7 @@ export class TurnAccumulator {
       }
       case 'error':
         this.errorText = (event as ErrorEvent).content
+        this.pushTrace(`✗ ${this.errorText}`)
         return
       case 'done': {
         const e = event as DoneEvent
@@ -142,14 +178,19 @@ export class TurnAccumulator {
       return
     if (content.role !== 'assistant') return
     const text = typeof content.content === 'string' ? content.content : undefined
-    if (text) this.authoritativeText = text
+    if (text) {
+      this.authoritativeText = text
+      this.pushTrace(`✎ ${text.replace(/\s+/g, ' ').slice(0, 160)}`)
+    }
     if (Array.isArray(content.generated_files) && content.generated_files.length > 0) {
       this.files = content.generated_files.map(String)
     }
   }
 
   outcome(): OmicosTurnOutcome {
+    const trace = this.truncatedTrace ? ['… (earlier trace truncated)', ...this.traceLines] : this.traceLines.slice()
     return {
+      trace,
       text: this.authoritativeText ?? this.chunks.join(''),
       generatedFiles: this.files.slice(),
       usage: this.usageSum ? { ...this.usageSum } : undefined,

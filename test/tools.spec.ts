@@ -256,6 +256,7 @@ describe('registerOmicosTools', () => {
     })
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
-    await expect(tools[1]!.execute({ name: 'adata' }, EXEC)).rejects.toThrow('kernel exploded')
+    // The rejection carries the bounded activity trace — the dsh agent's debugging material.
+    await expect(tools[1]!.execute({ name: 'adata' }, EXEC)).rejects.toThrow(/kernel exploded[\s\S]*omicos activity trace[\s\S]*✗ kernel exploded/)
   })
 })

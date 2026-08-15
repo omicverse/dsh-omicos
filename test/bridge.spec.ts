@@ -104,6 +104,35 @@ describe('TurnAccumulator', () => {
   })
 })
 
+describe('TurnAccumulator trace', () => {
+  it('collects tool starts, stdout lines, narrative, and errors in order, tail-biased when over the cap', () => {
+    const acc = runThrough([
+      ev({ type: 'tool_started', tool_name: 'run_python_code', started_at: 1 }),
+      ev({ type: 'tool_output_chunk', chunk: 'reading h5ad\nnormalizing\n' }),
+      ev({ type: 'step', content: { role: 'assistant', content: 'QC done, moving to clustering' } }),
+      ev({ type: 'error', content: 'leiden failed: KeyError neighbors' }),
+      ev({ type: 'done', reason: 'error' }),
+    ])
+    expect(acc.outcome().trace).toEqual([
+      '→ run_python_code',
+      '  reading h5ad',
+      '  normalizing',
+      '✎ QC done, moving to clustering',
+      '✗ leiden failed: KeyError neighbors',
+    ])
+  })
+
+  it('caps the trace keeping the most recent lines and marks truncation', () => {
+    const acc = new TurnAccumulator()
+    acc.consume(ev({ type: 'tool_started', tool_name: 't', started_at: 1 }))
+    for (let i = 0; i < 200; i++) acc.consume(ev({ type: 'tool_output_chunk', chunk: `line-${i}` }))
+    const trace = acc.outcome().trace
+    expect(trace[0]).toContain('truncated')
+    expect(trace.length).toBeLessThanOrEqual(121)
+    expect(trace[trace.length - 1]).toBe('  line-199')
+  })
+})
+
 describe('formatProgress', () => {
   it('renders percent + eta when known, count + unit when indeterminate', () => {
     const withPct = { type: 'progress', bar_id: 'b', label: 'UMAP', current: 5, percent: 42.4, eta: 12.6, elapsed: 3, unit: 'it', done: false }

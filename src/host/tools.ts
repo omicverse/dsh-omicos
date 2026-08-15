@@ -97,6 +97,18 @@ function outcomeText(outcome: OmicosTurnOutcome): string {
   return outcome.text || '(the omicos agent returned no text)'
 }
 
+/**
+ * Model-visible failure with the bounded activity trace appended — the
+ * dsh agent can diagnose WHAT failed inside omicos (which tool, last
+ * stdout lines, the error) without the full trajectory entering its
+ * context. Trace tail is capped again here as a hard token bound.
+ */
+function turnError(outcome: OmicosTurnOutcome): Error {
+  const tail = outcome.trace.slice(-40)
+  const trace = tail.length > 0 ? `\n\n[omicos activity trace, last ${tail.length} lines]\n${tail.join('\n')}` : ''
+  return new Error(`${outcome.error ?? 'omicos turn failed'}${trace}`)
+}
+
 function renderOutcome(value: {
   answer: string
   generated_files: unknown
@@ -212,7 +224,7 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
           }
 
           const { outcome, figures } = await runToOutcome(exec, args.request)
-          if (outcome.error) throw new Error(outcome.error)
+          if (outcome.error) throw turnError(outcome)
           return {
             answer: outcomeText(outcome),
             generated_files: outcome.generatedFiles,
@@ -253,7 +265,7 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
               'and key structure (for AnnData: obs/var columns, layers, obsm keys). If it does not exist, say so. ' +
               'Answer concisely, no figures.',
           )
-          if (outcome.error) throw new Error(outcome.error)
+          if (outcome.error) throw turnError(outcome)
           return { summary: outcomeText(outcome) }
         },
       }),
