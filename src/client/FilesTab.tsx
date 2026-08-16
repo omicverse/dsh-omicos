@@ -7,6 +7,10 @@
  * Data: `GET /omicos/files/<dshSessionId>` (host probes its kernel pool
  * for the owning workspace) + `GET /omicos/file?ws=&path=` for bytes
  * (extension-allowlisted, loopback-pinned, 25MB cap host-side).
+ *
+ * Mounted twice: as the session-view「文件」tab (own registration) and, when
+ * the user has the third-party better-sidebar installed, as a sidebar tab
+ * (see `betterSidebar.ts`) — that surface passes `paused` while hidden.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -71,10 +75,14 @@ function Preview({ workspace, path }: { workspace: string; path: string }): JSX.
   return <div style={S.dim}>此类型暂不支持内嵌预览，请从会话卡的文件条用系统应用打开。</div>
 }
 
-export function FilesTab(props: unknown): JSX.Element {
-  // scope 'session': the slot's inject factory receives the session id and
-  // we pass it through as the injected face (see client/index.ts).
-  const { sessionId } = props as { sessionId?: string }
+export interface FilesTabProps {
+  /** The dsh session whose omicos products to list. Slot mount: from the inject face (client/index.ts). */
+  sessionId?: string
+  /** Sidebar mount only: stop polling while the panel is hidden. */
+  paused?: boolean
+}
+
+export function FilesTab({ sessionId, paused }: FilesTabProps): JSX.Element {
   const [data, setData] = useState<FilesResponse | undefined>()
   const [status, setStatus] = useState<'loading' | 'empty' | 'ready' | 'error'>('loading')
   const [selected, setSelected] = useState<string | undefined>()
@@ -101,6 +109,11 @@ export function FilesTab(props: unknown): JSX.Element {
 
   useEffect(() => {
     alive.current = true
+    if (paused === true) {
+      return () => {
+        alive.current = false
+      }
+    }
     void refresh()
     // Analyses finish while the tab is open — refresh on a lazy cadence.
     const timer = setInterval(() => void refresh(), 5000)
@@ -108,7 +121,7 @@ export function FilesTab(props: unknown): JSX.Element {
       alive.current = false
       clearInterval(timer)
     }
-  }, [refresh])
+  }, [refresh, paused])
 
   if (status === 'loading') return <div style={{ ...S.dim, padding: 24 }}>加载中…</div>
   if (status === 'error') {

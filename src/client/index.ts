@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { AccountTab } from './AccountTab.js'
+import { registerBetterSidebarTab } from './betterSidebar.js'
 import { FilesTab } from './FilesTab.js'
 import { OmicosToolView } from './OmicosToolView.js'
 
@@ -63,4 +64,7 @@ export function apply(ctx: Context): void {
       OmicosToolView,
     ),
   )
+  // Optional ecosystem integration: a sidebar tab when the user has
+  // dsh-better-sidebar installed. No-op (and no hard dependency) otherwise.
+  registerBetterSidebarTab(ctx)
 }
