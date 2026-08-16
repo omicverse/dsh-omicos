@@ -63,6 +63,7 @@ export function apply(ctx: Context, config: Config): void {
     for (const dispose of registerOmicosTools(ctx, {
       pool,
       activity,
+      account,
       configWorkspace: config.workspace,
     })) {
       yield dispose

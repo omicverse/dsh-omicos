@@ -78,15 +78,23 @@ function deps(mock: MockCore) {
   return { pool: poolFor(mock), configWorkspace: '/ws' }
 }
 
+/** Look tools up by NAME — registration ORDER is not part of the contract. */
+function byName(tools: RegisteredTool[], name: string): RegisteredTool {
+  const found = tools.find((t) => t.name === name)
+  if (found === undefined) throw new Error(`tool ${name} not registered (have: ${tools.map((t) => t.name).join(', ')})`)
+  return found
+}
+
 const EXEC = { agent: { id: 'sess-1' }, signal: undefined }
 
 describe('registerOmicosTools', () => {
-  it('registers the three Mode A tools and returns their disposers', async () => {
+  it('registers the Mode A tools and returns their disposers', async () => {
     const mock = await startCore()
     const { ctx, tools, disposed } = fakeCtx()
     const disposers = registerOmicosTools(ctx, deps(mock))
     expect(tools.map((t) => t.name)).toEqual([
       'omicos_analyze',
+      'omicos_capabilities',
       'omicos_list_variables',
       'omicos_query_variable',
       'omicos_list_generated_files',
@@ -94,6 +102,7 @@ describe('registerOmicosTools', () => {
     for (const d of disposers) d()
     expect(disposed).toEqual([
       'omicos_analyze',
+      'omicos_capabilities',
       'omicos_list_variables',
       'omicos_query_variable',
       'omicos_list_generated_files',
@@ -105,7 +114,7 @@ describe('registerOmicosTools', () => {
     serveHappyTurn(mock)
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
-    const analyze = tools[0]!
+    const analyze = byName(tools, 'omicos_analyze')
 
     const value = await analyze.execute({ request: 'cluster my cells' }, EXEC)
     expect(value.answer).toBe('Hello, world')
@@ -137,7 +146,7 @@ describe('registerOmicosTools', () => {
     })
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
-    const analyze = tools[0]!
+    const analyze = byName(tools, 'omicos_analyze')
 
     const value = await analyze.execute({ request: 'plot umap' }, EXEC)
     expect(value.generated_files).toEqual(['figures/umap.png', 'results/table.csv'])
@@ -155,7 +164,7 @@ describe('registerOmicosTools', () => {
 
     const bare = fakeCtx()
     registerOmicosTools(bare.ctx, deps(mock))
-    await expect(bare.tools[0]!.execute({ request: 'x', background: true }, EXEC)).rejects.toThrow(/dsh-jobs/)
+    await expect(byName(bare.tools, 'omicos_analyze').execute({ request: 'x', background: true }, EXEC)).rejects.toThrow(/dsh-jobs/)
 
     let captured: { kind: string; label: string; run: () => { done: Promise<unknown>; readOutput?: () => string } } | undefined
     const withJobs = fakeCtx({
@@ -167,7 +176,7 @@ describe('registerOmicosTools', () => {
       },
     })
     registerOmicosTools(withJobs.ctx, deps(mock))
-    const value = await withJobs.tools[0]!.execute({ request: 'long analysis', background: true }, EXEC)
+    const value = await byName(withJobs.tools, 'omicos_analyze').execute({ request: 'long analysis', background: true }, EXEC)
     expect(value.job_id).toBe('job-1')
     expect(captured?.kind).toBe('omicos-analysis')
     expect(captured?.label).toContain('long analysis')
@@ -195,13 +204,13 @@ describe('registerOmicosTools', () => {
     // No config override: the dsh SESSION's workspace wins over the host cwd.
     registerOmicosTools(ctx, { pool, configWorkspace: '' })
     const execWithWs = { agent: { id: 'sess-1', session: { header: { cwd: '/ws-from-dsh-ui' } } }, signal: undefined }
-    await tools[0]!.execute({ request: 'x' }, execWithWs)
+    await byName(tools, 'omicos_analyze').execute({ request: 'x' }, execWithWs)
     expect(ensuredDirs).toEqual(['/ws-from-dsh-ui'])
 
     // Explicit config override beats the session workspace.
     const ctx2 = fakeCtx()
     registerOmicosTools(ctx2.ctx, { pool, configWorkspace: '/ws-forced' })
-    await ctx2.tools[0]!.execute({ request: 'y' }, execWithWs)
+    await byName(ctx2.tools, 'omicos_analyze').execute({ request: 'y' }, execWithWs)
     expect(ensuredDirs).toEqual(['/ws-from-dsh-ui', '/ws-forced'])
   })
 
@@ -209,7 +218,7 @@ describe('registerOmicosTools', () => {
     const mock = await startCore()
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
-    const analyze = tools[0] as unknown as { output: { presentationMeta?: (a: unknown, v: unknown) => unknown } }
+    const analyze = byName(tools, 'omicos_analyze') as unknown as { output: { presentationMeta?: (a: unknown, v: unknown) => unknown } }
     const meta = analyze.output.presentationMeta!({}, { generated_files: ['figures/umap.png', 'x.csv'], answer: 'ok' })
     expect(meta).toEqual({ omicos: { generated_files: ['figures/umap.png', 'x.csv'] } })
   })
@@ -223,7 +232,7 @@ describe('registerOmicosTools', () => {
     registerOmicosTools(ctx, { ...deps(mock), activity })
 
     const exec = { agent: { id: 'sess-1' }, signal: undefined, callId: 'call-42' }
-    await tools[0]!.execute({ request: 'analyze' }, exec)
+    await byName(tools, 'omicos_analyze').execute({ request: 'analyze' }, exec)
 
     const feed = activity.get('call-42')
     expect(feed).toBeDefined()
@@ -244,7 +253,7 @@ describe('registerOmicosTools', () => {
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
     // The rejection carries the bounded activity trace — the dsh agent's debugging material.
-    await expect(tools[0]!.execute({ request: 'x' }, EXEC)).rejects.toThrow(/kernel exploded[\s\S]*omicos activity trace[\s\S]*✗ kernel exploded/)
+    await expect(byName(tools, 'omicos_analyze').execute({ request: 'x' }, EXEC)).rejects.toThrow(/kernel exploded[\s\S]*omicos activity trace[\s\S]*✗ kernel exploded/)
   })
 })
 
@@ -270,7 +279,7 @@ describe('kernel introspection tools (direct reads, never a turn)', () => {
     )
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
-    const list = tools[1]!
+    const list = byName(tools, 'omicos_list_variables')
 
     const value = await list.execute({}, EXEC)
     expect(value.kernel).toBe('ws-abc')
@@ -300,7 +309,7 @@ describe('kernel introspection tools (direct reads, never a turn)', () => {
     )
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
-    const query = tools[2]!
+    const query = byName(tools, 'omicos_query_variable')
 
     const value = await query.execute({ name: 'adata' }, EXEC)
     expect(value).toMatchObject({ available: true, name: 'adata', class: 'AnnData' })
@@ -319,9 +328,10 @@ describe('kernel introspection tools (direct reads, never a turn)', () => {
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
 
-    const value = await tools[2]!.execute({ name: 'nope' }, EXEC)
+    const detail = byName(tools, 'omicos_query_variable')
+    const value = await detail.execute({ name: 'nope' }, EXEC)
     expect(value.available).toBe(false)
-    const rendered = tools[2]!.output.render({ name: 'nope' }, value as never)
+    const rendered = detail.output.render({ name: 'nope' }, value as never)
     expect(String(rendered[0]!.text)).toContain('omicos_list_variables')
   })
 })

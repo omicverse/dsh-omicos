@@ -1,8 +1,10 @@
 /**
  * Mode A tool surface (DSH-PLUGIN.md §3): omicos as a capability for the
- * DeepSeek-driven dsh agent. Three tools, all routed through
- * `OmicosRunner` so every call of one dsh session lands on the SAME
- * derived omicos conversation (context accumulates core-side).
+ * DeepSeek-driven dsh agent. One tool RUNS an analysis (`omicos_analyze`,
+ * routed through `OmicosRunner` so every call of one dsh session lands on
+ * the SAME derived omicos conversation — context accumulates core-side);
+ * the rest are direct core reads that cost neither a turn nor a token:
+ * the capability catalog, the kernel's variables, and the artifacts.
  *
  * Figures: a turn's `generated_files` images are fetched from core
  * (`/api/files/preview`) and committed to `ctx.attachments` BEFORE the
@@ -19,6 +21,8 @@
  */
 import { HttpCoreTransport, getKernelVarDetail, getKernelVars, isDataVariable } from '@omicverse/omicos-client'
 import { ActivityMirror } from './activity.js'
+import { CapabilityIndex, DEFAULT_LIMIT, searchCatalog } from './capabilities.js'
+import type { AccountService } from './account.js'
 import type { ActivityStore } from './activity-store.js'
 import type { OmicosTurnOutcome } from './bridge.js'
 import type { OmicosPool, PoolEntry } from './pool.js'
@@ -38,6 +42,8 @@ export interface ToolDeps {
   configWorkspace: string
   /** Live-activity feed the browser toolview polls (v0.2). Optional — tools run fine headless without it. */
   activity?: ActivityStore
+  /** Used only to annotate capability hits the current plan cannot run. Optional: without it, no `locked` flags. */
+  account?: AccountService
 }
 
 /** Fallback conversation bucket for a tool call with no owning agent (`ToolExecution.agent` is optional). */
@@ -83,7 +89,7 @@ function renderOutcome(value: { answer: string; generated_files: unknown }): Con
   return blocks
 }
 
-/** Register the three Mode A tools. Returns the disposers from `ctx.tools.register` (caller owns effect wiring). */
+/** Register the Mode A tools. Returns the disposers from `ctx.tools.register` (caller owns effect wiring). */
 export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => void> {
   const disposers: Array<() => void> = []
 
@@ -203,6 +209,96 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
           return {
             answer: outcomeText(outcome),
             generated_files: outcome.generatedFiles,
+          }
+        },
+      }),
+    ),
+  )
+
+  const capabilities = new CapabilityIndex()
+
+  disposers.push(
+    ctx.tools.register(
+      defineTool({
+        name: 'omicos_capabilities',
+        description:
+          'Search what this OmicOS installation can actually do — its catalog of analysis skills and specialist ' +
+          'agents (single-cell, spatial, bulk RNA-seq, ATAC, proteomics, network/enrichment, and more). ' +
+          'Use it BEFORE deciding whether to hand a task to omicos_analyze, and to phrase that request in the ' +
+          'right terms. Instant and free: a direct catalog read, not an analysis run. ' +
+          'Query with a few keywords. Prefer ENGLISH technical terms ("pathway enrichment", "cell type annotation") — ' +
+          'the catalog is written in English and Chinese queries match less reliably; if a Chinese query returns ' +
+          'nothing relevant, retry it in English. ' +
+          'Omit the query to get the catalog\'s categories and sizes instead of a ranked list. ' +
+          'Note: results are a MENU, not commands — you do not invoke a skill by name, you describe the task to ' +
+          'omicos_analyze and OmicOS routes it. Entries marked locked=true need a higher subscription plan.',
+        parameters: {
+          query: {
+            type: 'string',
+            description: 'Keywords, e.g. "spatial deconvolution", "trajectory", "differential expression". Omit for an overview.',
+          },
+          limit: {
+            type: 'number',
+            description: `Max results, 1-20 (default ${DEFAULT_LIMIT}).`,
+          },
+        },
+        output: {
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              query: { type: 'string', required: true },
+              indexed: { type: 'json', required: true },
+              plan: { type: 'string' },
+              results: { type: 'array', required: true, items: { type: 'json' } },
+              categories: { type: 'array', items: { type: 'json' } },
+            },
+          },
+          render: (_args, value) => {
+            const cats = Array.isArray(value.categories) ? value.categories : []
+            if (cats.length > 0) {
+              const lines = cats.map((c) => {
+                const row = c as { category?: string; skills?: number; agents?: number }
+                return `- ${String(row.category)}: ${row.skills ?? 0} skills, ${row.agents ?? 0} agents`
+              })
+              return [{ type: 'text', text: `OmicOS capability catalog by category:\n${lines.join('\n')}` }]
+            }
+            const hits = Array.isArray(value.results) ? value.results : []
+            if (hits.length === 0) {
+              return [{ type: 'text', text: `No OmicOS capability matches "${String(value.query)}". Try broader keywords, or omit the query for an overview.` }]
+            }
+            const lines = hits.map((h) => {
+              const row = h as { kind?: string; title?: string; description?: string; tier?: string; locked?: boolean }
+              const gate = row.locked === true ? ` [needs ${String(row.tier)}]` : ''
+              return `- (${String(row.kind)}) ${String(row.title)}${gate}\n  ${String(row.description)}`
+            })
+            return [{ type: 'text', text: `OmicOS capabilities matching "${String(value.query)}":\n${lines.join('\n')}` }]
+          },
+        },
+        async execute(args, exec) {
+          const entry = entryFor(deps, exec)
+          const handle = await entry.kernel.handle()
+          const catalog = await capabilities.load(handle.baseUrl)
+          // Plan is an ANNOTATION only — the gate itself is enforced core-side.
+          // An unverified plan is treated as unknown rather than shown as
+          // `community`, which would mislabel most of the catalog as locked.
+          let plan: string | undefined
+          try {
+            const snap = await deps.account?.snapshot()
+            if (snap?.plan?.verified === true) plan = snap.plan.code
+          } catch {
+            // annotation degrades; the search itself still answers
+          }
+          const found = searchCatalog(catalog, args.query ?? '', {
+            ...(typeof args.limit === 'number' ? { limit: args.limit } : {}),
+            ...(plan === undefined ? {} : { plan }),
+          })
+          return found as unknown as {
+            query: string
+            indexed: import('@deepseek-ai/dsh-tools').JsonValue
+            plan?: string
+            results: import('@deepseek-ai/dsh-tools').JsonValue[]
+            categories?: import('@deepseek-ai/dsh-tools').JsonValue[]
           }
         },
       }),
