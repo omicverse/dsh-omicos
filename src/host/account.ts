@@ -12,7 +12,7 @@
  */
 import { HttpCoreTransport, getPlanHealth } from '@omicverse/omicos-client'
 import { ORIGIN_APP } from '@omicverse/omicos-protocol'
-import { beginDeviceCodeLogin, beginWechatLogin, describeUser, loginStatus, logout, type BegunLogin } from './auth.js'
+import { beginDeviceCodeLogin, describeUser, loginStatus, logout, type BegunLogin } from './auth.js'
 import type { OmicosPool } from './pool.js'
 
 export const SUBSCRIBE_URL = `${ORIGIN_APP}/#/bench?page=subscription`
@@ -78,13 +78,15 @@ export class AccountService {
     return this.lastOutcome
   }
 
-  /** Start a login; resolves fast with display fields, approval completes in background. Throws `LoginBusyError` when one is already pending. */
-  async beginLogin(method: 'wechat-qr' | 'device-code'): Promise<BegunLogin> {
+  /**
+   * Start the device-code login; resolves fast with the pairing code, the
+   * approval completes in the background. Device code is the only channel
+   * (see auth.ts): the user signs in with phone or email on the SPA.
+   * Throws `LoginBusyError` when one is already pending.
+   */
+  async beginLogin(): Promise<BegunLogin> {
     if (this.pending) throw new LoginBusyError()
-    const begun =
-      method === 'wechat-qr'
-        ? await beginWechatLogin(this.kernel(), this.upstreamBaseUrl)
-        : await beginDeviceCodeLogin(this.kernel(), this.upstreamBaseUrl)
+    const begun = await beginDeviceCodeLogin(this.kernel(), this.upstreamBaseUrl)
     this.pending = true
     begun.done.then(
       (user) => {

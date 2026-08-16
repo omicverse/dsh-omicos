@@ -39,7 +39,7 @@ function poolFor(baseUrl: string, spawned = false, upstream = 'http://x'): { poo
   return { pool, account: new AccountService(pool, '/ws', upstream), stop }
 }
 
-const BASE = { configWorkspace: '/ws', upstreamBaseUrl: 'http://x', authMethod: 'device-code' as const }
+const BASE = { configWorkspace: '/ws', upstreamBaseUrl: 'http://x' }
 
 let servers: Array<{ close(): Promise<void> }> = []
 afterEach(async () => {
@@ -114,13 +114,27 @@ describe('registerOmicosCommands', () => {
     expect(after.text).toContain('a@b.com')
   })
 
-  it('rejects an unknown login channel and a concurrent second login', async () => {
+  it('a second login while one is pending is refused (single pending flow)', async () => {
+    const auth = new MockAuthServer({
+      'POST /api/auth/cli-device-code': () => ({
+        status: 200,
+        json: { device_code: 'dc', user_code: 'QQ-77', verification_uri: 'https://app/#/device', expires_in: 300, interval: 5 },
+      }),
+      'POST /api/auth/cli-poll': () => ({ status: 200, json: { status: 'pending', interval: 5 } }),
+    })
+    await auth.start()
+    servers.push(auth)
     const { ctx, commands } = fakeCtx()
-    const { pool, account } = poolFor('http://127.0.0.1:1')
-    registerOmicosCommands(ctx, { ...BASE, pool, account, upstreamBaseUrl: 'http://127.0.0.1:1' })
-    const bad = await commands[0]!.handler({ rawInput: 'sms' })
-    expect(bad.kind).toBe('error')
-    expect(bad.text).toContain('sms')
+    const { pool, account } = poolFor('http://127.0.0.1:1', false, auth.baseUrl)
+    registerOmicosCommands(ctx, { ...BASE, pool, account, upstreamBaseUrl: auth.baseUrl })
+
+    const first = await commands[0]!.handler({ rawInput: '' })
+    expect(first.kind).toBe('success')
+    expect(first.text).toContain('QQ-77')
+
+    const second = await commands[0]!.handler({ rawInput: '' })
+    expect(second.kind).toBe('error')
+    expect(second.text).toContain('等待批准')
   })
 
   it('omicos-account shows plan + commerce deep links when logged in, and a subscribe link when not', async () => {

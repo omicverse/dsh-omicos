@@ -36,8 +36,6 @@ export interface Config {
   upstreamBaseUrl: string
   /** npm registry override for the kernel spawn (mainland-mirror knob); empty = system default. */
   npmRegistry: string
-  /** Default channel for a bare /omicos-login. */
-  authMethod: 'device-code' | 'wechat-qr'
   /** Reserved (v0.2 dropped the dsh-attachment figure path — images now render via /omicos/figure; key kept so existing patch configs stay valid). */
   maxAttachmentBytes: number
 }
@@ -47,7 +45,6 @@ export const Config: Schema<Config> = Schema.object({
   autoStart: Schema.boolean().default(true),
   upstreamBaseUrl: Schema.string().default('https://auth.omicos.cn'),
   npmRegistry: Schema.string().default(''),
-  authMethod: Schema.union(['device-code', 'wechat-qr'] as const).default('device-code'),
   maxAttachmentBytes: Schema.number().min(1).default(4 * 1024 * 1024),
 })
 
@@ -84,7 +81,6 @@ export function apply(ctx: Context, config: Config): void {
         account,
         configWorkspace: config.workspace,
         upstreamBaseUrl: config.upstreamBaseUrl,
-        authMethod: config.authMethod,
       })) {
         yield dispose
       }

@@ -19,7 +19,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { AccountTab } from './AccountTab.js'
 import { registerBetterSidebarTab } from './betterSidebar.js'
-import { FilesTab } from './FilesTab.js'
 import { OmicosToolView } from './OmicosToolView.js'
 
 export const name = 'omicos-client'
@@ -36,21 +35,6 @@ export function apply(ctx: Context): void {
         label: () => 'OmicOS',
       },
       AccountTab,
-    ),
-  )
-  // The「文件」tab: this session's omicos products with inline preview.
-  // scope 'session' — the inject factory receives the session id, which is
-  // all the component needs (the host resolves workspace + files from it).
-  ctx.slots.inject('conversation.view', () =>
-    ctx.slots.register(
-      {
-        name: 'conversation.view',
-        id: 'omicos-files',
-        order: 15,
-        label: () => '文件',
-        inject: (sessionId: string) => ({ sessionId }),
-      },
-      FilesTab,
     ),
   )
   // Take over the omicos_analyze card (keyed toolview, D8): live nested-

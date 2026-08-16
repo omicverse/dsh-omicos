@@ -77,20 +77,41 @@ describe('registerBetterSidebarTab', () => {
     expect(scope.effects).toEqual(['omicos: better-sidebar tab'])
   })
 
-  it('the tab body forwards the sidebar scope and pauses polling while hidden', () => {
+  it('opens files through service.openFile — NOT the props.onOpenFile the type advertises', () => {
+    // 🔴 The host's tab-render path passes no onOpenFile (verified against
+    // their bundle): a handler taken from props is silently undefined and
+    // every click is a no-op. The service method is the real seam.
+    const openFile = vi.fn()
     const registerTab = vi.fn().mockReturnValue(() => {})
-    const { ctx, injects } = stubCtx({ registerTab })
+    const service = { registerTab, openFile, features: ['openFile'] }
+    const { ctx, injects } = stubCtx(service)
     registerBetterSidebarTab(ctx)
-    injects[0]!.callback(stubCtx({ registerTab }).ctx)
+    injects[0]!.callback(stubCtx(service).ctx)
     const { component } = registerTab.mock.calls[0]![0] as {
-      component: (props: unknown) => { props: { sessionId: string; paused: boolean } }
+      component: (props: unknown) => { props: { sessionId: string; paused: boolean; onOpenFile?: (p: string) => void } }
     }
 
-    const visible = component({ scope: { sessionId: 'session-abc' }, visible: true })
+    const scope = { sessionId: 'session-abc' }
+    // Render WITHOUT an onOpenFile prop, exactly as the host does.
+    const visible = component({ scope, visible: true })
     expect(visible.props).toMatchObject({ sessionId: 'session-abc', paused: false })
+    visible.props.onOpenFile!('/ws/outputs/a.png')
+    expect(openFile).toHaveBeenCalledWith(scope, '/ws/outputs/a.png')
 
-    const hidden = component({ scope: { sessionId: 'session-abc' }, visible: false })
+    const hidden = component({ scope, visible: false })
     expect(hidden.props.paused).toBe(true)
+  })
+
+  it('degrades to a read-only list on a sidebar too old to expose openFile', () => {
+    const registerTab = vi.fn().mockReturnValue(() => {})
+    const service = { registerTab } // pre-0.12 service: no openFile
+    const { ctx, injects } = stubCtx(service)
+    registerBetterSidebarTab(ctx)
+    injects[0]!.callback(stubCtx(service).ctx)
+    const { component } = registerTab.mock.calls[0]![0] as {
+      component: (props: unknown) => { props: { onOpenFile?: unknown } }
+    }
+    expect(component({ scope: { sessionId: 's' }, visible: true }).props.onOpenFile).toBeUndefined()
   })
 })
 

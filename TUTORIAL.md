@@ -69,8 +69,9 @@ DEEPSEEK_API_KEY=sk-xxx npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web
   插件自动挂载现成内核，**登录都不用**，直接跳到第 6 步。
 - **没有现成内核**：首次调用 omicos 工具时自动 `npx @omicverse/omicos` 启动
   一个（首次下载平台二进制可能要几分钟）。然后在对话框输入：
-  - `/omicos-login` —— 立即返回设备码配对链接（或 `/omicos-login wechat`
-    返回微信扫码链接），在浏览器/手机上批准；
+  - `/omicos-login` —— 立即返回一个配对码和链接；在浏览器打开、用**手机号或
+    邮箱**登录并批准即可（唯一登录通道就是这个浏览器配对流程，插件不经手你的
+    密码或验证码）；
   - `/omicos-status` —— 查看批准结果与内核状态。
   token 由本地 omicos 内核保管，插件不落任何凭据。
 
@@ -90,15 +91,16 @@ DEEPSEEK_API_KEY=sk-xxx npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web
 
 ## 6.5 推荐搭配：dsh-better-sidebar（可选）
 
-装了它，本插件会多注册一个「OmicOS 产物」侧栏页，产物列表和预览就能停在
-聊天旁边；聊天里的文件条也会在它的编辑器里打开（PDF/图片/代码都能渲染）。
+装了它，本插件会多注册一个「OmicOS 产物」侧栏页（本会话生成的文件一览，点击
+在侧栏的查看器里打开）；聊天里的文件条也会在它的编辑器里打开（PDF/图片/代码
+都能渲染）。**文件预览本身交给它做**——我们不再自带预览器。
 
 ```bash
 npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-better-sidebar
 ```
 
-**它是可选的，不是依赖**：不装时本插件全部功能照常（四个会话页签、工具卡、
-文件条走系统默认应用）。我们刻意没有把它做成硬依赖——它自己的 bundle patch
+**它是可选的，不是依赖**：不装时本插件全部功能照常（Chat/Trajectory/OmicOS
+页签、工具卡里的图与文件条走系统默认应用打开）。我们刻意没有把它做成硬依赖——它自己的 bundle patch
 插入的是 `id: better-sidebar`，若我们再插一行，用户自己安装时会双挂载（它的
 作者在 patch 注释里明确警告过「两个 Node 半边、两个侧边栏」）。
 

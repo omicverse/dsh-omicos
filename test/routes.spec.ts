@@ -176,12 +176,12 @@ describe('registerOmicosRoutes', () => {
       registerOmicosRoutes(ctx, { account: accountFor('http://127.0.0.1:1', auth.baseUrl) })
 
       const res = fakeRes()
-      await routes[0]!.handler(fakeReq('POST', '/omicos/login/start', '127.0.0.1', { method: 'device-code' }), res)
+      await routes[0]!.handler(fakeReq('POST', '/omicos/login/start', '127.0.0.1', {}), res)
       expect(res.statusCode).toBe(200)
-      expect(await json(res)).toMatchObject({ method: 'device-code', user_code: 'ZZ-99', verification_uri: 'https://app/#/device' })
+      expect(await json(res)).toMatchObject({ user_code: 'ZZ-99', verification_uri: 'https://app/#/device' })
 
       const busy = fakeRes()
-      await routes[0]!.handler(fakeReq('POST', '/omicos/login/start', '127.0.0.1', { method: 'device-code' }), busy)
+      await routes[0]!.handler(fakeReq('POST', '/omicos/login/start', '127.0.0.1', {}), busy)
       expect(busy.statusCode).toBe(409)
 
       const state = fakeRes()

@@ -33,23 +33,6 @@ function safeFigurePath(path: string): boolean {
   return classifyGeneratedFile(path).kind === 'image'
 }
 
-/** Extensions the files-tab preview route will serve (same containment shape as figures, wider types). */
-const PREVIEWABLE_EXT = /\.(png|jpe?g|gif|webp|pdf|csv|tsv|txt|json|md|log|yaml|yml)$/i
-const PREVIEW_MAX_BYTES = 25 * 1024 * 1024
-
-function safePreviewPath(path: string): boolean {
-  if (path.startsWith('/') || path.includes('..') || path.includes('\\')) return false
-  return PREVIEWABLE_EXT.test(path)
-}
-
-/** Sniff-safe content type for the preview route: real types for embeddable media, text/plain for everything textual. */
-function previewContentType(path: string): string {
-  const { kind, mimeType } = classifyGeneratedFile(path)
-  if (kind === 'image') return mimeType
-  if (kind === 'pdf' || /\.pdf$/i.test(path)) return 'application/pdf'
-  return 'text/plain; charset=utf-8'
-}
-
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -86,14 +69,10 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
         return
       }
       if (method === 'POST' && path === '/omicos/login/start') {
-        const body = (await readJson(req)) as { method?: string } | undefined
-        const requested = body?.method === 'wechat-qr' || body?.method === 'wechat' ? 'wechat-qr' : 'device-code'
         try {
-          const begun = await deps.account.beginLogin(requested)
+          const begun = await deps.account.beginLogin()
           json(res, 200, {
-            method: begun.method,
             message: begun.message,
-            qr_url: begun.qr_url,
             verification_uri: begun.verification_uri,
             user_code: begun.user_code,
           })
@@ -159,28 +138,6 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
           }
         }
         json(res, 404, { error: 'no omicos conversation for this session yet' })
-        return
-      }
-      if (method === 'GET' && path === '/omicos/file') {
-        const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
-        const ws = query.get('ws') ?? ''
-        const filePath = query.get('path') ?? ''
-        if (deps.pool === undefined || ws === '' || !safePreviewPath(filePath)) {
-          json(res, 400, { error: 'file route needs ws + a workspace-relative previewable path' })
-          return
-        }
-        const handle = await deps.pool.entry(ws).kernel.handle()
-        const preview = await fetchFilePreview(handle.baseUrl, filePath)
-        if (preview.bytes.byteLength > PREVIEW_MAX_BYTES) {
-          json(res, 413, { error: 'file too large for inline preview' })
-          return
-        }
-        res.writeHead(200, {
-          'content-type': previewContentType(filePath),
-          'x-content-type-options': 'nosniff',
-          'cache-control': 'no-store',
-        })
-        res.end(Buffer.from(preview.bytes))
         return
       }
       if (method === 'GET' && path === '/omicos/figure') {

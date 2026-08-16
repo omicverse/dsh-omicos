@@ -31,11 +31,9 @@ interface AccountSnapshot {
 }
 
 interface LoginStart {
-  method: 'wechat-qr' | 'device-code'
   message: string
-  qr_url?: string
-  verification_uri?: string
-  user_code?: string
+  verification_uri: string
+  user_code: string
 }
 
 const S = {
@@ -50,7 +48,6 @@ const S = {
   btn: { padding: '7px 16px', borderRadius: 6, border: '1px solid var(--ds-border, #2a2d34)', background: 'var(--ds-bg, #14161a)', color: 'inherit', cursor: 'pointer', fontSize: 13 } as const,
   btnPrimary: { padding: '7px 16px', borderRadius: 6, border: '1px solid #3d6b45', background: '#2b4a2f', color: '#c9f0cc', cursor: 'pointer', fontSize: 13, fontWeight: 600 } as const,
   code: { fontFamily: 'ui-monospace, monospace', fontSize: 18, fontWeight: 700, letterSpacing: '0.1em' } as const,
-  qr: { width: 180, height: 180, borderRadius: 6, background: '#fff', display: 'block', margin: '10px 0' } as const,
   err: { color: '#e0705f' } as const,
 } as const
 
@@ -118,10 +115,10 @@ export function AccountTab(): JSX.Element {
   }, [snapshot?.login_pending, login, refresh])
 
   const startLogin = useCallback(
-    async (method: 'wechat-qr' | 'device-code') => {
+    async () => {
       setBusy(true)
       try {
-        const started = await postJson<LoginStart>('/omicos/login/start', { method })
+        const started = await postJson<LoginStart>('/omicos/login/start')
         if (!alive.current) return
         setLogin(started)
         setError(undefined)
@@ -212,33 +209,26 @@ export function AccountTab(): JSX.Element {
           <div style={S.h}>登录 OmicOS</div>
           {login === undefined && !snapshot.login_pending && (
             <>
-              <div style={S.dim}>登录后即可在对话里使用 omicos 生信分析工具；新用户注册即可试用。</div>
+              <div style={S.dim}>
+                登录后即可在对话里使用 omicos 生信分析工具；新用户注册即可试用。
+                点下面的按钮会给出一个配对码，在浏览器用<b>手机号或邮箱</b>登录并批准即可
+                —— 插件不经手你的密码或验证码。
+              </div>
               <div style={S.btnRow}>
-                <button style={S.btnPrimary} disabled={busy} onClick={() => void startLogin('wechat-qr')}>
-                  微信扫码登录
-                </button>
-                <button style={S.btn} disabled={busy} onClick={() => void startLogin('device-code')}>
-                  浏览器配对码登录
+                <button style={S.btnPrimary} disabled={busy} onClick={() => void startLogin()}>
+                  开始登录
                 </button>
               </div>
             </>
           )}
-          {login?.method === 'wechat-qr' && login.qr_url !== undefined && (
-            <>
-              <div>用微信扫码，然后在手机上确认：</div>
-              {/* Own component: not bound by dsh's markdown URL allowlist. */}
-              <img style={S.qr} src={login.qr_url} alt="微信登录二维码" />
-              <div style={S.dim}>确认后此页会自动刷新为已登录。</div>
-            </>
-          )}
-          {login?.method === 'device-code' && (
+          {login !== undefined && (
             <>
               <div>
                 在浏览器打开{' '}
                 <a href={login.verification_uri} target="_blank" rel="noopener noreferrer">
                   {login.verification_uri}
                 </a>{' '}
-                并输入配对码：
+                ，用手机号或邮箱登录后输入配对码：
               </div>
               <div style={S.code}>{login.user_code}</div>
               <div style={S.dim}>批准后此页会自动刷新为已登录。</div>

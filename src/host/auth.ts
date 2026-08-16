@@ -1,9 +1,17 @@
 /**
- * Login flows for the dsh host (DSH-PLUGIN.md §6): device code (works in
- * any environment) + WeChat QR (CN main path). The plugin persists NO
- * tokens — an approved login is immediately pushed to the local core
- * (`POST /api/cloud/login`), whose `cloud_login.json` is the single
- * source of truth.
+ * Login for the dsh host: RFC-8628 device code, the ONLY channel.
+ *
+ * Deliberately the only one — and it is enough for every account type:
+ * the user approves in a real browser on the production SPA, where they
+ * sign in however their account works (phone or email). The plugin never
+ * sees a password or an SMS code, and adding a credential form here would
+ * be strictly worse than the browser they already trust. (WeChat QR was
+ * implemented and REMOVED: that channel is not enabled for this
+ * deployment — only phone and email sign-in are.)
+ *
+ * The plugin persists NO tokens — an approved login is immediately pushed
+ * to the local core (`POST /api/cloud/login`), whose `cloud_login.json` is
+ * the single source of truth.
  *
  * Shaped for dsh's command surface: a `CommandDefinition.handler` returns
  * exactly ONE `CommandResult` (verified — there is no streaming print),
@@ -11,23 +19,15 @@
  * (pairing code / QR link) and finishes the approval poll + core push in
  * the background `done` promise. `/omicos-status` reads the outcome.
  *
- * v0.1 renders the WeChat QR as its clickable `qr_url` (WeChat's own
- * hosted QR image — open it anywhere and scan from screen); ASCII QR is
- * deferred until the QR's *payload* URL is verified against production
- * (the response only carries the image URL, and guessing WeChat's
- * confirm-URL format would be an invented mechanism).
- *
  * dsh-free on purpose (the compat layer is for `commands.ts`); unit tests
  * drive these against the mock auth server without a dsh host.
  */
 import {
   getCloudIdentity,
   pollDeviceCode,
-  pollWechatQr,
   pushLoginToCore,
   pushLogoutToCore,
   startDeviceCode,
-  startWechatQr,
 } from '@omicverse/omicos-client'
 import type { CloudIdentity, PublicUser } from '@omicverse/omicos-protocol'
 import type { KernelManager } from './kernel.js'
@@ -38,13 +38,11 @@ export interface LoginOptions {
 }
 
 export interface BegunLogin {
-  /** What the user must see immediately (pairing code / QR link) — the command result text. */
+  /** What the user must see immediately (the pairing code line) — the command result text. */
   message: string
-  /** Structured display fields for graphical surfaces (the account tab renders the QR as an <img>). */
-  method: 'wechat-qr' | 'device-code'
-  qr_url?: string
-  verification_uri?: string
-  user_code?: string
+  /** Structured display fields for graphical surfaces (the account tab renders these as a code + link). */
+  verification_uri: string
+  user_code: string
   /** Resolves once approved AND pushed to the local core; rejects on abort/HTTP failure. */
   done: Promise<PublicUser>
 }
@@ -78,31 +76,9 @@ export async function beginDeviceCodeLogin(
     return approved.user
   })()
   return {
-    message: `在浏览器打开 ${minted.verification_uri} 并输入配对码 ${minted.user_code}（批准后运行 /omicos-status 查看结果）`,
-    method: 'device-code',
+    message: `在浏览器打开 ${minted.verification_uri} 并输入配对码 ${minted.user_code}，用手机号或邮箱登录后批准（批准后运行 /omicos-status 查看结果）`,
     verification_uri: minted.verification_uri,
     user_code: minted.user_code,
-    done,
-  }
-}
-
-/** WeChat QR login: resolve with the hosted QR image link, then long-poll to approval and push to core in `done`. */
-export async function beginWechatLogin(
-  kernel: KernelManager,
-  cloudBase: string,
-  opts: LoginOptions = {},
-): Promise<BegunLogin> {
-  const state = `dsh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  const qr = await startWechatQr(cloudBase, state, opts.fetchImpl)
-  const done = (async () => {
-    const approved = await pollWechatQr(cloudBase, state, { signal: opts.signal, fetchImpl: opts.fetchImpl })
-    await pushToCore(kernel, cloudBase, approved.token, approved.user, opts.fetchImpl)
-    return approved.user
-  })()
-  return {
-    message: `打开此链接并用微信扫码登录：${qr.qr_url}（确认后运行 /omicos-status 查看结果）`,
-    method: 'wechat-qr',
-    qr_url: qr.qr_url,
     done,
   }
 }

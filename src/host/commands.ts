@@ -19,8 +19,6 @@ export interface CommandDeps {
   /** Explicit `config.workspace` override; empty = commands use the host cwd's entry. */
   configWorkspace: string
   upstreamBaseUrl: string
-  /** Default channel for a bare `/omicos-login`. */
-  authMethod: 'device-code' | 'wechat-qr'
 }
 
 function ok(text: string): CommandResult {
@@ -47,19 +45,10 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
   disposers.push(
     commands.register({
       name: 'omicos-login',
-      description: 'Sign in to OmicOS (input: "wechat" or "device"; default from plugin config)',
-      handler: async (invocation) => {
-        const raw = invocation.rawInput.trim().toLowerCase()
-        const method = raw === '' ? deps.authMethod : raw
-        const normalized =
-          method === 'wechat' || method === 'wechat-qr'
-            ? ('wechat-qr' as const)
-            : method === 'device' || method === 'device-code'
-              ? ('device-code' as const)
-              : undefined
-        if (normalized === undefined) return fail(`未知登录方式 "${raw}"，可用：wechat / device`)
+      description: 'Sign in to OmicOS (browser device-code pairing; sign in there with phone or email)',
+      handler: async () => {
         try {
-          const begun = await account.beginLogin(normalized)
+          const begun = await account.beginLogin()
           return ok(begun.message)
         } catch (err) {
           if (err instanceof LoginBusyError) return fail('已有一个登录流程在等待批准，先运行 /omicos-status 查看，或等它完成。')
@@ -109,7 +98,7 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
         try {
           const snap = await account.snapshot()
           if (!snap.logged_in) {
-            lines.push('未登录。运行 /omicos-login（微信扫码：/omicos-login wechat）')
+            lines.push('未登录。运行 /omicos-login（浏览器配对码；在浏览器用手机号或邮箱登录）')
             lines.push(`注册/登录后即可试用，订阅购买：${snap.subscribe_url}`)
             return ok(lines.join('\n'))
           }

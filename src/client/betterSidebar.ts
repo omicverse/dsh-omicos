@@ -19,23 +19,49 @@
  */
 import { createElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
-import type { TabComponentProps, TabDescriptor } from 'dsh-better-sidebar/client/service'
-import { FilesTab } from './FilesTab.js'
+import type { SessionScope, TabComponentProps, TabDescriptor } from 'dsh-better-sidebar/client/service'
+import { ProductsPanel } from './ProductsPanel.js'
 
 /** Sidebar tab ids are namespaced by convention (`'<plugin>:<tab>'`, e.g. their `'explorer'` / docs' `'my-plugin:db'`). */
 const TAB_ID = 'omicos:files'
 
-/** Structural face of the optional service — only what we call. */
+/**
+ * Structural face of the optional service — only what we call.
+ *
+ * 🔴 `openFile` is how an EXTERNAL tab opens a file in the sidebar's own
+ * viewer. Do NOT reach for `TabComponentProps.onOpenFile`: the type
+ * declares it, but the host's tab-render path passes only
+ * `ctx/store/scope/tab/visible/expanded/onToggleDir/onReferenceFile/
+ * onOpenDiff/onSubagentJump` — an `onOpenFile` handler is silently
+ * undefined and clicks do nothing (observed live before this fix).
+ * `features` gates it: the method landed in 0.12.0.
+ */
 interface BetterSidebarLike {
   registerTab(descriptor: TabDescriptor): () => void
+  openFile?(scope: SessionScope, path: string, title?: string): void
+  readonly features?: readonly string[]
 }
 
-/** The tab body: our files panel, driven by the sidebar's own session scope. */
-function OmicosSidebarTab({ scope, visible }: TabComponentProps): ReturnType<typeof createElement> {
-  // `visible` is false while another tab is active or the panel is closed —
-  // pass it through so the list polling pauses instead of burning requests
-  // behind a hidden panel.
-  return createElement(FilesTab, { sessionId: scope.sessionId, paused: !visible })
+/**
+ * The tab body: the per-session product LIST (we no longer preview files
+ * ourselves — the sidebar's own viewers do that better). Clicks route
+ * through the service's `openFile`, which lands the file in the sidebar's
+ * matching viewer.
+ */
+function tabComponent(service: BetterSidebarLike) {
+  return function OmicosSidebarTab({ scope, visible }: TabComponentProps): ReturnType<typeof createElement> {
+    const canOpen = service.openFile !== undefined && (service.features?.includes('openFile') ?? true)
+    // `visible` is false while another tab is active or the panel is closed —
+    // pass it through so the list polling pauses instead of burning requests
+    // behind a hidden panel.
+    return createElement(ProductsPanel, {
+      sessionId: scope.sessionId,
+      paused: !visible,
+      ...(canOpen
+        ? { onOpenFile: (path: string) => service.openFile?.(scope, path) }
+        : {}),
+    })
+  }
 }
 
 /**
@@ -62,7 +88,7 @@ export function registerBetterSidebarTab(ctx: Context): void {
           // tab rather than stacking duplicates (their `single` sugar).
           single: true,
           order: 60,
-          component: OmicosSidebarTab,
+          component: tabComponent(service),
         }),
       'omicos: better-sidebar tab',
     )
