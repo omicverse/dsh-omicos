@@ -33,6 +33,23 @@ function safeFigurePath(path: string): boolean {
   return classifyGeneratedFile(path).kind === 'image'
 }
 
+/** Extensions the files-tab preview route will serve (same containment shape as figures, wider types). */
+const PREVIEWABLE_EXT = /\.(png|jpe?g|gif|webp|pdf|csv|tsv|txt|json|md|log|yaml|yml)$/i
+const PREVIEW_MAX_BYTES = 25 * 1024 * 1024
+
+function safePreviewPath(path: string): boolean {
+  if (path.startsWith('/') || path.includes('..') || path.includes('\\')) return false
+  return PREVIEWABLE_EXT.test(path)
+}
+
+/** Sniff-safe content type for the preview route: real types for embeddable media, text/plain for everything textual. */
+function previewContentType(path: string): string {
+  const { kind, mimeType } = classifyGeneratedFile(path)
+  if (kind === 'image') return mimeType
+  if (kind === 'pdf' || /\.pdf$/i.test(path)) return 'application/pdf'
+  return 'text/plain; charset=utf-8'
+}
+
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -106,6 +123,64 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
           return
         }
         json(res, 200, { running: feed.running, snapshot: feed.snapshot })
+        return
+      }
+      if (method === 'GET' && path.startsWith('/omicos/files/')) {
+        // The dsh session's generated files + owning workspace. Fast path:
+        // probe warm pool entries (undefined = that kernel has no such
+        // conversation). Cold path (host restarted, pool empty): resolve the
+        // session's workspace from dsh's own ledger (`SessionHeader.cwd`)
+        // and let `pool.entry(cwd)` attach-or-spawn.
+        const dshSessionId = decodeURIComponent(path.slice('/omicos/files/'.length))
+        if (deps.pool === undefined) {
+          json(res, 404, { error: 'no kernel pool' })
+          return
+        }
+        for (const entry of deps.pool.list()) {
+          try {
+            const files = await entry.runner.filesIfExists(dshSessionId)
+            if (files !== undefined) {
+              json(res, 200, { workspace: entry.workspace, files })
+              return
+            }
+          } catch {
+            // unreachable kernel; try the next entry
+          }
+        }
+        const persistence = ctx.get('sessionPersistence')
+        if (persistence !== undefined) {
+          const headers = (await persistence.list()) as Array<{ id: string; cwd?: string }>
+          const cwd = headers.find((h) => String(h.id) === dshSessionId)?.cwd
+          if (cwd !== undefined && cwd !== '') {
+            const entry = deps.pool.entry(cwd)
+            const files = await entry.runner.filesIfExists(dshSessionId)
+            json(res, 200, { workspace: cwd, files: files ?? [] })
+            return
+          }
+        }
+        json(res, 404, { error: 'no omicos conversation for this session yet' })
+        return
+      }
+      if (method === 'GET' && path === '/omicos/file') {
+        const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
+        const ws = query.get('ws') ?? ''
+        const filePath = query.get('path') ?? ''
+        if (deps.pool === undefined || ws === '' || !safePreviewPath(filePath)) {
+          json(res, 400, { error: 'file route needs ws + a workspace-relative previewable path' })
+          return
+        }
+        const handle = await deps.pool.entry(ws).kernel.handle()
+        const preview = await fetchFilePreview(handle.baseUrl, filePath)
+        if (preview.bytes.byteLength > PREVIEW_MAX_BYTES) {
+          json(res, 413, { error: 'file too large for inline preview' })
+          return
+        }
+        res.writeHead(200, {
+          'content-type': previewContentType(filePath),
+          'x-content-type-options': 'nosniff',
+          'cache-control': 'no-store',
+        })
+        res.end(Buffer.from(preview.bytes))
         return
       }
       if (method === 'GET' && path === '/omicos/figure') {

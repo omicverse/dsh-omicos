@@ -45,6 +45,11 @@ export type { JobHooks, JobOutcome } from '@deepseek-ai/dsh-jobs'
 // (optional service — the account-tab routes register only when present).
 export type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 
+// Type-only: `ctx.get('sessionPersistence')` — the files tab resolves a
+// dsh session's workspace (`SessionHeader.cwd`) through it after a host
+// restart empties the kernel pool.
+export type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+
 /**
  * Register our job kind in dsh's merge-extensible kind map (verified
  * first-party pattern: module specifier is the PACKAGE ROOT, e.g.

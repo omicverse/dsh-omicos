@@ -191,6 +191,36 @@ export class OmicosRunner {
     return []
   }
 
+  /**
+   * Like [`listGeneratedFiles`] but distinguishes "conversation does not
+   * exist on this kernel" (`undefined`) from "exists, no files yet" (`[]`)
+   * — the files tab probes every pool entry with this to find which
+   * kernel owns a dsh session's conversation.
+   */
+  async filesIfExists(dshSessionId: string): Promise<string[] | undefined> {
+    const sid = deriveOmicosSessionId(dshSessionId)
+    const transport = await this.getTransport()
+    const convs = new ConversationsClient(transport)
+    let detail
+    try {
+      detail = await convs.get(sid)
+    } catch (err) {
+      if (err instanceof OmicosHttpError && err.status === 404) return undefined
+      throw err
+    }
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const message of detail.history ?? []) {
+      for (const f of message.generated_files ?? []) {
+        if (!seen.has(f)) {
+          seen.add(f)
+          out.push(f)
+        }
+      }
+    }
+    return out
+  }
+
   /** Cancel the session's active turn, if any (used by job stop, §5). */
   async cancel(dshSessionId: string): Promise<void> {
     const sid = deriveOmicosSessionId(dshSessionId)
