@@ -17,6 +17,7 @@
  * long-task channel). Live tqdm progress is exposed through the job's
  * `readOutput()` (labels are immutable — verified, no update API).
  */
+import { HttpCoreTransport, getKernelVarDetail, getKernelVars, isDataVariable } from '@omicverse/omicos-client'
 import { ActivityMirror } from './activity.js'
 import type { ActivityStore } from './activity-store.js'
 import type { OmicosTurnOutcome } from './bridge.js'
@@ -211,35 +212,120 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
   disposers.push(
     ctx.tools.register(
       defineTool({
-        name: 'omicos_query_variable',
+        name: 'omicos_list_variables',
         description:
-          'Inspect a variable in the OmicOS kernel of this conversation (e.g. an AnnData object): shape, ' +
-          'columns/keys, and a short summary. Cheaper than omicos_analyze for "what state do I have?" questions.',
+          'List what currently lives in this conversation\'s OmicOS Python kernel (name, type, shape, size) — ' +
+          'AnnData objects, DataFrames, arrays. Instant and free: it reads the kernel directly, it does NOT run ' +
+          'an analysis. Call this before omicos_query_variable when you do not know the variable names, and after ' +
+          'an analysis to see what it left behind.',
         parameters: {
-          name: {
-            type: 'string',
-            required: true,
-            description: 'The Python variable name to inspect, e.g. "adata".',
+          include_imports: {
+            type: 'boolean',
+            description: 'Also list imported modules/classes (default false — normally just noise).',
           },
         },
         output: {
           schema: {
             type: 'object',
             additionalProperties: false,
-            properties: { summary: { type: 'string', required: true } },
+            properties: {
+              kernel: { type: 'string', required: true },
+              variables: { type: 'array', required: true, items: { type: 'json' } },
+            },
           },
-          render: (_args, value) => [{ type: 'text', text: value.summary }],
+          render: (_args, value) => {
+            const vars = Array.isArray(value.variables) ? value.variables : []
+            if (vars.length === 0) {
+              return [{ type: 'text', text: 'The kernel has no user variables yet (run an analysis first).' }]
+            }
+            const lines = vars.map((v) => {
+              const row = v as { name?: string; type?: string; shape?: string | null }
+              return `- ${String(row.name)}: ${String(row.type)}${row.shape ? ` ${row.shape}` : ''}`
+            })
+            return [{ type: 'text', text: `Kernel variables:\n${lines.join('\n')}` }]
+          },
         },
-        isConcurrencySafe: () => false,
         async execute(args, exec) {
-          const { outcome } = await runToOutcome(
-            exec,
-            `Summarize the current state of the kernel variable \`${args.name}\`: its type, shape/dimensions, ` +
-              'and key structure (for AnnData: obs/var columns, layers, obsm keys). If it does not exist, say so. ' +
-              'Answer concisely, no figures.',
-          )
-          if (outcome.error) throw turnError(outcome)
-          return { summary: outcomeText(outcome) }
+          const entry = entryFor(deps, exec)
+          const handle = await entry.kernel.handle()
+          const listing = await getKernelVars(new HttpCoreTransport(handle.baseUrl), entry.workspace)
+          const vars = args.include_imports === true ? listing.vars : listing.vars.filter(isDataVariable)
+          return {
+            kernel: listing.kernel_id,
+            variables: vars.map((v) => ({
+              name: v.name,
+              type: v.type,
+              shape: v.shape,
+              size_bytes: v.size_bytes,
+              summary: v.summary,
+            })) as unknown as import('@deepseek-ai/dsh-tools').JsonValue[],
+          }
+        },
+      }),
+    ),
+  )
+
+  disposers.push(
+    ctx.tools.register(
+      defineTool({
+        name: 'omicos_query_variable',
+        description:
+          'Inspect one variable in this conversation\'s OmicOS kernel. For an AnnData this returns the ground ' +
+          'truth core already holds: shape, obs/var columns, layers, obsm keys, and the PREPROCESSING STATE ' +
+          '(is_int / is_normalized / is_log1p / is_scaled, value range) — which is what decides whether the next ' +
+          'step is legal (never normalize twice). Instant and free: a direct kernel read, NOT an analysis run.',
+        parameters: {
+          name: {
+            type: 'string',
+            required: true,
+            description: 'The Python variable name, e.g. "adata". Use omicos_list_variables if unsure.',
+          },
+        },
+        output: {
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              available: { type: 'boolean', required: true },
+              name: { type: 'string', required: true },
+              class: { type: 'string' },
+              repr: { type: 'string' },
+              summary: { type: 'json' },
+            },
+          },
+          render: (args, value) => {
+            if (value.available !== true) {
+              return [
+                {
+                  type: 'text',
+                  text: `\`${String(args.name)}\` is not defined in the kernel. Use omicos_list_variables to see what is.`,
+                },
+              ]
+            }
+            const parts = [`${String(value.name)}: ${String(value.class ?? 'unknown')}`]
+            if (typeof value.repr === 'string' && value.repr !== '') parts.push(value.repr)
+            if (value.summary !== undefined && value.summary !== null) {
+              parts.push(JSON.stringify(value.summary))
+            }
+            return [{ type: 'text', text: parts.join('\n') }]
+          },
+        },
+        async execute(args, exec) {
+          // 🔴 A DIRECT READ, not a turn. This used to send "summarize the
+          // variable X" to the omicos agent — minutes and a nested LLM call
+          // to paraphrase what core answers exactly and for free.
+          const entry = entryFor(deps, exec)
+          const handle = await entry.kernel.handle()
+          const detail = await getKernelVarDetail(new HttpCoreTransport(handle.baseUrl), args.name)
+          return {
+            available: detail.available,
+            name: detail.name ?? args.name,
+            ...(detail.class === undefined ? {} : { class: detail.class }),
+            ...(detail.repr === undefined ? {} : { repr: detail.repr }),
+            ...(detail.summary === undefined
+              ? {}
+              : { summary: detail.summary as unknown as import('@deepseek-ai/dsh-tools').JsonValue }),
+          }
         },
       }),
     ),

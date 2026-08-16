@@ -85,9 +85,19 @@ describe('registerOmicosTools', () => {
     const mock = await startCore()
     const { ctx, tools, disposed } = fakeCtx()
     const disposers = registerOmicosTools(ctx, deps(mock))
-    expect(tools.map((t) => t.name)).toEqual(['omicos_analyze', 'omicos_query_variable', 'omicos_list_generated_files'])
+    expect(tools.map((t) => t.name)).toEqual([
+      'omicos_analyze',
+      'omicos_list_variables',
+      'omicos_query_variable',
+      'omicos_list_generated_files',
+    ])
     for (const d of disposers) d()
-    expect(disposed).toEqual(['omicos_analyze', 'omicos_query_variable', 'omicos_list_generated_files'])
+    expect(disposed).toEqual([
+      'omicos_analyze',
+      'omicos_list_variables',
+      'omicos_query_variable',
+      'omicos_list_generated_files',
+    ])
   })
 
   it('omicos_analyze runs a turn on the conversation derived from exec.agent.id and renders the answer', async () => {
@@ -222,7 +232,7 @@ describe('registerOmicosTools', () => {
     expect(feed!.snapshot).toMatchObject({ phase: 'done', outcome: 'ok' })
   })
 
-  it('omicos_query_variable throws on a failed turn (error event) instead of returning prose', async () => {
+  it('omicos_analyze throws on a failed turn (error event) instead of returning prose', async () => {
     const mock = await startCore()
     mock.on('POST', '/api/conversations/', (_req, res) => respondJson(res, 200, {}))
     mock.on('POST', '/api/agent/chat/stream', (_req, res) => {
@@ -234,6 +244,84 @@ describe('registerOmicosTools', () => {
     const { ctx, tools } = fakeCtx()
     registerOmicosTools(ctx, deps(mock))
     // The rejection carries the bounded activity trace — the dsh agent's debugging material.
-    await expect(tools[1]!.execute({ name: 'adata' }, EXEC)).rejects.toThrow(/kernel exploded[\s\S]*omicos activity trace[\s\S]*✗ kernel exploded/)
+    await expect(tools[0]!.execute({ request: 'x' }, EXEC)).rejects.toThrow(/kernel exploded[\s\S]*omicos activity trace[\s\S]*✗ kernel exploded/)
+  })
+})
+
+describe('kernel introspection tools (direct reads, never a turn)', () => {
+  /** Fails the test if a turn is started: these tools must never cost an LLM call. */
+  function forbidTurns(mock: MockCore): void {
+    mock.on('POST', '/api/agent/chat/stream', () => {
+      throw new Error('a kernel-introspection tool must not start a turn')
+    })
+  }
+
+  it('omicos_list_variables reads /api/kernel/vars for the entry workspace and drops imports by default', async () => {
+    const mock = await startCore()
+    forbidTurns(mock)
+    mock.on('GET', '/api/kernel/vars', (_req, res) =>
+      respondJson(res, 200, {
+        kernel_id: 'ws-abc',
+        vars: [
+          { name: 'sc', type: 'module', canonical_type: 'module', shape: null, size_bytes: 72, summary: '<module>' },
+          { name: 'adata', type: 'AnnData', canonical_type: 'anndata', shape: '(2700, 32738)', size_bytes: 5803794, summary: 'shape=(2700, 32738)' },
+        ],
+      }),
+    )
+    const { ctx, tools } = fakeCtx()
+    registerOmicosTools(ctx, deps(mock))
+    const list = tools[1]!
+
+    const value = await list.execute({}, EXEC)
+    expect(value.kernel).toBe('ws-abc')
+    expect(value.variables).toEqual([
+      { name: 'adata', type: 'AnnData', shape: '(2700, 32738)', size_bytes: 5803794, summary: 'shape=(2700, 32738)' },
+    ])
+    // The workspace selector rides along so a multi-kernel core answers for OUR workspace.
+    const req = mock.requests.find((r) => r.path === '/api/kernel/vars')
+    expect(req?.query.get('kernel_id')).toBe('ws:/ws')
+
+    const withImports = await list.execute({ include_imports: true }, EXEC)
+    expect((withImports.variables as unknown[]).length).toBe(2)
+  })
+
+  it('omicos_query_variable returns core\'s structured detail — including the preprocessing state', async () => {
+    const mock = await startCore()
+    forbidTurns(mock)
+    mock.on('GET', '/api/kernel/var_detail', (_req, res) =>
+      respondJson(res, 200, {
+        available: true,
+        name: 'adata',
+        class: 'AnnData',
+        repr: 'AnnData object with n_obs × n_vars = 2700 × 32738',
+        type: 'anndata',
+        summary: { shape: [2700, 32738], data_state: { is_int: true, is_normalized: false, is_log1p: false } },
+      }),
+    )
+    const { ctx, tools } = fakeCtx()
+    registerOmicosTools(ctx, deps(mock))
+    const query = tools[2]!
+
+    const value = await query.execute({ name: 'adata' }, EXEC)
+    expect(value).toMatchObject({ available: true, name: 'adata', class: 'AnnData' })
+    // The fact that decides what the next step may be must survive to the model.
+    expect((value.summary as { data_state?: { is_normalized?: boolean } }).data_state?.is_normalized).toBe(false)
+    expect(mock.requests.find((r) => r.path === '/api/kernel/var_detail')?.query.get('name')).toBe('adata')
+
+    const rendered = query.output.render({ name: 'adata' }, value as never)
+    expect(String(rendered[0]!.text)).toContain('AnnData')
+  })
+
+  it('an unbound name is answered, not thrown, and points at the listing tool', async () => {
+    const mock = await startCore()
+    forbidTurns(mock)
+    mock.on('GET', '/api/kernel/var_detail', (_req, res) => respondJson(res, 200, { available: false }))
+    const { ctx, tools } = fakeCtx()
+    registerOmicosTools(ctx, deps(mock))
+
+    const value = await tools[2]!.execute({ name: 'nope' }, EXEC)
+    expect(value.available).toBe(false)
+    const rendered = tools[2]!.output.render({ name: 'nope' }, value as never)
+    expect(String(rendered[0]!.text)).toContain('omicos_list_variables')
   })
 })

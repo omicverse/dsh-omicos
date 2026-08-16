@@ -81,8 +81,13 @@ DEEPSEEK_API_KEY=sk-xxx npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web
 
 - 「用 omicos 读取 `data/pbmc.h5ad`，做质控和聚类，画 UMAP」
   → `omicos_analyze`，图直接渲染在工具卡里，同一会话内 `adata` 状态**跨调用累积**
-- 「我现在的 adata 是什么状态？」→ `omicos_query_variable`（更便宜）
+- 「内核里现在有哪些变量？」→ `omicos_list_variables`（**直读内核，零成本、瞬时**）
+- 「我现在的 adata 是什么状态？」→ `omicos_query_variable`（同样是直读：返回 shape、obs/var 列、
+  layers、以及是否已标准化/log1p/scaled——决定下一步能不能做的关键事实）
 - 「这个会话产出过哪些文件？」→ `omicos_list_generated_files`
+
+> 只有 `omicos_analyze` 会真正跑一轮 omicos 分析（分钟级、有 LLM 开销）；其余三个
+> 都是直接读取，不花钱也不排队。
 - 长任务：让它「后台跑」→ 转 `omicos-analysis` job，用 dsh 的 job 工具轮询，
   tqdm 进度在 job 输出里可见
 
