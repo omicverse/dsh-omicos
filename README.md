@@ -1,70 +1,101 @@
 # @omicverse/dsh-omicos
 
-OmicOS as a [deepseek-harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) plugin —
-**Mode A（tools）**：dsh/DeepSeek 的 agent 保持方向盘，omicos 作为生信能力接入
-（详见 monorepo 根的 `DSH-PLUGIN.md`）。v0.1 host-only：零浏览器 bundle，
-结果走 stock 工具卡渲染（图以 ImageBlock 进 dsh attachment store）。
+Run [OmicVerse](https://github.com/Starlitnightly/omicverse)/OmicOS bioinformatics
+analyses from inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+The dsh agent keeps the wheel; this plugin gives it a persistent Python kernel
+(scanpy / omicverse / R) plus the catalog of analysis skills that OmicOS ships.
 
-## 提供什么
-
-**工具**（注册进 `ctx.tools`，模型可调）：
-
-- `omicos_analyze` — 跑一整个 omicos turn（scanpy/omicverse/R，持久内核，
-  同一 dsh 会话的多次调用命中同一个 omicos 会话，`adata` 等状态跨调用累积）。
-  `background: true` 时转入 `ctx.jobs`（kind `omicos-analysis`），tqdm 进度经
-  job 的 `readOutput()` 可见。
-- `omicos_query_variable` — 查内核变量摘要（AnnData 的 obs/var/layers 等）。
-- `omicos_list_generated_files` — 列出本会话所有分析产出文件。
-
-**命令**（人类面）：`/omicos-login`（`wechat` / `device`，立即返回配对码或
-QR 链接，批准在后台完成）、`/omicos-status`、`/omicos-logout`、
-`/omicos-stop-kernel`（只停本插件自己启动的内核，F13）。
-
-## 安装
+> 中文简介：把 OmicOS 的生信分析能力接进 dsh。DeepSeek 负责对话与规划，
+> OmicOS 负责跑分析——持久 Python 内核，`adata` 等状态跨轮累积；
+> 另带账号/订阅标签页与实时执行过程可视化。
 
 ```sh
-dsh plugin --profile <name> add @omicverse/dsh-omicos
+dsh plugin --profile web add @omicverse/dsh-omicos
 ```
 
-包声明了 `dsh.bundle.patch`，安装后自动进入 profile 的 bundles 列表并激活
-`cordis.patch.yml` 里的 `id: omicos` 行。配置在 profile 自己的
-`cordis.patch.yml` 里按 id 覆写（**patch 替换整行 config，不做 deep-merge**）：
+## Tools
+
+One tool runs an analysis; the rest are direct reads of the local kernel that
+cost neither a turn nor a token.
+
+| Tool | What it does |
+| --- | --- |
+| `omicos_analyze` | Runs a full OmicOS turn in a persistent kernel bound to the workspace. Repeated calls in one dsh session land on the same OmicOS conversation, so state accumulates. `background: true` hands it to `ctx.jobs` with live tqdm progress. |
+| `omicos_capabilities` | Searches the installed skill/agent catalog (269 skills + 97 agents on a full install) and returns a ranked, bounded projection. Use it to decide whether a task is worth delegating. Omit the query for a category overview. |
+| `omicos_list_variables` | What currently lives in the kernel — name, type, shape, size. |
+| `omicos_query_variable` | One variable in detail. For an AnnData this includes the preprocessing state (`is_int` / `is_normalized` / `is_log1p` / `is_scaled`), which is what decides whether the next step is legal. |
+| `omicos_list_generated_files` | Every file the analyses of this conversation produced. |
+
+## Commands
+
+`/omicos-login` (device-code pairing — sign in with phone or email in the
+browser), `/omicos-status`, `/omicos-account`, `/omicos-logout`,
+`/omicos-stop-kernel`.
+
+## UI
+
+The client bundle adds two surfaces to the web profile:
+
+- an **OmicOS tab** next to the conversation — sign-in state, plan, expiry, and
+  links to subscribe or manage the account;
+- a **live tool view** on `omicos_analyze` calls — the steps, tool calls and
+  stdout tail as the analysis runs, instead of a spinner that ends in a wall of
+  text. Generated figures render in the settled card.
+
+If [dsh-better-sidebar](https://github.com/dsh-external/dsh-better-sidebar) is
+installed, an "OmicOS 产物" tab is registered there too; the integration is
+optional and detected at runtime.
+
+## Requirements
+
+- **omicos-core** on the machine. The plugin attaches to a kernel you already
+  have running (desktop app or terminal) and only spawns its own via
+  `npx @omicverse/omicos` when none is attachable — and only ever stops a kernel
+  it started itself.
+- An **OmicOS account** for cloud-backed models and the higher plan tiers.
+  Sign in with `/omicos-login`; no token is ever persisted by this plugin — the
+  approved login is handed to the local core, which keeps it.
+- dsh `0.1.0-rc.6`. Note that some `@deepseek-ai/dsh-*` packages have a stale
+  `latest` dist-tag pointing at `0.0.1-rc.x`, so every dsh dependency here is
+  pinned exactly.
+
+## Configuration
+
+Override in your profile's own `cordis.patch.yml`. A patch **replaces** the
+row's whole config — there is no deep merge — so restate every key you care
+about:
 
 ```yaml
 - id: omicos
   config:
-    workspace: /path/to/project
-    authMethod: wechat-qr
+    workspace: /path/to/project   # '' = follow each dsh session's own cwd
+    autoStart: true               # spawn a kernel when none is attachable
+    upstreamBaseUrl: https://auth.omicos.cn
+    npmRegistry: ''               # mirror knob for the kernel spawn
 ```
 
-配置项与默认值见 `src/host/index.ts` 的 `Config`。
+## Security posture
 
-## 安全姿态（v0.1）
+- Tools run in core with `permission_mode: "full"`. A single-shot tool result
+  has no room for a mid-flight approval prompt, and blocking on one deadlocks
+  the turn; bridging dsh's approval UI into an OmicOS turn is planned, not done.
+- Catalog search projects before it answers: the skill `source_path` (an
+  absolute local path) and the verbatim `use_when` routing text are indexed but
+  never returned, so they do not travel to the model.
+- The plugin's HTTP routes are pinned to loopback.
 
-- 工具在 core 内以 `permission_mode: "full"` 直跑（单发工具结果放不下中途审批，
-  否则 turn 死锁 —— DSH-PLUGIN.md §3）；审批桥接排 v0.3。
-- 插件不持久化任何 token：登录批准后立即 `POST /api/cloud/login` 交给本地
-  core 的 `cloud_login.json` 保管。
-- 只停自己 spawn 的内核；挂载到的外部内核（桌面 App / 终端）永不触碰。
-
-## 已知与设计文档的偏差（均为核实后的修正）
-
-- 命令名用连字符（`omicos-login`）：dsh 命令名约束 `/^[a-z][a-z0-9_-]*$/`，
-  设计稿里的 `omicos:login` 不可注册。
-- 微信登录 CLI 侧不渲染 ASCII QR：服务端只回二维码**图片** URL，payload URL
-  未核实前不猜格式，先打印链接（浏览器打开后手机扫）。
-- job label 不可更新（dsh 无此 API），进度改走 `readOutput()`。
-- ⚠️ npm 上部分 `@deepseek-ai/dsh-*` 的 `latest` dist-tag 指向旧版
-  `0.0.1-rc.x`——一切 dsh 依赖必须显式钉 `0.1.0-rc.6`（本包 peer 均为精确版本）。
-
-## 开发
+## Development
 
 ```sh
-pnpm --filter @omicverse/dsh-omicos typecheck
-pnpm --filter @omicverse/dsh-omicos test    # 31 tests: bridge/kernel/runner + tools/commands（真 defineTool + MockCore）
-pnpm --filter @omicverse/dsh-omicos build
+pnpm install
+pnpm build       # tsc + the client bundle
+pnpm typecheck
+pnpm test        # 83 tests against the real dsh defineTool and a mock core
 ```
 
-`src/host/dsh-compat.ts` 是唯一允许 import `@deepseek-ai/*` 的模块（防腐层）；
-`bridge.ts` / `kernel.ts` / `runner.ts` / `auth.ts` 零 dsh 依赖，churn 时只有
-compat 与 `tools.ts` / `commands.ts` / `index.ts` 需要动。
+`src/host/dsh-compat.ts` is the only module allowed to import `@deepseek-ai/*`.
+`bridge.ts` / `kernel.ts` / `runner.ts` / `auth.ts` have no dsh dependency at
+all, so a dsh API change is absorbed in the compat layer plus `tools.ts`,
+`commands.ts` and `index.ts`.
+
+MIT

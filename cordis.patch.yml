@@ -10,7 +10,7 @@
 #   - id: omicos
 #     config:
 #       workspace: /path/to/project
-#       authMethod: wechat-qr
+#       autoStart: true
 
 - insert:
     - id: omicos

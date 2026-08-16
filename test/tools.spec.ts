@@ -10,7 +10,7 @@ import type { CoreHandle } from '@omicverse/omicos-launcher'
 import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosTools } from '../src/host/tools.js'
 import type { Context } from '../src/host/dsh-compat.js'
-import { MockCore, fixtureTurn, respondJson, startSse, writeSseFrame } from '../../../packages/client/test/helpers/mockCore.js'
+import { MockCore, fixtureTurn, respondJson, startSse, writeSseFrame } from './helpers/mockCore.js'
 
 const SID = 'dsh-sess-1'
 

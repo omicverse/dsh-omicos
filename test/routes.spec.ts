@@ -10,8 +10,8 @@ import { ActivityStore } from '../src/host/activity-store.js'
 import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosRoutes } from '../src/host/routes.js'
 import type { Context } from '../src/host/dsh-compat.js'
-import { MockCore, respondJson } from '../../../packages/client/test/helpers/mockCore.js'
-import { MockAuthServer } from '../../../packages/client/test/helpers/mockAuthServer.js'
+import { MockCore, respondJson } from './helpers/mockCore.js'
+import { MockAuthServer } from './helpers/mockAuthServer.js'
 
 type Handler = (req: unknown, res: unknown) => void | Promise<void>
 

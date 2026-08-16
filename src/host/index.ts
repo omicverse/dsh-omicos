@@ -1,9 +1,14 @@
 /**
  * `@omicverse/dsh-omicos` — OmicOS as a deepseek-harness plugin, Mode A
  * (DSH-PLUGIN.md §3): the dsh/DeepSeek agent keeps the wheel; omicos is a
- * capability (tools + background jobs + login commands). Host-only: no
- * browser bundle, stock tool cards render the results (figures ride in as
- * ImageBlocks).
+ * capability (tools + background jobs + login commands + an account tab).
+ *
+ * The host half is the whole plugin on a headless profile; the client
+ * bundle (`dsh.client`) only adds surfaces — the OmicOS account tab and
+ * the live-activity tool view. Figures reach the user through
+ * `presentationMeta` + the `/omicos/figure` route, NOT as ImageBlocks in
+ * the tool result: tool-result content is replayed into the model, and
+ * dsh's DeepSeek adapter fails the whole turn on image content.
  *
  * Entry-point shape is the VERIFIED loader contract: named exports
  * `name` / `inject` / `Config` / `apply(ctx, config)`, NO default export

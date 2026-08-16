@@ -1,8 +1,4 @@
-# dsh-omicos 使用教程（v0.1，本地安装版）
-
-> 状态：包**尚未发布到 npm**，当前走本地路径安装（`link:`），以下每一步
-> （除最后的真实对话 turn）都在 2026-08-14 真机验证过。发布到 npm 后，
-> 第 2 步换成 `add @omicverse/dsh-omicos` 即可，其余不变。
+# dsh-omicos 使用教程
 
 ## 0. 前提
 
@@ -11,17 +7,16 @@
   （⚠️ 部分 `@deepseek-ai/dsh-*` 包的 `latest` tag 指向旧版，别裸装）
 - dsh 的所有状态在 `~/.dsh`（可用 `DSH_HOME` 环境变量改位置）
 
-## 1. 构建插件（monorepo 内）
+## 1. 装进 dsh 的 web profile
 
 ```bash
-cd omicos-ext && pnpm install && pnpm build
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add @omicverse/dsh-omicos
 ```
 
-## 2. 装进 dsh 的 web profile
+`dsh plugin add` 是 `pnpm add` 的透传，所以本地开发时也可以直接给路径：
 
 ```bash
-npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add \
-  /Users/fernandozeng/Desktop/analysis/omicos-project/omicos-ext/apps/dsh-plugin
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add /path/to/dsh-omicos
 ```
 
 首次运行会自动初始化 `web` profile（`dsh-base` + `dsh-web-app`）；本包声明了
@@ -43,8 +38,8 @@ npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web --dump-config
 ```yaml
 - id: omicos
   config:
-    workspace: /path/to/你的分析目录   # 空 = dsh 启动时的 cwd
-    authMethod: wechat-qr             # 或 device-code（默认）
+    workspace: /path/to/你的分析目录   # 空 = 跟随每个 dsh 会话自己的工作区
+    autoStart: true                    # 没有可挂载的内核时自动拉起一个
     npmRegistry: https://registry.npmmirror.com   # 大陆网络建议
 ```
 
@@ -81,12 +76,14 @@ DEEPSEEK_API_KEY=sk-xxx npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web
 
 - 「用 omicos 读取 `data/pbmc.h5ad`，做质控和聚类，画 UMAP」
   → `omicos_analyze`，图直接渲染在工具卡里，同一会话内 `adata` 状态**跨调用累积**
+- 「omicos 能做空间转录组的什么分析？」→ `omicos_capabilities`（检索技能/智能体目录，
+  返回排序后的若干条，用来判断值不值得交给 omicos 跑）
 - 「内核里现在有哪些变量？」→ `omicos_list_variables`（**直读内核，零成本、瞬时**）
 - 「我现在的 adata 是什么状态？」→ `omicos_query_variable`（同样是直读：返回 shape、obs/var 列、
   layers、以及是否已标准化/log1p/scaled——决定下一步能不能做的关键事实）
 - 「这个会话产出过哪些文件？」→ `omicos_list_generated_files`
 
-> 只有 `omicos_analyze` 会真正跑一轮 omicos 分析（分钟级、有 LLM 开销）；其余三个
+> 只有 `omicos_analyze` 会真正跑一轮 omicos 分析（分钟级、有 LLM 开销）；其余四个
 > 都是直接读取，不花钱也不排队。
 - 长任务：让它「后台跑」→ 转 `omicos-analysis` job，用 dsh 的 job 工具轮询，
   tqdm 进度在 job 输出里可见
@@ -118,11 +115,13 @@ npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web remove @omicverse/dsh-om
 - 插件没生效 → 先 `--dump-config` 看 `id: omicos` 行在不在
 - 工具报「无法连接内核」→ `/omicos-status`；确认 workspace 目录与正在跑的
   omicos 实例一致（发现锚点是 `<workspace>/.omicos/serve.pid`）
-- v0.1 安全姿态：omicos 侧工具以 `permission_mode: "full"` 免审批直跑
-  （单发工具结果放不下中途审批）；介意就等 v0.3 的审批桥接
+- 安全姿态：omicos 侧工具以 `permission_mode: "full"` 免审批直跑
+  （单发工具结果放不下中途审批，阻塞会让 turn 死锁）；审批桥接尚未做
 
 ## 验证边界（诚实声明）
 
-已真机验证：安装识别、bundles 激活、`--dump-config`、模块导入、web UI 带插件
-层启动无报错、以及插件所有逻辑的 31 个单测（真 defineTool + 真 HTTP/SSE mock）。
-**未跑过**：带 DEEPSEEK_API_KEY 的完整真实对话 turn（需要真实 key）。
+已真机验证：安装识别、bundles 激活、`--dump-config`、web UI 带插件层启动、
+真实对话 turn（`omicos_analyze` 跑通 pbmc3k 全流程并出图）、账号/订阅页签、
+实时活动工具卡、以及 83 个单测（真 `defineTool` + 真 HTTP/SSE mock）。
+`omicos_capabilities` 已对真实目录（269 技能 / 97 智能体）验证检索与投影，
+但「模型是否会自发调用它」尚未在真实对话里验过。

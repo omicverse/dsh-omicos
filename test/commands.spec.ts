@@ -10,8 +10,8 @@ import { AccountService } from '../src/host/account.js'
 import { OmicosPool } from '../src/host/pool.js'
 import { registerOmicosCommands } from '../src/host/commands.js'
 import type { CommandResult, Context } from '../src/host/dsh-compat.js'
-import { MockAuthServer } from '../../../packages/client/test/helpers/mockAuthServer.js'
-import { MockCore, respondJson } from '../../../packages/client/test/helpers/mockCore.js'
+import { MockAuthServer } from './helpers/mockAuthServer.js'
+import { MockCore, respondJson } from './helpers/mockCore.js'
 
 interface RegisteredCommand {
   name: string

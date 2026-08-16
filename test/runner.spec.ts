@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
 import { KernelManager } from '../src/host/kernel.js'
 import { OmicosRunner } from '../src/host/runner.js'
-import { MockCore, fixtureTurn, respondJson, startSse, writeSseFrame } from '../../../packages/client/test/helpers/mockCore.js'
+import { MockCore, fixtureTurn, respondJson, startSse, writeSseFrame } from './helpers/mockCore.js'
 
 const SID = 'dsh-sess-1' // deriveOmicosSessionId('sess-1')
 
