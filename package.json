@@ -1,15 +1,11 @@
 {
   "name": "@omicverse/dsh-omicos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OmicOS as a deepseek-harness (dsh) plugin — Mode A: omicos bioinformatics tools + background jobs + login commands for the dsh agent (DSH-PLUGIN.md).",
   "type": "module",
   "main": "./lib/host/index.js",
-  "types": "./lib/host/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./lib/host/index.d.ts",
-      "default": "./lib/host/index.js"
-    },
+    ".": "./lib/host/index.js",
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -34,16 +30,14 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node esbuild.client.mjs && rm -f lib/client.cjs.tmp",
+    "build": "node esbuild.host.mjs && node esbuild.client.mjs && rm -f lib/client.cjs.tmp",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
     "test": "vitest run"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.1",
-    "@omicverse/omicos-client": "^0.1.1",
-    "@omicverse/omicos-launcher": "^0.1.1",
-    "@omicverse/omicos-protocol": "^0.1.1"
+    "@omicverse/omicos": "^0.3.30"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -84,6 +78,9 @@
     "@deepseek-ai/dsh-session": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session-persistence": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@omicverse/omicos-client": "^0.1.1",
+    "@omicverse/omicos-launcher": "^0.1.1",
+    "@omicverse/omicos-protocol": "^0.1.1",
     "@types/node": "^22.0.0",
     "@types/react": "18.3.12",
     "dsh-better-sidebar": "0.12.2",

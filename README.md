@@ -48,10 +48,12 @@ optional and detected at runtime.
 
 ## Requirements
 
-- **omicos-core** on the machine. The plugin attaches to a kernel you already
-  have running (desktop app or terminal) and only spawns its own via
-  `npx @omicverse/omicos` when none is attachable — and only ever stops a kernel
-  it started itself.
+- **omicos-core comes with the install.** `@omicverse/omicos` is a dependency,
+  so the ~21 MB platform binary lands in node_modules alongside the plugin
+  rather than being fetched by `npx` in the middle of your first tool call.
+  At run time the plugin still attaches to a kernel you already have running
+  (desktop app or terminal) if there is one, spawns the bundled binary only
+  when there is not, and only ever stops a kernel it started itself.
 - An **OmicOS account** for cloud-backed models and the higher plan tiers.
   Sign in with `/omicos-login`; no token is ever persisted by this plugin — the
   approved login is handed to the local core, which keeps it.
@@ -90,8 +92,14 @@ about:
 pnpm install
 pnpm build       # tsc + the client bundle
 pnpm typecheck
-pnpm test        # 83 tests against the real dsh defineTool and a mock core
+pnpm test        # 88 tests against the real dsh defineTool and a mock core
 ```
+
+This package publishes as ONE dependency-light artifact: the `@omicverse/omicos-*`
+SDK is inlined by `esbuild.host.mjs` and kept as devDependencies, while
+`@deepseek-ai/*` stays external (the harness supplies it, and a second copy of
+Schema would fail config validation) and `@omicverse/omicos` stays a real
+dependency (it is spawned as a child process, never imported).
 
 `src/host/dsh-compat.ts` is the only module allowed to import `@deepseek-ai/*`.
 `bridge.ts` / `kernel.ts` / `runner.ts` / `auth.ts` have no dsh dependency at

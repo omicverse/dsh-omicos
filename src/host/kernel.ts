@@ -14,6 +14,7 @@
  */
 import type { CoreHandle, EnsureCoreOptions } from '@omicverse/omicos-launcher'
 import { ensureCore } from '@omicverse/omicos-launcher'
+import { installedCoreCommand } from './coreCommand.js'
 
 export interface KernelManagerOptions {
   /** Workspace directory the core binds to (DESIGN.md §5 discovery key). */
@@ -26,6 +27,8 @@ export interface KernelManagerOptions {
   upstreamBaseUrl?: string
   /** Test seam. */
   ensureImpl?: typeof ensureCore
+  /** Test seam for the installed-core lookup. */
+  coreCommandImpl?: typeof installedCoreCommand
 }
 
 export class KernelManager {
@@ -54,10 +57,17 @@ export class KernelManager {
     if (this.current) return this.current
     if (!this.inflight) {
       const ensure = this.opts.ensureImpl ?? ensureCore
+      // Prefer the core that came in with this package over `npx`; undefined
+      // (unresolvable dependency) leaves the launcher's npx default in place.
+      const installed = (this.opts.coreCommandImpl ?? installedCoreCommand)(
+        this.opts.workspace,
+        this.opts.upstreamBaseUrl,
+      )
       const ensureOpts: EnsureCoreOptions = {
         autoStart: this.opts.autoStart,
         npmRegistry: this.opts.npmRegistry,
         upstreamBaseUrl: this.opts.upstreamBaseUrl,
+        ...(installed === undefined ? {} : { command: installed }),
       }
       this.inflight = ensure(this.opts.workspace, ensureOpts).then(
         (h) => {
