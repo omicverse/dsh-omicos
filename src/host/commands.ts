@@ -105,6 +105,7 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
           lines.push(`账号：${snap.email || snap.user_id}（${snap.server}）`)
           if (snap.plan) {
             lines.push(`套餐：${snap.plan.name}`)
+            if (!snap.plan.verified) lines.push('（内核正在向服务器确认订阅，稍后再运行一次本命令即可看到真实档位）')
             if (typeof snap.plan.token_exp === 'number') {
               lines.push(`凭证有效期至：${new Date(snap.plan.token_exp * 1000).toLocaleString('zh-CN')}${snap.plan.renewing ? '（自动续期中）' : ''}`)
             }

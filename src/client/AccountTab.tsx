@@ -16,6 +16,8 @@ interface AccountPlan {
   token_exp?: number
   renewing: boolean
   session_expired: boolean
+  /** False while the kernel has not verified a plan token yet (momentary post-login state). */
+  verified: boolean
 }
 
 interface AccountSnapshot {
@@ -43,6 +45,7 @@ const S = {
   row: { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0' } as const,
   dim: { opacity: 0.6 } as const,
   badge: { display: 'inline-block', padding: '1px 10px', borderRadius: 4, background: '#2b4a2f', color: '#9be29f', fontWeight: 600 } as const,
+  badgePending: { display: 'inline-block', padding: '1px 10px', borderRadius: 4, background: '#2a2d34', color: '#9aa3ad', fontWeight: 600 } as const,
   warn: { color: '#e2a75f' } as const,
   btnRow: { display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' } as const,
   btn: { padding: '7px 16px', borderRadius: 6, border: '1px solid var(--ds-border, #2a2d34)', background: 'var(--ds-bg, #14161a)', color: 'inherit', cursor: 'pointer', fontSize: 13 } as const,
@@ -114,6 +117,18 @@ export function AccountTab(): JSX.Element {
     return () => clearInterval(timer)
   }, [snapshot?.login_pending, login, refresh])
 
+  // 🔴 Keep the plan fresh. The kernel resolves its plan token ASYNC — right
+  // after login it still reports core's unverified default, and it renews in
+  // the background afterwards. Reading once and freezing showed a signed-in
+  // Lab account as "community" indefinitely (observed live). Fast cadence
+  // until the plan is verified, slow one after.
+  useEffect(() => {
+    if (snapshot === undefined || !snapshot.logged_in) return
+    const settled = snapshot.plan?.verified === true
+    const timer = setInterval(() => void refresh(), settled ? 60_000 : 3000)
+    return () => clearInterval(timer)
+  }, [snapshot, refresh])
+
   const startLogin = useCallback(
     async () => {
       setBusy(true)
@@ -178,7 +193,9 @@ export function AccountTab(): JSX.Element {
           </div>
           <div style={S.row}>
             <span style={S.dim}>套餐</span>
-            <span style={S.badge}>{snapshot.plan?.name ?? '未知'}</span>
+            <span style={snapshot.plan?.verified === false ? S.badgePending : S.badge}>
+              {snapshot.plan?.name ?? '加载中…'}
+            </span>
           </div>
           {typeof snapshot.plan?.token_exp === 'number' && (
             <div style={S.row}>
@@ -189,6 +206,9 @@ export function AccountTab(): JSX.Element {
               </span>
             </div>
           )}
+          {snapshot.plan?.verified === false && (
+            <div style={S.dim}>内核正在向服务器确认订阅（刚登录时需要几秒）——确认后这里会自动更新。</div>
+          )}
           {snapshot.plan?.session_expired && (
             <div style={S.warn}>⚠️ 登录态已过期，请退出后重新登录。</div>
           )}
@@ -198,6 +218,9 @@ export function AccountTab(): JSX.Element {
             </button>
             <button style={S.btn} onClick={() => window.open(snapshot.account_url, '_blank', 'noopener')}>
               账号与订阅管理
+            </button>
+            <button style={S.btn} disabled={busy} onClick={() => void refresh()}>
+              刷新
             </button>
             <button style={S.btn} disabled={busy} onClick={() => void doLogout()}>
               退出登录

@@ -3,7 +3,7 @@
  * trust fence is not authentication), snapshot passthrough, login-start's
  * structured display fields, and the busy conflict.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreHandle } from '@omicverse/omicos-launcher'
 import { AccountService } from '../src/host/account.js'
 import { ActivityStore } from '../src/host/activity-store.js'
@@ -190,5 +190,58 @@ describe('registerOmicosRoutes', () => {
     } finally {
       await auth.close()
     }
+  })
+})
+
+describe('plan verification (regression: a signed-in Lab account rendered as "community")', () => {
+  const opened: MockCore[] = []
+  afterEach(async () => {
+    for (const c of opened.splice(0)) await c.close()
+  })
+
+  /** Core's `/api/health/plan` shape; `last_refresh` is the verified-vs-default tell. */
+  function corePlan(planCode: string, lastRefresh: number | null) {
+    return {
+      plan_code: planCode,
+      token_exp: 1786835514,
+      renewing: false,
+      last_refresh: lastRefresh,
+      last_error_detail: null,
+      last_error_reason: null,
+      user_id: 'u1',
+    }
+  }
+
+  async function snapshotWith(planBody: unknown): Promise<Record<string, unknown>> {
+    const core = new MockCore()
+    await core.start()
+    opened.push(core)
+    core.on('GET', '/api/cloud/identity', (_req, res) =>
+      respondJson(res, 200, { logged_in: true, email: 'a@b.com', user_id: 'u1', server: 'https://auth' }),
+    )
+    core.on('GET', '/api/health/plan', (_req, res) => respondJson(res, 200, planBody))
+    const { ctx, routes } = fakeCtx()
+    registerOmicosRoutes(ctx, { account: accountFor(core.baseUrl) })
+    const res = fakeRes()
+    await routes[0]!.handler(fakeReq('GET', '/omicos/account'), res)
+    return (await json(res)) as Record<string, unknown>
+  }
+
+  it('🔴 core\'s UNVERIFIED default ("community" with no successful renew) is not rendered as a real plan', async () => {
+    // plan_token_renew.rs's `impl Default for PlanHealth` — the state a
+    // kernel sits in for a few seconds right after login. Reading it once
+    // and freezing showed a Lab account as "community" indefinitely.
+    const snap = await snapshotWith(corePlan('community', null))
+    expect(snap.plan).toMatchObject({ code: 'community', verified: false, name: '确认中…' })
+  })
+
+  it('a genuine community account (verified by a successful renew) keeps its real name', async () => {
+    const snap = await snapshotWith(corePlan('community', 1786749116))
+    expect(snap.plan).toMatchObject({ code: 'community', verified: true, name: 'Community（免费）' })
+  })
+
+  it('a paid plan is verified regardless of the refresh timestamp', async () => {
+    const snap = await snapshotWith(corePlan('lab', null))
+    expect(snap.plan).toMatchObject({ code: 'lab', verified: true, name: 'Lab（实验室版）' })
   })
 })

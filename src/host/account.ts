@@ -19,11 +19,25 @@ export const SUBSCRIBE_URL = `${ORIGIN_APP}/#/bench?page=subscription`
 export const ACCOUNT_URL = `${ORIGIN_APP}/#/bench?page=settings`
 
 export const PLAN_NAMES: Record<string, string> = {
+  community: 'Community（免费）',
   free: 'Free',
   plus: 'Plus',
   pro: 'Pro',
   lab: 'Lab（实验室版）',
   ent: 'Enterprise（企业版）',
+}
+
+/**
+ * 🔴 `"community"` is ALSO core's DEFAULT plan_code before any plan token
+ * has been verified (`plan_token_renew.rs` `impl Default for PlanHealth`),
+ * and a kernel sits in that state for a moment right after login while the
+ * token is fetched. `last_refresh: null` is what separates the two: a real
+ * community account has a verified (successful) renew behind it, an
+ * unverified kernel has never refreshed. Core's own code comments say to
+ * tell the user WHY rather than render a bare "community".
+ */
+function planVerified(plan: { plan_code: string; last_refresh?: number | null }): boolean {
+  return plan.plan_code !== 'community' || (plan.last_refresh ?? 0) > 0
 }
 
 export interface AccountPlan {
@@ -32,6 +46,8 @@ export interface AccountPlan {
   token_exp?: number
   renewing: boolean
   session_expired: boolean
+  /** False while the kernel has not verified a plan token yet (the momentary post-login default). */
+  verified: boolean
 }
 
 /** JSON-safe snapshot the tab renders (also the substrate of /omicos-account's text). */
@@ -125,12 +141,14 @@ export class AccountService {
     try {
       const handle = await kernel.handle()
       const plan = await getPlanHealth(new HttpCoreTransport(handle.baseUrl))
+      const verified = planVerified(plan)
       base.plan = {
         code: plan.plan_code,
-        name: PLAN_NAMES[plan.plan_code] ?? plan.plan_code,
+        name: verified ? (PLAN_NAMES[plan.plan_code] ?? plan.plan_code) : '确认中…',
         token_exp: typeof plan.token_exp === 'number' ? plan.token_exp : undefined,
         renewing: plan.renewing === true,
         session_expired: plan.sessionExpired,
+        verified,
       }
     } catch {
       // plan pane degrades; identity is still worth showing
