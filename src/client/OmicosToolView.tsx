@@ -14,6 +14,7 @@
  * `cwd` — so settled cards keep their images across dsh host restarts.
  */
 import { useEffect, useRef, useState } from 'react'
+import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 
 interface ActivitySnapshot {
   n: number
@@ -45,6 +46,17 @@ interface OwnerProps {
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
+
+/**
+ * Drop `![alt](local/path)` image references before handing the answer to
+ * the markdown renderer: its URL allowlist (http(s) only) would render
+ * them as broken images/alt noise, and the figures render right below
+ * from the durable meta paths anyway. Remote http(s)/data URLs pass
+ * through untouched.
+ */
+function stripLocalImageMarkdown(text: string): string {
+  return text.replace(/!\[[^\]]*\]\((?!https?:|data:)[^)]*\)/g, '').replace(/\n{3,}/g, '\n\n')
+}
 
 const S = {
   card: { border: '1px solid var(--ds-border, #2a2d34)', borderRadius: 8, padding: '10px 14px', margin: '4px 0', background: 'var(--ds-bg-raised, #1b1d22)', fontSize: 13, lineHeight: 1.6 } as const,
@@ -137,7 +149,16 @@ function SettledView({ block, cwd }: { block: OwnerProps['block']; cwd?: string 
       <div style={S.head}>
         <span style={block.isError ? S.badgeErr : S.badgeDone}>{block.isError ? 'omicos 失败' : 'omicos 完成'}</span>
       </div>
-      {text !== '' && <div style={{ ...(block.isError ? S.err : {}), whiteSpace: 'pre-wrap', marginTop: 4 }}>{text}</div>}
+      {text !== '' &&
+        (block.isError ? (
+          // Error text is the bounded activity trace — preformatted lines,
+          // not markdown; keep it monospace and red.
+          <div style={{ ...S.err, ...S.mono, maxHeight: 400 }}>{text}</div>
+        ) : (
+          <div style={{ marginTop: 4 }}>
+            <MarkdownText text={stripLocalImageMarkdown(text)} />
+          </div>
+        ))}
       {cwd !== undefined &&
         figures.map((path) => (
           <img
