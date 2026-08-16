@@ -111,7 +111,20 @@ export function FilesTab(props: unknown): JSX.Element {
   }, [refresh])
 
   if (status === 'loading') return <div style={{ ...S.dim, padding: 24 }}>加载中…</div>
-  if (status === 'error') return <div style={{ ...S.dim, padding: 24 }}>文件列表获取失败（omicos 宿主不可达？）。</div>
+  if (status === 'error') {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={S.dim}>文件列表获取失败（omicos 宿主不可达？）——每 5 秒自动重试中。</div>
+        <button
+          type="button"
+          style={{ marginTop: 10, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--ds-border, #2a2d34)', background: 'var(--ds-bg-raised, #1b1d22)', color: 'inherit', cursor: 'pointer', fontSize: 13 }}
+          onClick={() => void refresh()}
+        >
+          立即重新加载
+        </button>
+      </div>
+    )
+  }
   if (status === 'empty' || data === undefined) {
     return <div style={{ ...S.dim, padding: 24 }}>本会话还没有 omicos 分析产物。跑一次分析后这里会列出全部生成的文件。</div>
   }

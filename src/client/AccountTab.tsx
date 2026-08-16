@@ -97,6 +97,17 @@ export function AccountTab(): JSX.Element {
     }
   }, [refresh])
 
+  // Auto-retry until the first successful load: the host half may still be
+  // starting (or was restarted) when the tab mounts — a one-shot fetch
+  // stranded the tab on "Failed to fetch" forever.
+  useEffect(() => {
+    if (snapshot !== undefined) return
+    const timer = setInterval(() => {
+      void refresh()
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [snapshot, refresh])
+
   // While a login awaits approval, poll so the tab flips to signed-in on its own.
   useEffect(() => {
     if (!snapshot?.login_pending && login === undefined) return
@@ -138,7 +149,23 @@ export function AccountTab(): JSX.Element {
   }, [refresh])
 
   if (snapshot === undefined) {
-    return <div style={S.page}>{error ? <span style={S.err}>加载失败：{error}</span> : '加载中…'}</div>
+    return (
+      <div style={S.page}>
+        {error !== undefined ? (
+          <div style={S.card}>
+            <div style={S.err}>加载失败：{error}</div>
+            <div style={S.dim}>每 4 秒自动重试中（omicos 宿主可能正在启动）…</div>
+            <div style={S.btnRow}>
+              <button style={S.btn} onClick={() => void refresh()}>
+                立即重新加载
+              </button>
+            </div>
+          </div>
+        ) : (
+          '加载中…'
+        )}
+      </div>
+    )
   }
 
   return (
