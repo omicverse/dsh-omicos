@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { registerBetterSidebarTab } from '../src/client/betterSidebar.js'
+import { absolutize } from '../src/client/paths.js'
 
 interface InjectCall {
   names: string[]
@@ -90,5 +91,21 @@ describe('registerBetterSidebarTab', () => {
 
     const hidden = component({ scope: { sessionId: 'session-abc' }, visible: false })
     expect(hidden.props.paused).toBe(true)
+  })
+})
+
+describe('absolutize (chat file chips)', () => {
+  it('makes workspace-relative paths absolute so the sidebar file pipeline accepts them', () => {
+    // Verified live: dsh-better-sidebar's /sidebar/file answers 400
+    // "is not an absolute path" for a relative path and 200 for the same
+    // file absolute. dsh's own openFile accepts either.
+    expect(absolutize('outputs/figures/a.png', '/ws')).toBe('/ws/outputs/figures/a.png')
+    expect(absolutize('outputs/a.png', '/ws/')).toBe('/ws/outputs/a.png')
+  })
+
+  it('leaves already-absolute paths and cwd-less calls untouched', () => {
+    expect(absolutize('/abs/a.png', '/ws')).toBe('/abs/a.png')
+    expect(absolutize('outputs/a.png', undefined)).toBe('outputs/a.png')
+    expect(absolutize('outputs/a.png', '')).toBe('outputs/a.png')
   })
 })

@@ -1,7 +1,7 @@
 {
   "name": "@omicverse/dsh-omicos",
   "version": "0.1.0",
-  "description": "OmicOS as a deepseek-harness (dsh) plugin — Mode A: omicos bioinformatics tools + background jobs + login commands for the dsh agent (DSH-PLUGIN.md).",
+  "description": "OmicOS as a deepseek-harness (dsh) plugin \u2014 Mode A: omicos bioinformatics tools + background jobs + login commands for the dsh agent (DSH-PLUGIN.md).",
   "type": "module",
   "main": "./lib/host/index.js",
   "types": "./lib/host/index.d.ts",
@@ -47,7 +47,8 @@
     "@deepseek-ai/dsh-commands": "0.1.0-rc.6",
     "@deepseek-ai/dsh-jobs": "0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.6"
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "dsh-better-sidebar": "^0.12.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-attachment": {
@@ -57,6 +58,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-jobs": {
+      "optional": true
+    },
+    "dsh-better-sidebar": {
       "optional": true
     }
   },

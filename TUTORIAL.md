@@ -88,6 +88,20 @@ DEEPSEEK_API_KEY=sk-xxx npx -y @deepseek-ai/dsh@0.1.0-rc.6 --profile web
 其他命令：`/omicos-logout`（只登出本机内核）、`/omicos-stop-kernel`
 （只停插件自己启动的内核，外部内核永不触碰）。
 
+## 6.5 推荐搭配：dsh-better-sidebar（可选）
+
+装了它，本插件会多注册一个「OmicOS 产物」侧栏页，产物列表和预览就能停在
+聊天旁边；聊天里的文件条也会在它的编辑器里打开（PDF/图片/代码都能渲染）。
+
+```bash
+npx -y @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile web add dsh-better-sidebar
+```
+
+**它是可选的，不是依赖**：不装时本插件全部功能照常（四个会话页签、工具卡、
+文件条走系统默认应用）。我们刻意没有把它做成硬依赖——它自己的 bundle patch
+插入的是 `id: better-sidebar`，若我们再插一行，用户自己安装时会双挂载（它的
+作者在 patch 注释里明确警告过「两个 Node 半边、两个侧边栏」）。
+
 ## 7. 卸载 / 排障
 
 ```bash

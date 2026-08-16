@@ -15,6 +15,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { absolutize } from './paths.js'
 
 interface ActivitySnapshot {
   n: number
@@ -146,7 +147,7 @@ function RunningView({ callId }: { callId: string }): JSX.Element {
   )
 }
 
-function FileChip({ path, openFile }: { path: string; openFile?: (path: string) => void }): JSX.Element {
+function FileChip({ path, cwd, openFile }: { path: string; cwd?: string; openFile?: (path: string) => void }): JSX.Element {
   const slash = path.lastIndexOf('/')
   const dir = slash >= 0 ? path.slice(0, slash + 1) : ''
   const base = slash >= 0 ? path.slice(slash + 1) : path
@@ -155,7 +156,7 @@ function FileChip({ path, openFile }: { path: string; openFile?: (path: string) 
       type="button"
       style={S.chip}
       title={openFile ? `打开 ${path}` : path}
-      onClick={openFile ? () => openFile(path) : undefined}
+      onClick={openFile ? () => openFile(absolutize(path, cwd)) : undefined}
     >
       <span aria-hidden>📄</span>
       {dir !== '' && <span style={S.chipDir}>{dir}</span>}
@@ -193,7 +194,7 @@ function SettledView({ block, cwd, openFile }: { block: OwnerProps['block']; cwd
       {files.length > 0 && (
         <div style={S.chips}>
           {files.map((path) => (
-            <FileChip key={path} path={path} openFile={openFile} />
+            <FileChip key={path} path={path} cwd={cwd} openFile={openFile} />
           ))}
         </div>
       )}
@@ -205,7 +206,7 @@ function SettledView({ block, cwd, openFile }: { block: OwnerProps['block']; cwd
             src={`/omicos/figure?ws=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`}
             alt={path}
             title={openFile ? `打开 ${path}` : path}
-            onClick={openFile ? () => openFile(path) : undefined}
+            onClick={openFile ? () => openFile(absolutize(path, cwd)) : undefined}
           />
         ))}
     </div>
