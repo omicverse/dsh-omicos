@@ -98,4 +98,4 @@ pnpm test        # 83 tests against the real dsh defineTool and a mock core
 all, so a dsh API change is absorbed in the compat layer plus `tools.ts`,
 `commands.ts` and `index.ts`.
 
-MIT
+GPL-3.0-only
