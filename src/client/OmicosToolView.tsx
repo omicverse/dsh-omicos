@@ -43,7 +43,12 @@ interface OwnerProps {
     meta?: { omicos?: { generated_files?: string[] } }
   }
   cwd?: string
+  /** Host-side "open with the OS default app"; relative paths resolve against the session cwd. */
+  openFile?: (path: string) => void
 }
+
+/** The host-side files line in `renderOutcome` — model-facing; the chips render the same list clickably. */
+const FILES_LINE_PREFIX = 'Files generated (workspace-relative):'
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
 
@@ -67,8 +72,11 @@ const S = {
   dim: { opacity: 0.65 } as const,
   mono: { fontFamily: 'ui-monospace, monospace', fontSize: 12, whiteSpace: 'pre-wrap', background: 'var(--ds-bg, #14161a)', borderRadius: 6, padding: '6px 10px', marginTop: 6, maxHeight: 180, overflowY: 'auto' } as const,
   progress: { fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#8fc2f5' } as const,
-  img: { maxWidth: '100%', maxHeight: 420, borderRadius: 6, marginTop: 8, background: '#fff', display: 'block' } as const,
+  img: { maxWidth: '100%', maxHeight: 420, borderRadius: 6, marginTop: 8, background: '#fff', display: 'block', cursor: 'zoom-in' } as const,
   err: { color: '#e0705f' } as const,
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 } as const,
+  chip: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 6, border: '1px solid var(--ds-border, #2a2d34)', background: 'var(--ds-bg, #14161a)', color: 'inherit', fontSize: 12, fontFamily: 'ui-monospace, monospace', cursor: 'pointer' } as const,
+  chipDir: { opacity: 0.45 } as const,
 } as const
 
 const PHASE_LABEL: Record<ActivitySnapshot['phase'], string> = {
@@ -138,12 +146,35 @@ function RunningView({ callId }: { callId: string }): JSX.Element {
   )
 }
 
-function SettledView({ block, cwd }: { block: OwnerProps['block']; cwd?: string }): JSX.Element {
+function FileChip({ path, openFile }: { path: string; openFile?: (path: string) => void }): JSX.Element {
+  const slash = path.lastIndexOf('/')
+  const dir = slash >= 0 ? path.slice(0, slash + 1) : ''
+  const base = slash >= 0 ? path.slice(slash + 1) : path
+  return (
+    <button
+      type="button"
+      style={S.chip}
+      title={openFile ? `打开 ${path}` : path}
+      onClick={openFile ? () => openFile(path) : undefined}
+    >
+      <span aria-hidden>📄</span>
+      {dir !== '' && <span style={S.chipDir}>{dir}</span>}
+      <span>{base}</span>
+    </button>
+  )
+}
+
+function SettledView({ block, cwd, openFile }: { block: OwnerProps['block']; cwd?: string; openFile?: (path: string) => void }): JSX.Element {
+  const files = block.meta?.omicos?.generated_files ?? []
   const text = (block.content ?? [])
     .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    // With the structured list in meta, the model-facing files line is
+    // redundant for humans — the chips below ARE that list, clickable.
+    // Old records without meta keep the text fallback.
+    .filter((b) => files.length === 0 || !b.text!.startsWith(FILES_LINE_PREFIX))
     .map((b) => b.text)
     .join('\n\n')
-  const figures = (block.meta?.omicos?.generated_files ?? []).filter((p) => IMAGE_EXT.test(p))
+  const figures = files.filter((p) => IMAGE_EXT.test(p))
   return (
     <div style={S.card}>
       <div style={S.head}>
@@ -159,6 +190,13 @@ function SettledView({ block, cwd }: { block: OwnerProps['block']; cwd?: string 
             <MarkdownText text={stripLocalImageMarkdown(text)} />
           </div>
         ))}
+      {files.length > 0 && (
+        <div style={S.chips}>
+          {files.map((path) => (
+            <FileChip key={path} path={path} openFile={openFile} />
+          ))}
+        </div>
+      )}
       {cwd !== undefined &&
         figures.map((path) => (
           <img
@@ -166,6 +204,8 @@ function SettledView({ block, cwd }: { block: OwnerProps['block']; cwd?: string 
             style={S.img}
             src={`/omicos/figure?ws=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`}
             alt={path}
+            title={openFile ? `打开 ${path}` : path}
+            onClick={openFile ? () => openFile(path) : undefined}
           />
         ))}
     </div>
@@ -173,7 +213,7 @@ function SettledView({ block, cwd }: { block: OwnerProps['block']; cwd?: string 
 }
 
 export function OmicosToolView(props: unknown): JSX.Element {
-  const { callId, block, cwd } = props as OwnerProps
+  const { callId, block, cwd, openFile } = props as OwnerProps
   const settled = block !== undefined && 'kind' in block && block.kind === 'tool-result'
-  return settled ? <SettledView block={block} cwd={cwd} /> : <RunningView callId={callId} />
+  return settled ? <SettledView block={block} cwd={cwd} openFile={openFile} /> : <RunningView callId={callId} />
 }
