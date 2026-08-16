@@ -16,6 +16,7 @@
   },
   "files": [
     "lib",
+    "src",
     "cordis.patch.yml",
     "LICENSE",
     "README.md"
@@ -40,9 +41,9 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.1",
-    "@omicverse/omicos-client": "^0.1.0",
-    "@omicverse/omicos-launcher": "^0.1.0",
-    "@omicverse/omicos-protocol": "^0.1.0"
+    "@omicverse/omicos-client": "^0.1.1",
+    "@omicverse/omicos-launcher": "^0.1.1",
+    "@omicverse/omicos-protocol": "^0.1.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
