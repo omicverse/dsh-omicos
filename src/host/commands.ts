@@ -60,6 +60,33 @@ export function registerOmicosCommands(ctx: Context, deps: CommandDeps): Array<(
 
   disposers.push(
     commands.register({
+      name: 'omicos-help',
+      description: 'What this plugin adds: tools, commands, and where to look',
+      handler: () =>
+        ok(
+          [
+            'OmicOS —— 在 dsh 里跑生信分析。以下工具由智能体自动调用，你只要正常说话：',
+            '  • omicos_analyze —— 跑分析（持久 Python 内核，adata 等状态跨轮累积；长任务可转后台）',
+            '  • omicos_capabilities —— 检索本机已装的技能/智能体目录',
+            '  • omicos_list_variables / omicos_query_variable —— 直读内核，看有什么数据、处理到哪一步',
+            '  • omicos_list_generated_files —— 本会话产出的图与文件',
+            '',
+            '所以「有哪些能力」「adata 现在什么状态」这类问题直接问智能体即可，不必记命令。',
+            '需要你亲自做的（智能体做不了的）才是命令：',
+            '  /omicos-login   登录（浏览器配对码，手机号或邮箱）',
+            '  /omicos-status  内核与登录状态',
+            '  /omicos-account 套餐、有效期、订阅与管理链接',
+            '  /omicos-logout  退出本机内核的登录',
+            '  /omicos-stop-kernel  停掉本插件自己启动的内核（外部内核不碰）',
+            '',
+            '上方的 OmicOS 标签页里有同样的信息，外加内核变量一览与能力检索框。',
+          ].join('\n'),
+        ),
+    }),
+  )
+
+  disposers.push(
+    commands.register({
       name: 'omicos-status',
       description: 'OmicOS kernel + sign-in status',
       handler: async () => {

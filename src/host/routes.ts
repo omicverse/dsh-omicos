@@ -9,8 +9,9 @@
  * not be readable when someone binds dsh to 0.0.0.0.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { classifyGeneratedFile, fetchFilePreview } from '@omicverse/omicos-client'
+import { HttpCoreTransport, classifyGeneratedFile, fetchFilePreview, getKernelVars, isDataVariable } from '@omicverse/omicos-client'
 import { LoginBusyError, type AccountService } from './account.js'
+import { CapabilityIndex, searchCatalog } from './capabilities.js'
 import type { ActivityStore } from './activity-store.js'
 import type { OmicosPool } from './pool.js'
 import type { Context } from './dsh-compat.js'
@@ -35,6 +36,25 @@ function safeFigurePath(path: string): boolean {
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
 
+/**
+ * Core's own version string, or undefined — a status pane must not fail
+ * over a version line.
+ *
+ * 🔴 The field is `display` (`"0.3.30+b84ae2d"`), with `semver` as the bare
+ * fallback. There is no `version` key: guessing one degraded silently to a
+ * dash in the pane, which reads exactly like "core did not answer".
+ */
+async function coreVersion(baseUrl: string): Promise<string | undefined> {
+  if (baseUrl === '') return undefined
+  try {
+    const res = await new HttpCoreTransport(baseUrl).request('GET', '/api/version')
+    const body = (await res.json()) as { display?: string; semver?: string }
+    return body.display ?? body.semver
+  } catch {
+    return undefined
+  }
+}
+
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
   res.end(JSON.stringify(body))
@@ -55,6 +75,9 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() => void> {
   const webServer = ctx.get('webServer')
   if (webServer === undefined) return []
+
+  // One catalog cache for the tab, independent of the tools' own.
+  const capabilities = new CapabilityIndex()
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (!LOOPBACK.has(req.socket.remoteAddress ?? '')) {
@@ -102,6 +125,61 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
           return
         }
         json(res, 200, { running: feed.running, snapshot: feed.snapshot })
+        return
+      }
+      if (method === 'GET' && path === '/omicos/kernel') {
+        // Which kernels this plugin is talking to. Only WARM entries are
+        // reported — this is a status read, so it must never be the thing
+        // that spawns a core.
+        const entries = deps.pool === undefined ? [] : deps.pool.list().filter((e) => e.kernel.baseUrl !== undefined)
+        json(res, 200, {
+          kernels: await Promise.all(
+            entries.map(async (e) => ({
+              workspace: e.workspace,
+              base_url: e.kernel.baseUrl,
+              spawned: e.kernel.isSpawned,
+              version: await coreVersion(e.kernel.baseUrl ?? ''),
+            })),
+          ),
+        })
+        return
+      }
+      if (method === 'GET' && path === '/omicos/vars') {
+        const ws = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('workspace') ?? ''
+        const entry = deps.pool?.list().find((e) => e.workspace === ws && e.kernel.baseUrl !== undefined)
+        if (entry === undefined) {
+          json(res, 404, { error: 'no warm kernel for that workspace' })
+          return
+        }
+        const handle = await entry.kernel.handle()
+        const listing = await getKernelVars(new HttpCoreTransport(handle.baseUrl), entry.workspace)
+        json(res, 200, {
+          kernel_id: listing.kernel_id,
+          vars: listing.vars.filter(isDataVariable).map((v) => ({ name: v.name, type: v.type, shape: v.shape, size_bytes: v.size_bytes })),
+        })
+        return
+      }
+      if (method === 'GET' && path === '/omicos/capabilities') {
+        const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
+        // Any warm kernel answers; the catalog is per-installation, not
+        // per-workspace. Falls back to spawning nothing: no kernel, no answer.
+        const entry = deps.pool?.list().find((e) => e.kernel.baseUrl !== undefined)
+        if (entry === undefined) {
+          json(res, 404, { error: 'no warm kernel — run an omicos tool once, or sign in' })
+          return
+        }
+        const handle = await entry.kernel.handle()
+        const catalog = await capabilities.load(handle.baseUrl)
+        const snap = await deps.account.snapshot().catch(() => undefined)
+        const plan = snap?.plan?.verified === true ? snap.plan.code : undefined
+        json(
+          res,
+          200,
+          searchCatalog(catalog, query.get('q') ?? '', {
+            limit: Number(query.get('limit') ?? 12),
+            ...(plan === undefined ? {} : { plan }),
+          }),
+        )
         return
       }
       if (method === 'GET' && path.startsWith('/omicos/files/')) {

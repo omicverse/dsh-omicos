@@ -47,6 +47,13 @@ afterEach(async () => {
   servers = []
 })
 
+/** Look commands up by NAME — registration ORDER is not part of the contract. */
+function byName<T extends { name: string }>(commands: T[], name: string): T {
+  const found = commands.find((c) => c.name === name)
+  if (found === undefined) throw new Error(`command ${name} not registered (have: ${commands.map((c) => c.name).join(', ')})`)
+  return found
+}
+
 describe('registerOmicosCommands', () => {
   it('registers nothing when the commands service is absent (optional peer)', () => {
     const { ctx } = fakeCtx(false)
@@ -59,7 +66,14 @@ describe('registerOmicosCommands', () => {
     const { pool, account } = poolFor('http://127.0.0.1:1')
     registerOmicosCommands(ctx, { ...BASE, pool, account })
     for (const c of commands) expect(c.name).toMatch(/^[a-z][a-z0-9_-]*$/)
-    expect(commands.map((c) => c.name)).toEqual(['omicos-login', 'omicos-status', 'omicos-account', 'omicos-logout', 'omicos-stop-kernel'])
+    expect(commands.map((c) => c.name)).toEqual([
+      'omicos-login',
+      'omicos-help',
+      'omicos-status',
+      'omicos-account',
+      'omicos-logout',
+      'omicos-stop-kernel',
+    ])
   })
 
   it('omicos-login returns the pairing code IMMEDIATELY; approval lands in background and /omicos-status reports it', async () => {
@@ -92,14 +106,15 @@ describe('registerOmicosCommands', () => {
     const { ctx, commands } = fakeCtx()
     const { pool, account } = poolFor(core.baseUrl, false, auth.baseUrl)
     registerOmicosCommands(ctx, { ...BASE, pool, account, upstreamBaseUrl: auth.baseUrl })
-    const [login, status] = commands
+    const login = byName(commands, 'omicos-login')
+    const status = byName(commands, 'omicos-status')
 
-    const result = await login!.handler({ rawInput: '' })
+    const result = await login.handler({ rawInput: '' })
     expect(result.kind).toBe('success')
     expect(result.text).toContain('AB-12')
     // Not approved yet — nothing pushed, status says pending.
     expect(pushed).toBeUndefined()
-    expect((await status!.handler({ rawInput: '' })).text).toContain('等待批准')
+    expect((await status.handler({ rawInput: '' })).text).toContain('等待批准')
 
     approve = true
     await vi.waitFor(() => {
@@ -109,7 +124,7 @@ describe('registerOmicosCommands', () => {
     // The relay-only field must NOT be forwarded by an extension host (protocol auth.ts).
     expect((pushed as Record<string, unknown>).process_token).toBeUndefined()
 
-    const after = await status!.handler({ rawInput: '' })
+    const after = await status.handler({ rawInput: '' })
     expect(after.text).toContain('已登录')
     expect(after.text).toContain('a@b.com')
   })
@@ -128,11 +143,11 @@ describe('registerOmicosCommands', () => {
     const { pool, account } = poolFor('http://127.0.0.1:1', false, auth.baseUrl)
     registerOmicosCommands(ctx, { ...BASE, pool, account, upstreamBaseUrl: auth.baseUrl })
 
-    const first = await commands[0]!.handler({ rawInput: '' })
+    const first = await byName(commands, 'omicos-login').handler({ rawInput: '' })
     expect(first.kind).toBe('success')
     expect(first.text).toContain('QQ-77')
 
-    const second = await commands[0]!.handler({ rawInput: '' })
+    const second = await byName(commands, 'omicos-login').handler({ rawInput: '' })
     expect(second.kind).toBe('error')
     expect(second.text).toContain('等待批准')
   })
@@ -171,7 +186,7 @@ describe('registerOmicosCommands', () => {
     await attached.pool.entry('/ws').kernel.handle()
     const { ctx, commands } = fakeCtx()
     registerOmicosCommands(ctx, { ...BASE, pool: attached.pool, account: attached.account })
-    const stopCmd = commands[4]!
+    const stopCmd = byName(commands, 'omicos-stop-kernel')
     const r1 = await stopCmd.handler({ rawInput: '' })
     expect(r1.text).toContain('不会停止')
     expect(attached.stop).not.toHaveBeenCalled()
@@ -180,7 +195,7 @@ describe('registerOmicosCommands', () => {
     await spawned.pool.entry('/ws').kernel.handle()
     const ctx2 = fakeCtx()
     registerOmicosCommands(ctx2.ctx, { ...BASE, pool: spawned.pool, account: spawned.account })
-    const r2 = await ctx2.commands[4]!.handler({ rawInput: '' })
+    const r2 = await byName(ctx2.commands, 'omicos-stop-kernel').handler({ rawInput: '' })
     expect(r2.text).toContain('已停止 1 个')
     expect(spawned.stop).toHaveBeenCalledTimes(1)
     await expect(spawned.pool.entry('/ws').kernel.handle()).resolves.toBeDefined()
