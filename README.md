@@ -21,23 +21,29 @@ cost neither a turn nor a token.
 | Tool | What it does |
 | --- | --- |
 | `omicos_analyze` | Runs a full OmicOS turn in a persistent kernel bound to the workspace. Repeated calls in one dsh session land on the same OmicOS conversation, so state accumulates. `background: true` hands it to `ctx.jobs` with live tqdm progress. |
-| `omicos_capabilities` | Searches the installed skill/agent catalog (269 skills + 97 agents on a full install) and returns a ranked, bounded projection. Use it to decide whether a task is worth delegating. Omit the query for a category overview. |
+| `omicos_capabilities` | Searches the installed skill/agent catalog (several hundred skills and ~100 agents on a full install) and returns a ranked, bounded projection. Use it to decide whether a task is worth delegating. Omit the query for a category overview. |
 | `omicos_list_variables` | What currently lives in the kernel — name, type, shape, size. |
 | `omicos_query_variable` | One variable in detail. For an AnnData this includes the preprocessing state (`is_int` / `is_normalized` / `is_log1p` / `is_scaled`), which is what decides whether the next step is legal. |
 | `omicos_list_generated_files` | Every file the analyses of this conversation produced. |
 
 ## Commands
 
-`/omicos-login` (device-code pairing — sign in with phone or email in the
-browser), `/omicos-status`, `/omicos-account`, `/omicos-logout`,
-`/omicos-stop-kernel`.
+`/omicos-help` (what the plugin adds, and where to look), `/omicos-login`
+(device-code pairing — sign in with phone or email in the browser),
+`/omicos-status`, `/omicos-account`, `/omicos-logout`, `/omicos-stop-kernel`.
+
+Deliberately short: commands are for what the agent *cannot* do for you.
+Listing variables, browsing capabilities or finding outputs is better asked
+of the agent, which has tools for exactly that.
 
 ## UI
 
 The client bundle adds two surfaces to the web profile:
 
-- an **OmicOS tab** next to the conversation — sign-in state, plan, expiry, and
-  links to subscribe or manage the account;
+- an **OmicOS tab** next to the conversation — a small console: sign-in state,
+  plan and expiry with links to subscribe or manage; which kernels are attached,
+  where, at what version, and what is bound in them right now; and a search box
+  over the installed capability catalog;
 - a **live tool view** on `omicos_analyze` calls — the steps, tool calls and
   stdout tail as the analysis runs, instead of a spinner that ends in a wall of
   text. Generated figures render in the settled card.
@@ -92,7 +98,7 @@ about:
 pnpm install
 pnpm build       # tsc + the client bundle
 pnpm typecheck
-pnpm test        # 88 tests against the real dsh defineTool and a mock core
+pnpm test        # 89 tests against the real dsh defineTool and a mock core
 ```
 
 This package publishes as ONE dependency-light artifact: the `@omicverse/omicos-*`

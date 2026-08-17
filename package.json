@@ -1,6 +1,6 @@
 {
   "name": "@omicverse/dsh-omicos",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OmicOS as a deepseek-harness (dsh) plugin — Mode A: omicos bioinformatics tools + background jobs + login commands for the dsh agent (DSH-PLUGIN.md).",
   "type": "module",
   "main": "./lib/host/index.js",
