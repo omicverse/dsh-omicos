@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
-import { registerBetterSidebarTab } from '../src/client/betterSidebar.js'
+import { isSidebarMounted, registerBetterSidebarTab, subscribeSidebar } from '../src/client/betterSidebar.js'
 import { absolutize } from '../src/client/paths.js'
 
 interface InjectCall {
@@ -17,14 +17,18 @@ interface InjectCall {
 }
 
 /** A cordis-shaped stub that records `ctx.inject` and never fires it (service absent). */
-function stubCtx(service?: unknown): { ctx: Context; injects: InjectCall[]; effects: string[] } {
+function stubCtx(service?: unknown): { ctx: Context; injects: InjectCall[]; effects: string[]; cleanups: Array<() => void> } {
   const injects: InjectCall[] = []
   const effects: string[] = []
+  const cleanups: Array<() => void> = []
   const sub = {
     betterSidebar: service,
     effect: (execute: () => unknown, label?: string) => {
       effects.push(label ?? '')
-      execute()
+      // cordis unwinds an effect through the function it returns; keeping it
+      // is what lets a test drive teardown (the sidebar unloading).
+      const cleanup = execute()
+      if (typeof cleanup === 'function') cleanups.push(cleanup as () => void)
       return () => {}
     },
   }
@@ -34,7 +38,7 @@ function stubCtx(service?: unknown): { ctx: Context; injects: InjectCall[]; effe
     },
     ...sub,
   } as unknown as Context
-  return { ctx, injects, effects }
+  return { ctx, injects, effects, cleanups }
 }
 
 describe('registerBetterSidebarTab', () => {
@@ -74,7 +78,7 @@ describe('registerBetterSidebarTab', () => {
     // Their `single` sugar: reopening focuses the existing tab (no duplicates).
     expect(descriptor.single).toBe(true)
     // The registration rides an effect so plugin/HMR unload removes the tab.
-    expect(scope.effects).toEqual(['omicos: better-sidebar tab'])
+    expect(scope.effects).toEqual(['omicos: better-sidebar presence', 'omicos: better-sidebar tab'])
   })
 
   it('opens files through service.openFile — NOT the props.onOpenFile the type advertises', () => {
@@ -128,5 +132,43 @@ describe('absolutize (chat file chips)', () => {
     expect(absolutize('/abs/a.png', '/ws')).toBe('/abs/a.png')
     expect(absolutize('outputs/a.png', undefined)).toBe('outputs/a.png')
     expect(absolutize('outputs/a.png', '')).toBe('outputs/a.png')
+  })
+})
+
+describe('sidebar presence signal', () => {
+  // The OmicOS tab shows an install hint keyed off this, so a wrong answer
+  // either nags users who already have the sidebar or hides the hint from
+  // exactly the users it exists for.
+  //
+  // Asserts the TRANSITIONS, not an initial value: the signal is module
+  // state shared by every test in this file (and, in the browser, by the
+  // whole page — one client bundle, one sidebar).
+  it('flips true when the service appears and back to false when it unloads, notifying subscribers', () => {
+    // Baseline: earlier tests in this file leave the shared signal mounted,
+    // and setMounted() is edge-triggered — without this the "flips true"
+    // half would pass vacuously.
+    const warm = stubCtx({ registerTab: vi.fn().mockReturnValue(() => {}) })
+    registerBetterSidebarTab(warm.ctx)
+    warm.injects[0]!.callback(warm.ctx)
+    for (const cleanup of warm.cleanups) cleanup()
+    expect(isSidebarMounted()).toBe(false)
+
+    const seen: boolean[] = []
+    const unsubscribe = subscribeSidebar(() => seen.push(isSidebarMounted()))
+    try {
+      const { ctx, injects, cleanups } = stubCtx({ registerTab: vi.fn().mockReturnValue(() => {}) })
+      registerBetterSidebarTab(ctx)
+      expect(injects[0]!.callback).toBeTypeOf('function')
+
+      injects[0]!.callback(ctx)
+      expect(isSidebarMounted()).toBe(true)
+
+      for (const cleanup of cleanups) cleanup()
+      expect(isSidebarMounted()).toBe(false)
+
+      expect(seen).toEqual([true, false])
+    } finally {
+      unsubscribe()
+    }
   })
 })

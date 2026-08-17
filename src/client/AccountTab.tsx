@@ -16,7 +16,8 @@
  *
  * Flat dark styling via inline tokens; no glassmorphism.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { isSidebarMounted, subscribeSidebar } from './betterSidebar.js'
 
 interface AccountPlan {
   code: string
@@ -101,7 +102,38 @@ const S = {
   input: { flex: 1, minWidth: 0, padding: '7px 12px', borderRadius: 6, border: '1px solid var(--ds-border, #2a2d34)', background: 'var(--ds-bg, #14161a)', color: 'inherit', fontSize: 13 } as const,
   hit: { padding: '8px 0', borderTop: '1px solid var(--ds-border, #2a2d34)' } as const,
   scroll: { maxHeight: 320, overflowY: 'auto' } as const,
+  cmd: { display: 'block', marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--ds-bg, #14161a)', border: '1px solid var(--ds-border, #2a2d34)', fontFamily: 'ui-monospace, monospace', fontSize: 12, overflowX: 'auto', whiteSpace: 'pre' } as const,
 } as const
+
+const SIDEBAR_INSTALL = 'dsh plugin --profile web add dsh-better-sidebar'
+
+/**
+ * Install hint for the OPTIONAL file-browser integration, shown only to
+ * users who do not already have it mounted.
+ *
+ * 🔴 It cannot be shipped as a dependency of this package, however much
+ * that would suit: `dsh plugin add` builds `dsh.profile.bundles` from the
+ * PROFILE's own dependencies, so a transitive install downloads the
+ * package and never mounts it — and inserting its row from our own patch
+ * double-mounts it for anyone who also installs it properly ("two Node
+ * halves, two sidebars", the sidebar author's own warning). A one-line
+ * hint with the exact command is the honest form.
+ */
+function SidebarHint(): JSX.Element | null {
+  const mounted = useSyncExternalStore(subscribeSidebar, isSidebarMounted, () => false)
+  if (mounted) return null
+  return (
+    <div style={{ ...S.dim, fontSize: 12, marginTop: 16 }}>
+      想在侧边栏里直接翻看分析产出的图与文件？装上可选的
+      {' '}
+      <a href="https://github.com/dsh-external/dsh-better-sidebar" target="_blank" rel="noopener noreferrer">
+        dsh-better-sidebar
+      </a>
+      ，本插件会自动多注册一个「OmicOS 产物」侧栏页（不装也不影响任何功能）：
+      <code style={S.cmd}>{SIDEBAR_INSTALL}</code>
+    </div>
+  )
+}
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: 'no-store' })
@@ -501,6 +533,8 @@ export function AccountTab(): JSX.Element {
         <KernelPane />
         <CapabilityPane />
       </div>
+
+      <SidebarHint />
 
       <div style={{ ...S.dim, fontSize: 12, marginTop: 16 }}>
         购买与管理在 app.omicos.cn 完成；本插件不保存任何支付信息与登录凭据（token 由本地 omicos 内核保管）。

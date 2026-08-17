@@ -26,6 +26,35 @@ import { ProductsPanel } from './ProductsPanel.js'
 const TAB_ID = 'omicos:files'
 
 /**
+ * Whether the optional sidebar is actually MOUNTED, as a subscribable so
+ * the OmicOS tab can offer the install hint only to users who lack it.
+ *
+ * 🔴 Presence cannot be answered from the host side. A dependency in
+ * node_modules is not a mounted plugin: `dsh plugin add` reconciles
+ * `dsh.profile.bundles` from the PROFILE's own dependencies only
+ * (dsh/lib plugin.js `reconcilePlugins`), so a transitive install is
+ * downloaded and never activated. The service existing in this client
+ * context is the one honest signal.
+ */
+let mounted = false
+const listeners = new Set<() => void>()
+
+function setMounted(next: boolean): void {
+  if (mounted === next) return
+  mounted = next
+  for (const fn of listeners) fn()
+}
+
+export function isSidebarMounted(): boolean {
+  return mounted
+}
+
+export function subscribeSidebar(onChange: () => void): () => void {
+  listeners.add(onChange)
+  return () => listeners.delete(onChange)
+}
+
+/**
  * Structural face of the optional service — only what we call.
  *
  * 🔴 `openFile` is how an EXTERNAL tab opens a file in the sidebar's own
@@ -79,6 +108,10 @@ export function registerBetterSidebarTab(ctx: Context): void {
   injectable.inject(['betterSidebar'], (sub) => {
     const service = (sub as unknown as { betterSidebar?: BetterSidebarLike }).betterSidebar
     if (service === undefined) return
+    setMounted(true)
+    // Unwinds with the injected scope: if the sidebar unloads, the hint
+    // comes back rather than going stale.
+    sub.effect(() => () => setMounted(false), 'omicos: better-sidebar presence')
     sub.effect(
       () =>
         service.registerTab({
