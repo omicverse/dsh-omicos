@@ -79,14 +79,16 @@ interface CapabilityResult {
 
 const S = {
   page: { padding: '24px', maxWidth: 1100, margin: '0 auto', color: 'var(--ds-fg, #e6e6e6)', fontSize: 14, lineHeight: 1.7 } as const,
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, alignItems: 'start' } as const,
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, alignItems: 'stretch' } as const,
   card: { background: 'var(--ds-bg-raised, #1b1d22)', border: '1px solid var(--ds-border, #2a2d34)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 } as const,
-  cardTight: { background: 'var(--ds-bg-raised, #1b1d22)', border: '1px solid var(--ds-border, #2a2d34)', borderRadius: 8, padding: '16px 20px', marginBottom: 0 } as const,
+  cardTight: { background: 'var(--ds-bg-raised, #1b1d22)', border: '1px solid var(--ds-border, #2a2d34)', borderRadius: 8, padding: '16px 20px', marginBottom: 0, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' } as const,
   h: { fontSize: 13, fontWeight: 600, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 } as const,
-  row: { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '3px 0' } as const,
+  row: { display: 'grid', gridTemplateColumns: '84px minmax(0, 1fr)', gap: 12, padding: '3px 0', alignItems: 'baseline' } as const,
+  rowWide: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, padding: '3px 0', alignItems: 'baseline' } as const,
+  val: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
   dim: { opacity: 0.6 } as const,
-  badge: { display: 'inline-block', padding: '1px 10px', borderRadius: 4, background: '#2b4a2f', color: '#9be29f', fontWeight: 600 } as const,
-  badgePending: { display: 'inline-block', padding: '1px 10px', borderRadius: 4, background: '#2a2d34', color: '#9aa3ad', fontWeight: 600 } as const,
+  badge: { justifySelf: 'start', padding: '1px 10px', borderRadius: 4, background: '#2b4a2f', color: '#9be29f', fontWeight: 600 } as const,
+  badgePending: { justifySelf: 'start', padding: '1px 10px', borderRadius: 4, background: '#2a2d34', color: '#9aa3ad', fontWeight: 600 } as const,
   tag: { display: 'inline-block', padding: '0 7px', borderRadius: 4, background: '#22252b', color: '#9aa3ad', fontSize: 11, fontWeight: 600, letterSpacing: '0.03em' } as const,
   tagLocked: { display: 'inline-block', padding: '0 7px', borderRadius: 4, background: '#3a3323', color: '#e2c07f', fontSize: 11, fontWeight: 600 } as const,
   warn: { color: '#e2a75f' } as const,
@@ -173,19 +175,19 @@ function KernelPane(): JSX.Element {
         <div key={k.workspace} style={{ marginBottom: 12 }}>
           <div style={S.row}>
             <span style={S.dim}>工作区</span>
-            <span title={k.workspace}>{shortWorkspace(k.workspace)}</span>
+            <span style={S.val} title={k.workspace}>{shortWorkspace(k.workspace)}</span>
           </div>
           <div style={S.row}>
             <span style={S.dim}>地址</span>
-            <span style={S.mono}>{k.base_url}</span>
+            <span style={{ ...S.mono, ...S.val }}>{k.base_url}</span>
           </div>
           <div style={S.row}>
             <span style={S.dim}>版本</span>
-            <span style={S.mono}>{k.version ?? '—'}</span>
+            <span style={{ ...S.mono, ...S.val }}>{k.version ?? '—'}</span>
           </div>
           <div style={S.row}>
             <span style={S.dim}>来源</span>
-            <span>{k.spawned ? '本插件启动' : '挂载到已运行实例'}</span>
+            <span style={S.val}>{k.spawned ? '本插件启动' : '挂载到已运行实例'}</span>
           </div>
           <div style={{ ...S.h, marginTop: 10 }}>内核变量</div>
           {(vars[k.workspace] ?? []).length === 0 ? (
@@ -193,8 +195,8 @@ function KernelPane(): JSX.Element {
           ) : (
             <div style={S.scroll}>
               {(vars[k.workspace] ?? []).map((v) => (
-                <div key={v.name} style={S.row}>
-                  <span style={S.mono}>{v.name}</span>
+                <div key={v.name} style={S.rowWide}>
+                  <span style={{ ...S.mono, ...S.val }}>{v.name}</span>
                   <span style={S.dim}>
                     {v.type}
                     {v.shape ? ` ${v.shape}` : ''} · {humanBytes(v.size_bytes)}
@@ -205,7 +207,7 @@ function KernelPane(): JSX.Element {
           )}
         </div>
       ))}
-      <div style={S.btnRow}>
+      <div style={{ ...S.btnRow, marginTop: 'auto' }}>
         <button style={S.btn} onClick={() => void refresh()}>
           刷新
         </button>
@@ -265,8 +267,8 @@ function CapabilityPane(): JSX.Element {
           {result.categories !== undefined && (
             <div style={{ ...S.scroll, marginTop: 4 }}>
               {result.categories.map((c) => (
-                <div key={c.category} style={S.row}>
-                  <span>{c.category}</span>
+                <div key={c.category} style={S.rowWide}>
+                  <span style={S.val}>{c.category}</span>
                   <span style={S.dim}>
                     {c.skills} 技能 / {c.agents} 智能体
                   </span>
@@ -291,7 +293,7 @@ function CapabilityPane(): JSX.Element {
           )}
         </>
       )}
-      <div style={{ ...S.dim, fontSize: 12, marginTop: 10 }}>
+      <div style={{ ...S.dim, fontSize: 12, marginTop: 'auto', paddingTop: 10 }}>
         这里只是目录——不用按名字调用，直接在对话里描述任务，OmicOS 会自己路由。
       </div>
     </div>
