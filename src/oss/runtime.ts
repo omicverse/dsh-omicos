@@ -1,3 +1,4 @@
+import { RemoteImports } from './remote-imports.js'
 import { BaseRuntimes } from './base-runtimes.js'
 import type {PublicationProfileReference} from './publication-profile-types.js'
 import {PublicationProfiles} from './publication-profiles.js'
@@ -40,6 +41,7 @@ export class OssRuntime {
   private dossierProjects = new Map<string, Promise<ProjectDossier>>()
   private mcpProjects = new Map<string, Promise<ProjectMcpConnections>>()
   private methodProjects = new Map<string, Promise<ScientificMethods>>()
+  private remoteImportProjects=new Map<string,Promise<RemoteImports>>()
   private uploadProjects = new Map<string, Promise<DataUploads>>()
   private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
   private planProjects = new Map<string, Promise<ResearchPlans>>()
@@ -174,6 +176,12 @@ export class OssRuntime {
     if (!service) { service = ScientificMethods.open(parent.workspace); this.methodProjects.set(parent.workspace, service); service.catch(() => { if (this.methodProjects.get(parent.workspace) === service) this.methodProjects.delete(parent.workspace) }) }
     return service
   }
+  async remoteImports(workspace:string):Promise<RemoteImports>{
+    const parent=await this.project(workspace);if(this.closing)throw new Error('OmicOS OSS runtime is shutting down')
+    let service=this.remoteImportProjects.get(parent.workspace)
+    if(!service){service=this.uploads(parent.workspace).then(uploads=>RemoteImports.open(parent.workspace,uploads,this.sensitiveFiles));this.remoteImportProjects.set(parent.workspace,service);service.catch(()=>{if(this.remoteImportProjects.get(parent.workspace)===service)this.remoteImportProjects.delete(parent.workspace)})}
+    return service
+  }
   async uploads(workspace: string): Promise<DataUploads> {
     const parent = await this.project(workspace)
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
@@ -267,6 +275,8 @@ export class OssRuntime {
     this.dossierProjects.clear()
     await Promise.allSettled([...this.assemblyProjects.values()].map(async service=>(await service).dispose()))
     this.assemblyProjects.clear()
+    await Promise.allSettled([...this.remoteImportProjects.values()].map(async service=>(await service).dispose()))
+    this.remoteImportProjects.clear()
     await Promise.allSettled([...this.uploadProjects.values()].map(async service => (await service).dispose()))
     this.uploadProjects.clear()
     await Promise.allSettled([...this.environmentProjects.values()].map(async service => (await service).dispose()))

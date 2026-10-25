@@ -58,6 +58,15 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await post('base-runtime-select',{selection:{operationId:'stale-rollback',revision:1,runtimeId:null},confirmed:true})).status).toBe(409)
     expect((await(await fetchHost(`${base}/omicos/oss/api/base-runtime-history`)).json() as any).entries).toHaveLength(2);expect(seen).toHaveLength(0)
   })
+  it('owner-authenticates remote import state and rejects unapproved or non-HTTPS source access before any network request',async()=>{
+    const project=(await runtime.list())[0],prefix=`project/${project.id}/remote-import-`,input={operationId:'remote-test',url:`${base}/must-not-fetch`,directory:'',name:'remote.txt'}
+    expect((await fetch(`${base}/omicos/oss/api/${prefix}list`)).status).toBe(401)
+    expect((await post(`${prefix}start`,{import:input})).status).toBe(400)
+    expect((await post(`${prefix}start`,{import:input,confirmed:true})).status).toBe(400)
+    expect((await(await fetchHost(`${base}/omicos/oss/api/${prefix}list`)).json() as any).entries).toEqual([])
+    expect((await post(`${prefix}resume`,{id:'not-a-record',confirmed:true})).status).toBe(404)
+    expect(seen).toHaveLength(0);expect((await runtime.byId(project.id)).kernelState().state).toBe('cold')
+  })
   it('owner-authenticates chat SSE and projects stream availability without creating a conversation on cold reads',async()=>{
     const project=await runtime.project(join(directory,'stream-project'));const id=(await runtime.list()).find(entry=>entry.workspace===project.workspace)!.id;let closed=0,canceled=0
     runtime.chat={read:async()=>({sessionId:'fixed',messages:[],busy:false,cursor:0,hasMore:false}),send:async()=>({sessionId:'fixed',accepted:true}),cancel:async()=>{canceled++},async *follow(_workspace,signal){try{yield {sessionId:'fixed',messages:[],busy:true,cursor:0,hasMore:false,live:{attemptId:'a',text:'Public partial',truncated:false}};await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}))}finally{closed++}}}

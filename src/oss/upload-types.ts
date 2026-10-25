@@ -2,8 +2,8 @@ export const UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 export const UPLOAD_MAX_BYTES = 10 * 1024 ** 3
 export interface UploadRequest { operationId: string; directory: string; name: string; bytes: number; chunkHashes: string[]; expectedSha256?: string }
 export interface DataUpload extends UploadRequest {
-  id: string; state: 'uploading' | 'finalizing' | 'committing' | 'completed' | 'canceled' | 'failed'; received: number
-  chunkSize: number; manifestSha256: string; requestSha256: string; target: string; targetDirectory: string; targetDirectoryIdentity: string; cleanupPending?: boolean
+  id: string; state: 'uploading' | 'adopting' | 'finalizing' | 'committing' | 'completed' | 'canceled' | 'failed'; received: number
+  chunkSize: number; manifestSha256: string; requestSha256: string; target: string; targetDirectory: string; targetDirectoryIdentity: string; cleanupPending?: boolean; downloadId?: string
   createdAt: string; updatedAt: string; sha256?: string; error?: string
 }
 export type UploadSummary = Omit<DataUpload, 'chunkHashes' | 'requestSha256' | 'targetDirectory' | 'targetDirectoryIdentity'>

@@ -1,9 +1,9 @@
 import { createRequire } from 'node:module'
 import type { DatabaseSync as Database } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { createReadStream, constants } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { chmod, link, lstat, mkdir, open, realpath, rm, stat } from 'node:fs/promises'
+import { chmod, link, lstat, mkdir, open, realpath, rename, rm, stat } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { workspacePath } from './files.js'
 import { UploadError, portableUploadName, UPLOAD_CHUNK_BYTES, UPLOAD_MAX_BYTES, type DataUpload, type UploadRequest, type UploadSummary } from './upload-types.js'
@@ -41,6 +41,7 @@ export class DataUploads{
   private stage(id:string){identity(id);return join(this.workspace,'.omicos-oss','uploads',`${id}.part`)}
   private async checkedStage(id:string){const path=this.stage(id);if(await realpath(path)!==path||!(await lstat(path)).isFile())throw new UploadError(403,'Upload staging identity changed');return path}
   get(id:string):DataUpload{identity(id);const row=this.db.prepare('SELECT record_json FROM uploads WHERE id=?').get(id);if(!row)throw new UploadError(404,'Upload not found');const record=JSON.parse(String(row.record_json)) as DataUpload;if(record.id!==id||record.chunkSize!==UPLOAD_CHUNK_BYTES||!Number.isSafeInteger(record.received)||record.received<0||record.received>record.bytes||(record.received%UPLOAD_CHUNK_BYTES!==0&&record.received!==record.bytes))throw new UploadError(409,'Invalid persisted upload identity');try{const {operationId,...definition}=normalizeUpload(record);if(hash(JSON.stringify(definition))!==record.requestSha256||hash(JSON.stringify({bytes:record.bytes,chunkSize:UPLOAD_CHUNK_BYTES,chunkHashes:record.chunkHashes}))!==record.manifestSha256)throw new Error('checksum mismatch')}catch{throw new UploadError(409,'Upload source identity changed; preserve and inspect its metadata')}return record}
+  byOperation(operationId:string):DataUpload|undefined{identity(operationId);const row=this.db.prepare('SELECT id FROM uploads WHERE operation_id=?').get(operationId);return row?this.get(String(row.id)):undefined}
   private update(id:string,fields:Partial<DataUpload>):DataUpload{const record={...this.get(id),...fields,updatedAt:new Date().toISOString()};this.db.prepare('UPDATE uploads SET record_json=? WHERE id=?').run(JSON.stringify(record),id);return record}
   list(before=Number.MAX_SAFE_INTEGER){if(!Number.isSafeInteger(before)||before<1)throw new UploadError(400,'Invalid upload page cursor');const rows=this.db.prepare('SELECT rowid,id FROM uploads WHERE rowid<? ORDER BY rowid DESC LIMIT 51').all(before);return {entries:rows.slice(0,50).map(row=>{const {chunkHashes,requestSha256,targetDirectory,targetDirectoryIdentity,...summary}=this.get(String(row.id));return summary as UploadSummary}),next:rows.length>50?Number(rows[49].rowid):undefined,chunkSize:UPLOAD_CHUNK_BYTES,maxBytes:UPLOAD_MAX_BYTES}}
   private async destination(directory:string,name:string):Promise<{directory:string;path:string;target:string;identity:string}>{
@@ -53,10 +54,10 @@ export class DataUploads{
   start(input:UploadRequest):Promise<DataUpload>{return this.serial(async()=>{
     const normalized=normalizeUpload(input);const {operationId,...definition}=normalized;const requestSha256=hash(JSON.stringify(definition));const previous=this.db.prepare('SELECT id FROM uploads WHERE operation_id=?').get(operationId)
     if(previous){const record=this.get(String(previous.id));if(record.requestSha256!==requestSha256)throw new UploadError(409,'Upload operation belongs to another file/request');return record}
-    const count=Number(this.db.prepare("SELECT COUNT(*) AS count FROM uploads WHERE json_extract(record_json,'$.state') IN ('uploading','finalizing','committing')").get()!.count);if(count>=4)throw new UploadError(409,'Four uploads already reserve staging; complete or cancel one first')
+    const count=Number(this.db.prepare("SELECT COUNT(*) AS count FROM uploads WHERE json_extract(record_json,'$.state') IN ('uploading','adopting','finalizing','committing')").get()!.count);if(count>=4)throw new UploadError(409,'Four uploads already reserve staging; complete or cancel one first')
     const destination=await this.destination(normalized.directory,normalized.name)
     try{await lstat(destination.path);throw new UploadError(409,'Destination already exists; choose another file name')}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}
-    if(this.db.prepare("SELECT id FROM uploads WHERE json_extract(record_json,'$.target')=? AND json_extract(record_json,'$.state') IN ('uploading','finalizing','committing')").get(destination.target))throw new UploadError(409,'Another unfinished import reserves this destination')
+    if(this.db.prepare("SELECT id FROM uploads WHERE json_extract(record_json,'$.target')=? AND json_extract(record_json,'$.state') IN ('uploading','adopting','finalizing','committing')").get(destination.target))throw new UploadError(409,'Another unfinished import reserves this destination')
     const id=randomUUID();const file=await open(this.stage(id),'wx',0o600);await file.sync();await file.close();await this.syncDirectory(join(this.workspace,'.omicos-oss','uploads'));const at=new Date().toISOString();const record:DataUpload={...normalized,id,requestSha256,manifestSha256:hash(JSON.stringify({bytes:normalized.bytes,chunkSize:UPLOAD_CHUNK_BYTES,chunkHashes:normalized.chunkHashes})),chunkSize:UPLOAD_CHUNK_BYTES,target:destination.target,targetDirectory:destination.directory,targetDirectoryIdentity:destination.identity,state:'uploading',received:0,createdAt:at,updatedAt:at}
     try{this.db.prepare('INSERT INTO uploads VALUES(?,?,?)').run(id,operationId,JSON.stringify(record))}catch(error){await rm(this.stage(id),{force:true});throw error}return record
   })}
@@ -81,6 +82,21 @@ export class DataUploads{
     const completed=this.update(record.id,{state:'completed',cleanupPending:true,error:undefined})
     try{await rm(await this.checkedStage(record.id),{force:true});await this.syncDirectory(join(this.workspace,'.omicos-oss','uploads'));return this.update(record.id,{cleanupPending:false})}
     catch(error){try{return this.update(record.id,{error:`Import committed; private staging cleanup remains pending: ${String(error).slice(-1000)}`})}catch{return completed}}
+  }
+  /** Internal fixed-path adoption of an owned download; never an arbitrary path/HTTP action. */
+  async adoptDownloaded(input:UploadRequest,downloadId:string):Promise<DataUpload>{
+    identity(downloadId);if(input.operationId!==`remote-${downloadId}`)throw new UploadError(400,'Owned download publication needs its exact operation identity');const initial=await this.start(input)
+    await this.serial(async()=>{
+      const record=this.get(initial.id);if(record.state==='completed')return
+      if(!['uploading','adopting'].includes(record.state)||record.state==='adopting'&&record.downloadId!==downloadId||this.cancelRequests.has(record.id))throw new UploadError(409,'Downloaded import is not accepting publication')
+      const root=join(this.workspace,'.omicos-oss','downloads');if(await realpath(root)!==root)throw new UploadError(403,'Download staging directory changed')
+      const source=join(root,`${downloadId}.part`),file=await open(source,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK)
+      try{const status=await file.stat();if(!status.isFile()||status.size!==record.bytes)throw new UploadError(409,'Downloaded source is not a regular file of the approved size')}finally{await file.close()}
+      this.update(record.id,{state:'adopting',downloadId})
+      const replacement=join(this.workspace,'.omicos-oss','uploads',`${record.id}.${randomUUID()}.adopt`)
+      try{await link(source,replacement);if(!(await lstat(replacement)).isFile())throw new UploadError(409,'Downloaded source identity changed');await rename(replacement,this.stage(record.id));await this.syncDirectory(join(this.workspace,'.omicos-oss','uploads'));this.update(record.id,{state:'uploading',received:record.bytes,error:undefined})}finally{await rm(replacement,{force:true})}
+    })
+    return this.finalize(initial.id)
   }
   finalize(id:string):Promise<DataUpload>{return this.serial(async()=>{
     let record=this.get(id);if(record.state==='completed')return record;if(record.state!=='uploading')throw new UploadError(409,'Only a pending upload can be finalized');if(record.received!==record.bytes)throw new UploadError(409,'Wait for all chunks before finalizing')
@@ -111,8 +127,15 @@ export class DataUploads{
   }
   private async recover():Promise<void>{
     let after=0
-    for(;;){const rows=this.db.prepare("SELECT rowid,id FROM uploads WHERE rowid>? AND json_extract(record_json,'$.state') IN ('uploading','finalizing','committing') OR (rowid>? AND json_extract(record_json,'$.cleanupPending')=1) ORDER BY rowid LIMIT 50").all(after,after);if(!rows.length)return
-      for(const row of rows){const record=this.get(String(row.id));try{if(record.state==='completed'){try{await rm(await this.checkedStage(record.id),{force:true})}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}await this.syncDirectory(join(this.workspace,'.omicos-oss','uploads'));this.update(record.id,{cleanupPending:false,error:undefined})}else if(record.state==='committing'&&await this.published(record)){const path=await this.checkedStage(record.id);if(!record.sha256||await this.digest(path)!==record.sha256)throw new Error('Published import bytes changed during recovery');await this.syncDirectory(record.targetDirectory);await this.complete(record)}else{const file=await open(await this.checkedStage(record.id),'r+');try{if((await file.stat()).size<record.received)throw new Error('Staging data is shorter than committed progress');await file.truncate(record.received);await file.sync()}finally{await file.close()}this.update(record.id,{state:'uploading',sha256:undefined,error:'Host restarted; reselect the source file and resume explicitly.'})}}catch(error){this.update(record.id,{state:record.state==='completed'?'completed':'failed',error:String(error).slice(-4000)})}}
+    for(;;){const rows=this.db.prepare("SELECT rowid,id FROM uploads WHERE rowid>? AND json_extract(record_json,'$.state') IN ('uploading','adopting','finalizing','committing') OR (rowid>? AND json_extract(record_json,'$.cleanupPending')=1) ORDER BY rowid LIMIT 50").all(after,after);if(!rows.length)return
+      for(const row of rows){const record=this.get(String(row.id));try{if(record.state==='adopting'){
+        if(!record.downloadId||record.operationId!==`remote-${identity(record.downloadId)}`)throw new Error('Unknown owned download adoption')
+        const source=join(this.workspace,'.omicos-oss','downloads',`${record.downloadId}.part`);if(await realpath(source)!==source)throw new Error('Owned download path changed')
+        const [stage,download]=await Promise.all([lstat(await this.checkedStage(record.id),{bigint:true}),lstat(source,{bigint:true})]);if(!download.isFile())throw new Error('Owned download is not regular')
+        const same=stage.dev===download.dev&&stage.ino===download.ino;if(same&&stage.size!==BigInt(record.bytes))throw new Error('Adopted download size changed')
+        // Never truncate an adopted inode: it also contains the recoverable remote source.
+        this.update(record.id,{state:'uploading',received:same?record.bytes:record.received,error:'Host stopped during download adoption; resume publication explicitly.'})
+      }else if(record.state==='completed'){try{await rm(await this.checkedStage(record.id),{force:true})}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error}await this.syncDirectory(join(this.workspace,'.omicos-oss','uploads'));this.update(record.id,{cleanupPending:false,error:undefined})}else if(record.state==='committing'&&await this.published(record)){const path=await this.checkedStage(record.id);if(!record.sha256||await this.digest(path)!==record.sha256)throw new Error('Published import bytes changed during recovery');await this.syncDirectory(record.targetDirectory);await this.complete(record)}else{const file=await open(await this.checkedStage(record.id),'r+');try{if((await file.stat()).size<record.received)throw new Error('Staging data is shorter than committed progress');await file.truncate(record.received);await file.sync()}finally{await file.close()}this.update(record.id,{state:'uploading',sha256:undefined,error:'Host restarted; reselect the source file and resume explicitly.'})}}catch(error){this.update(record.id,{state:record.state==='completed'?'completed':'failed',error:String(error).slice(-4000)})}}
       after=Number(rows.at(-1)!.rowid)
     }
   }

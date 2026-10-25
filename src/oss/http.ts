@@ -1,3 +1,4 @@
+import { RemoteImportError } from './remote-import-types.js'
 import { BASE_RUNTIME_CATALOG } from './runtime-catalog.js'
 import {streamPipelineExport} from './pipeline-export-http.js'
 import {searchProjects,ProjectSearchError} from './project-search.js'
@@ -258,6 +259,18 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else if (action === 'method-review' && method === 'POST') { if (data.confirmed !== true) throw new MethodError(400, 'Explicit human method publication/withdrawal required'); result = await methods.review(data.review) }
           else throw new CloudError(405, 'Method not allowed')
         }
+        else if(action?.startsWith('remote-import-')){
+          const imports=await runtime.remoteImports(parent.workspace),id=url.searchParams.get('id')||data?.id||''
+          if(action==='remote-import-list'&&method==='GET')result=imports.list(url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined)
+          else if(action==='remote-import-document'&&method==='GET')result=imports.get(id)
+          else if(method==='POST'&&['remote-import-start','remote-import-resume','remote-import-pause','remote-import-cancel'].includes(action)){
+            if(data.confirmed!==true)throw new RemoteImportError(400,'Explicit owner approval of remote source access/import is required')
+            if(action==='remote-import-start')result=await imports.start(data.import)
+            else if(action==='remote-import-resume')result=await imports.resume(id)
+            else if(action==='remote-import-pause')result=await imports.pause(id)
+            else result=await imports.cancel(id)
+          }else throw new RemoteImportError(405,'Method not allowed')
+        }
         else if (action?.startsWith('upload-')) {
           const uploads = await runtime.uploads(parent.workspace); const id = data?.id || url.searchParams.get('id') || ''
           if (action === 'upload-list' && method === 'GET') result = uploads.list(url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
@@ -387,7 +400,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof ProjectSearchError || error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof AssemblyError || error instanceof PublicationError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof RemoteImportError || error instanceof ProjectSearchError || error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof AssemblyError || error instanceof PublicationError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

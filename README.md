@@ -53,6 +53,26 @@ loaded or sent to the cloud by this upload channel. CSV/TSV/H5AD/RDS loading sti
 uses prepared code and a separate execution approval. See
 [data import decisions](docs/adr/0013-resumable-project-data-import.md).
 
+The remote-data pane imports HTTPS sources into the same project publication
+mechanism. Approve the source URL, explicit redirect origins, destination and
+optional independent byte count/SHA-256. It never forwards cloud authorization or
+browser cookies. Unknown-length transfers are bounded to 10 GiB; non-identity
+content encodings and unapproved redirects are rejected. Missing expected hashes
+are labelled as transport-only receipts, not independently verified source data.
+
+Downloads persist 4 MiB chunk hashes before advancing their offset. Pause/restart
+preserves committed bytes; resuming is explicit and first verifies those bytes.
+Partial Range continuation requires a stable strong ETag and known total, and a
+changed/ignored range is rejected instead of silently replacing the prefix. Reads
+and Host restart never resume downloads. Complete streams are reverified and
+adopted by the normal no-overwrite publisher without a second large disk copy;
+publication cannot be paused halfway through a commit. Cancel removes private
+staging, never project files. Source URL queries stay out of ordinary receipt UI
+and `omicos_remote_import_state` output. Signed URLs remain in the owner-private
+ledger for explicit resume; renewal/authenticated connector flows are separate.
+No automatic parsing, unpacking, loading or execution occurs. See
+[remote import decisions](docs/adr/0032-remote-project-data-import.md).
+
 The AnnData explorer inspects the current Python object, then previews an existing
 embedding, obs distribution or one explicitly selected X/layer/raw feature. Every
 inspection/plot requires approval. Seeded uniform sampling is capped at 10000 rows;
