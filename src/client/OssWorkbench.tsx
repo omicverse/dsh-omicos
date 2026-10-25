@@ -1,0 +1,154 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import QRCode from 'qrcode'
+import type { ScienceSnapshot } from '../oss/types.js'
+import { api, type Session, type CloudAccount } from './oss-api.js'
+import './oss.css'
+
+const message = (error: unknown) => error instanceof Error ? error.message : String(error)
+const short = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path
+interface Plan { code: string; name: string; display_name?: string; tagline?: string; monthly_price_rmb: number | null; quarterly_price_rmb?: number | null; yearly_price_rmb: number | null }
+interface Checkout { order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
+interface Quote { confirmation: string; plan: string; catalog_amount_rmb: number | null; notice: string; checkout: { period: string; provider: string; seats?: number } }
+
+function Store({ account, refresh }: { account: CloudAccount; refresh: () => Promise<void> }): JSX.Element {
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [period, setPeriod] = useState('monthly')
+  const [provider, setProvider] = useState('wechat')
+  const [domain, setDomain] = useState('')
+  const [quote, setQuote] = useState<Quote>()
+  const [order, setOrder] = useState<Checkout>()
+  const [status, setStatus] = useState('')
+  const [qr, setQr] = useState('')
+  const [subscription, setSubscription] = useState<any>()
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [labName, setLabName] = useState('')
+  const [seats, setSeats] = useState(3)
+  const [lookup, setLookup] = useState('')
+  const generation = useRef(account.generation)
+  generation.current = account.generation
+  const subscriptionRefresh = useCallback(async () => {
+    if (!account.logged_in) { setSubscription(undefined); return }
+    const original = account.generation
+    try { const result = await api(`subscription?domain=${encodeURIComponent(domain)}`); if (generation.current === original) setSubscription(result) }
+    catch (error) { if (generation.current === original) setError(message(error)) }
+  }, [account.generation, account.logged_in, domain])
+  useEffect(() => {
+    const controller = new AbortController()
+    void api<{ plans: Plan[] }>(`plans?domain=${encodeURIComponent(domain)}`, undefined, controller.signal).then(result => setPlans(result.plans), error => { if (!controller.signal.aborted) setError(message(error)) })
+    return () => controller.abort()
+  }, [domain])
+  useEffect(() => { setQuote(undefined); setOrder(undefined); setStatus(''); setError(''); void subscriptionRefresh() }, [account.generation, subscriptionRefresh])
+  useEffect(() => { setQuote(undefined) }, [period, provider, domain, seats, labName])
+  useEffect(() => {
+    let alive = true; setQr('')
+    if (order && /^(weixin:\/\/wxpay\/|https:\/\/qr\.alipay\.com\/)/.test(order.pay_url)) {
+      void QRCode.toDataURL(order.pay_url, { width: 260, margin: 2, errorCorrectionLevel: 'M' }).then(data => { if (alive) setQr(data) })
+    }
+    return () => { alive = false }
+  }, [order])
+  useEffect(() => {
+    if (!order || status === 'paid' || status === 'expired' || status === 'canceled') return
+    const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>
+    const original = account.generation
+    const poll = async () => {
+      try {
+        const result = await api<{ status: string }>(`order?id=${encodeURIComponent(order.order_no)}`, undefined, controller.signal)
+        if (controller.signal.aborted || generation.current !== original) return
+        setStatus(result.status); setError('')
+        if (result.status === 'paid') { await subscriptionRefresh(); await refresh(); return }
+        if (result.status !== 'pending') return
+      } catch (error) { if (!controller.signal.aborted && generation.current === original) setError(`订单查询暂时失败：${message(error)}；请勿重复付款。`) }
+      if (!controller.signal.aborted) timer = setTimeout(() => void poll(), document.hidden ? 10000 : 2500)
+    }
+    void poll()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [order, status, account.generation, refresh, subscriptionRefresh])
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return; setBusy(true); setError('')
+    try { await action() } catch (error) { setError(message(error)) } finally { setBusy(false) }
+  }
+  const select = (plan: Plan) => void run(async () => {
+    const original = account.generation
+    const result = await api<Quote>('quote', { plan_code: plan.code, period, provider, ...(domain ? { domain } : {}), ...(plan.code === 'lab' ? { lab_name: labName, seats } : {}) })
+    if (original === generation.current) setQuote(result)
+  })
+  const confirm = () => void run(async () => {
+    if (!quote) return
+    const original = account.generation; const confirmation = quote.confirmation
+    setQuote(undefined)
+    const result = await api<Checkout>('checkout', { confirmation })
+    if (original !== generation.current) return
+    setOrder(result); setStatus('pending')
+    sessionStorage.setItem(`omicos:last-order:${account.user?.id}`, result.order_no)
+  })
+  const price = (plan: Plan) => period === 'monthly' ? plan.monthly_price_rmb : period === 'quarterly' ? plan.quarterly_price_rmb : plan.yearly_price_rmb
+  return <section>
+    <header className="oss-section-head"><div><small>OMICOS CLOUD</small><h1>让算力与研究同行。</h1><p>本地分析自由使用。需要官方模型、云端资源或团队服务时，在这里接入。</p></div><span className="oss-chip">官方订阅商城</span></header>
+    {error && <p role="alert" className="oss-error">{error}</p>}
+    <div className="oss-toolbar">
+      <label>订阅周期<select value={period} onChange={event => setPeriod(event.target.value)}><option value="monthly">月付</option><option value="quarterly">季付</option><option value="yearly">年付</option></select></label>
+      <label>支付方式<select value={provider} onChange={event => setProvider(event.target.value)}><option value="wechat">微信支付</option><option value="alipay">支付宝</option></select></label>
+      <label>服务域<input value={domain} placeholder="默认服务域" onChange={event => setDomain(event.target.value)} maxLength={80} /></label>
+    </div>
+    <div className="oss-plans">{plans.map(plan => <article className={`oss-plan ${plan.code === 'pro' ? 'oss-plan-featured' : ''}`} key={plan.code}>
+      <small>{plan.code.toUpperCase()}</small><h2>{plan.display_name || plan.name}</h2><p>{plan.tagline}</p>
+      <div className="oss-price">{typeof price(plan) === 'number' ? `¥${price(plan)}` : '联系官方'}<small> / {period === 'monthly' ? '月' : period === 'quarterly' ? '季' : '年'}</small></div>
+      {plan.code === 'lab' && <><label>实验室名称<input value={labName} onChange={event => setLabName(event.target.value)} maxLength={200} /></label><label>席位数<input type="number" min={1} value={seats} onChange={event => setSeats(Number(event.target.value))} /></label></>}
+      <button disabled={busy || !account.logged_in || !['plus', 'pro', 'lab', 'enterprise'].includes(plan.code) || (plan.code !== 'lab' && !(typeof price(plan) === 'number' && price(plan)! > 0))} onClick={() => select(plan)}>选择套餐</button>
+    </article>)}</div>
+    {!account.logged_in && <p className="oss-note">请先登录 OmicOS 云账号再购买。登录入口在页面右上角；本地科研功能无需登录。</p>}
+    {quote && <section className="oss-confirm" aria-label="订单确认"><h2>确认订阅</h2><p>{quote.plan} · {quote.checkout.period} · {quote.checkout.provider === 'wechat' ? '微信支付' : '支付宝'}</p><p>目录金额：{quote.catalog_amount_rmb == null ? '由服务端核算' : `¥${quote.catalog_amount_rmb}`}{quote.checkout.seats ? `，${quote.checkout.seats} 个席位` : ''}</p><p>{quote.notice}</p><button className="oss-primary" disabled={busy} onClick={confirm}>确认并生成付款订单</button> <button onClick={() => setQuote(undefined)}>返回选择</button></section>}
+    {order && <section className="oss-payment"><div><small>PAYMENT ORDER</small><h2>{status === 'paid' ? '支付成功' : status === 'expired' ? '订单已过期' : status === 'canceled' ? '订单已取消' : '扫码支付'}</h2><p className="oss-price">{order.currency} {order.amount_rmb}</p><p>订单号：<code>{order.order_no}</code></p><p>到期：{new Date(order.expires_at).toLocaleString()}</p><p>支付状态以服务端确认为准。关闭窗口不会取消订单。</p><button onClick={() => { setOrder(undefined); setStatus('') }}>收起订单</button></div>{status === 'pending' && (qr ? <img width={260} height={260} src={qr} alt={`${order.provider} 付款二维码`} /> : <p>付款链接格式暂不支持，请保留订单编号联系官方。</p>)}</section>}
+    <div className="oss-two"><article className="oss-card"><h2>我的订阅</h2>{subscription ? <><p>{subscription.active ? `当前：${subscription.subscription?.plan_code || subscription.plan_code}` : '暂无有效订阅'}</p>{subscription.subscription?.expires_at && <p>有效期至 {new Date(subscription.subscription.expires_at).toLocaleString()}</p>}{subscription.active && <button disabled={busy} onClick={() => { const action = subscription.cancelled ? 'uncancel' : 'cancel'; if (window.confirm(subscription.cancelled ? '恢复此订阅？' : '取消此订阅的后续续订？现有权益以服务端规则为准。')) void run(async () => { await api('subscription/manage', { action, domain: domain || undefined, confirmed: true }); await subscriptionRefresh() }) }}>{subscription.cancelled ? '恢复订阅' : '取消续订'}</button>}</> : <p>{account.logged_in ? '正在查询…' : '登录后查看订阅'}</p>}<button disabled={!account.logged_in || busy} onClick={() => void run(subscriptionRefresh)}>刷新权益</button></article>
+    <article className="oss-card"><h2>找回订单</h2><p>重新打开窗口后，可输入订单编号查询。查询失败时请勿重复付款。</p><input placeholder="订单编号" value={lookup} onChange={event => setLookup(event.target.value)} /><button disabled={!account.logged_in || busy || !lookup.trim()} onClick={() => void run(async () => { const result = await api<any>(`order?id=${encodeURIComponent(lookup.trim())}`); setError(`订单 ${result.order_no}：${result.status}`) })}>查询订单状态</button><button disabled={!account.logged_in} onClick={() => setLookup(sessionStorage.getItem(`omicos:last-order:${account.user?.id}`) || '')}>最近订单</button></article></div>
+  </section>
+}
+
+function Laboratory({ project }: { project: Session['projects'][number] }): JSX.Element {
+  const [snapshot, setSnapshot] = useState<ScienceSnapshot>()
+  const [code, setCode] = useState("# 导入数据前，先查看环境与工作目录\nimport sys, os\nprint(sys.version)\nprint(os.getcwd())")
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [memory, setMemory] = useState('')
+  const prefix = `project/${project.id}/`
+  const reload = useCallback(async () => { setSnapshot(await api<ScienceSnapshot>(`${prefix}snapshot`)) }, [prefix])
+  useEffect(() => {
+    let alive = true
+    const load = async () => { try { const result = await api<ScienceSnapshot>(`${prefix}snapshot`); if (alive) { setSnapshot(result); setError('') } } catch (error) { if (alive) setError(message(error)) } }
+    void load(); const timer = setInterval(() => { if (!document.hidden) void load() }, 2000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [prefix])
+  const execute = async () => {
+    if (busy) return
+    setBusy(true); setError('')
+    try { await api(`${prefix}execute`, { code, operationId: crypto.randomUUID(), sessionId: 'workbench', confirmed: true }); await reload() }
+    catch (error) { setError(message(error)) } finally { setBusy(false) }
+  }
+  return <section><header className="oss-section-head"><div><small>RESEARCH WORKSPACE</small><h1>{short(project.workspace)}</h1><p>{project.workspace}</p></div><span className="oss-chip">Kernel · {snapshot?.kernel.state || '加载中'}</span></header>
+    {error && <p role="alert" className="oss-error">{error}</p>}
+    <div className="oss-two oss-lab-grid"><div><article className="oss-card"><div className="oss-row"><h2>Python 工作单元</h2><a href={`/omicos/oss/api/${prefix}notebook`} download>导出 Notebook ↗</a></div><p>代码将在当前项目的持久进程中执行，拥有当前用户的系统权限。多次执行共享变量。</p><label className="oss-sr" htmlFor="oss-code">Python 代码</label><textarea id="oss-code" className="oss-code" spellCheck={false} value={code} onChange={event => setCode(event.target.value)} /><div className="oss-row"><small>重启进程后保留执行记录，内存对象需要重新加载。</small><button className="oss-primary" disabled={busy || !code.trim()} onClick={() => void execute()}>{busy ? '提交中…' : '批准并运行 Python'}</button></div></article>
+    <h2 className="oss-list-title">执行记录</h2>{snapshot?.executions.slice().reverse().map(job => <article className="oss-card" key={job.id}><div className="oss-row"><span className="oss-chip">{job.state}</span><small>{new Date(job.createdAt).toLocaleString()}</small>{['queued', 'running'].includes(job.state) && <button onClick={() => void api(`${prefix}cancel`, { id: job.id }).then(reload).catch(error => setError(message(error)))}>取消</button>}</div><details><summary>查看代码与执行标识</summary><code>{job.id}</code><pre>{job.code}</pre></details>{job.output && <pre className="oss-output">{job.output}</pre>}{job.error && <pre className="oss-error">{job.error}</pre>}{job.artifacts.map(artifact => <figure key={artifact.id}><a href={`/omicos/oss/api/${prefix}artifact?id=${encodeURIComponent(artifact.id)}`} target="_blank" rel="noreferrer"><img src={`/omicos/oss/api/${prefix}artifact?id=${encodeURIComponent(artifact.id)}`} alt={artifact.path} /></a><figcaption>{artifact.path}<br /><code>sha256: {artifact.sha256}</code></figcaption></figure>)}</article>)}</div>
+    <aside><article className="oss-card"><h2>内核变量</h2>{snapshot?.variables.length ? snapshot.variables.map(variable => <div className="oss-variable" key={variable.name}><b>{variable.name}</b><small>{variable.type} {variable.shape}</small><code>{variable.preview}</code></div>) : <p>执行后在这里查看数据对象。</p>}</article><article className="oss-card"><h2>项目记忆</h2><p>记录已确认的项目事实。每条记忆保留来源，模型推断不能冒充证据。</p>{snapshot?.memories.map(item => <div className="oss-variable" key={item.id}><p>{item.text}</p><small>{item.source}</small><button onClick={() => void api(`${prefix}memory`, { id: item.id, text: '', source: 'user:workbench' }).then(reload).catch(error => setError(message(error)))}>删除</button></div>)}<textarea aria-label="项目记忆" placeholder="例如：本项目使用人类 GRCh38 参考基因组" value={memory} onChange={event => setMemory(event.target.value)} maxLength={20000} /><button disabled={!memory.trim()} onClick={() => void api(`${prefix}memory`, { id: crypto.randomUUID(), text: memory, source: 'user:workbench' }).then(() => { setMemory(''); return reload() }).catch(error => setError(message(error)))}>保存已确认事实</button></article></aside></div>
+  </section>
+}
+
+export function OssWorkbench(): JSX.Element {
+  const [session, setSession] = useState<Session>()
+  const [page, setPage] = useState(location.pathname.endsWith('/store') ? 'store' : 'lab')
+  const [projectId, setProjectId] = useState('')
+  const [error, setError] = useState('')
+  const refresh = useCallback(async () => { const result = await api<Session>('session'); setSession(result) }, [])
+  useEffect(() => { void refresh().catch(error => setError(message(error))) }, [refresh])
+  useEffect(() => {
+    if (!session?.account.login) return
+    let alive = true
+    const timer = setInterval(() => { void api('login/poll', {}).then(() => { if (alive) return refresh() }).catch(error => { if (alive) setError(message(error)) }) }, 2500)
+    return () => { alive = false; clearInterval(timer) }
+  }, [session?.account.login?.user_code, refresh])
+  const project = session?.projects.find(item => item.id === projectId) || session?.projects[0]
+  return <div className="oss"><header className="oss-top"><a className="oss-brand" href="/omicos/oss">OmicOS <span>OSS</span></a><nav aria-label="工作台导航"><button aria-current={page === 'lab' ? 'page' : undefined} onClick={() => setPage('lab')}>科研工作台</button><button aria-current={page === 'store' ? 'page' : undefined} onClick={() => setPage('store')}>云服务商城</button></nav><div className="oss-account">{session?.account.logged_in ? <><span>{session.account.user?.email || session.account.user?.phone || session.account.user?.id}</span><button onClick={() => void api('logout', {}).then(refresh).catch(error => setError(message(error)))}>退出</button></> : <button onClick={() => void api('login', {}).then(refresh).catch(error => setError(message(error)))}>登录 OmicOS 云</button>}</div></header>
+    <main>{error && <p role="alert" className="oss-error">{error} <button onClick={() => setError('')}>关闭提示</button></p>}{session?.account.login && <section className="oss-confirm"><h2>批准云账号登录</h2><p>在浏览器打开 <a href={session.account.login.verification_uri} target="_blank" rel="noreferrer">官方配对页面 ↗</a>，登录后输入配对码：</p><strong className="oss-pair-code">{session.account.login.user_code}</strong><p>本窗口会自动查询批准结果。插件不经手你的密码或验证码。</p></section>}
+    {!session ? <p>正在连接 OmicOS OSS…</p> : page === 'store' ? <Store key={session.account.generation} account={session.account} refresh={refresh} /> : <>{session.projects.length > 1 && <label>当前项目<select value={project?.id} onChange={event => setProjectId(event.target.value)}>{session.projects.map(item => <option key={item.id} value={item.id}>{item.workspace}</option>)}</select></label>}{project ? <Laboratory key={project.id} project={project} /> : <p>请先从 Harness 项目会话运行 OmicOS 工具，或使用独立启动命令指定工作区。</p>}</>}
+    <footer>OmicOS OSS · 本地运行与云服务独立 · 科研数据由你掌握</footer></main></div>
+}

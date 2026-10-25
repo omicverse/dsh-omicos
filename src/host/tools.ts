@@ -177,12 +177,12 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
             const jobId = jobs.start({
               kind: 'omicos-analysis',
               label: `omicos: ${args.request.slice(0, 80)}`,
-              owner: exec.agent,
-              run: (): JobHooks => {
-                let lastProgress = ''
+              owner: exec.agent?.id,
+              run: (job): JobHooks => {
+                job.updateProgress('(running — no progress reported yet)')
                 let cancelled = false
                 const turn = entry.runner.runTurn(sessionId, args.request, {
-                  onProgress: (label) => (lastProgress = label),
+                  onProgress: (label) => job.updateProgress(label),
                 })
                 return {
                   cancel: () => {
@@ -190,14 +190,14 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
                     void entry.runner.cancel(sessionId)
                   },
                   done: turn.then(
-                    (outcome) => ({
+                    (outcome) => {
+                      job.append(outcomeText(outcome))
+                      return {
                       status: cancelled ? ('killed' as const) : outcome.error ? ('failed' as const) : ('completed' as const),
                       detail: outcome.error,
-                      output: outcomeText(outcome),
-                    }),
+                    } },
                     (error: unknown) => ({ status: 'failed' as const, detail: String(error) }),
                   ),
-                  readOutput: () => lastProgress || '(running — no progress reported yet)',
                 }
               },
             })
@@ -295,10 +295,10 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
           })
           return found as unknown as {
             query: string
-            indexed: import('@deepseek-ai/dsh-tools').JsonValue
+            indexed: import('./dsh-compat.js').JsonValue
             plan?: string
-            results: import('@deepseek-ai/dsh-tools').JsonValue[]
-            categories?: import('@deepseek-ai/dsh-tools').JsonValue[]
+            results: import('./dsh-compat.js').JsonValue[]
+            categories?: import('./dsh-compat.js').JsonValue[]
           }
         },
       }),
@@ -354,7 +354,7 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
               shape: v.shape,
               size_bytes: v.size_bytes,
               summary: v.summary,
-            })) as unknown as import('@deepseek-ai/dsh-tools').JsonValue[],
+            })) as unknown as import('./dsh-compat.js').JsonValue[],
           }
         },
       }),
@@ -420,7 +420,7 @@ export function registerOmicosTools(ctx: Context, deps: ToolDeps): Array<() => v
             ...(detail.repr === undefined ? {} : { repr: detail.repr }),
             ...(detail.summary === undefined
               ? {}
-              : { summary: detail.summary as unknown as import('@deepseek-ai/dsh-tools').JsonValue }),
+              : { summary: detail.summary as unknown as import('./dsh-compat.js').JsonValue }),
           }
         },
       }),

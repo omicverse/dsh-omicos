@@ -188,7 +188,7 @@ function SettledView({ block, cwd, openFile }: { block: OwnerProps['block']; cwd
           <div style={{ ...S.err, ...S.mono, maxHeight: 400 }}>{text}</div>
         ) : (
           <div style={{ marginTop: 4 }}>
-            <MarkdownText text={stripLocalImageMarkdown(text)} />
+            <MarkdownText labels={{ code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }} text={stripLocalImageMarkdown(text)} />
           </div>
         ))}
       {files.length > 0 && (

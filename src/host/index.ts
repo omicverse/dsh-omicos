@@ -1,3 +1,7 @@
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import { OssRuntime } from '../oss/runtime.js'
+import { createOssHandler } from '../oss/http.js'
+import { registerOssTools } from './oss-tools.js'
 /**
  * `@omicverse/dsh-omicos` — OmicOS as a deepseek-harness plugin, Mode A
  * (DSH-PLUGIN.md §3): the dsh/DeepSeek agent keeps the wheel; omicos is a
@@ -33,6 +37,9 @@ export const name = 'omicos'
 export const inject = ['tools']
 
 export interface Config {
+  backend: 'oss' | 'core'
+  python: string
+  stateDir: string
   /** Explicit workspace override; empty = follow each dsh session's own workspace (`session.header.cwd`). */
   workspace: string
   /** Spawn a local kernel via `npx @omicverse/omicos` when none is attachable. */
@@ -45,7 +52,10 @@ export interface Config {
   maxAttachmentBytes: number
 }
 
-export const Config: Schema<Config> = Schema.object({
+export const Config = Schema.object({
+  backend: Schema.union(['oss', 'core']).default('oss'),
+  python: Schema.string().default('python3'),
+  stateDir: Schema.string().default(''),
   workspace: Schema.string().default(''),
   autoStart: Schema.boolean().default(true),
   upstreamBaseUrl: Schema.string().default('https://auth.omicos.cn'),
@@ -54,6 +64,33 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
+  const runtime = OssRuntime.open({ python: config.python, stateDir: config.stateDir || undefined, cloudBase: config.upstreamBaseUrl }).then(async service => {
+    try { await service.project(config.workspace || process.cwd()); return service }
+    catch (error) { await service.dispose(); throw error }
+  })
+  // Attach rejection handling immediately; lifecycle cleanup still awaits it.
+  void runtime.catch(error => console.error('OmicOS OSS startup failed:', String(error)))
+  ctx.effect(function* () {
+    yield async () => { await (await runtime).dispose() }
+    if (config.backend !== 'core') for (const dispose of registerOssTools(ctx, runtime, config.workspace)) yield dispose
+  }, 'omicos: OSS scientific service')
+  ctx.inject(['webServer'], sub => {
+    let handler: ReturnType<typeof createOssHandler> | undefined
+    sub.effect(() => sub.webServer.register({ kind: 'prefix', path: '/omicos/oss', handler: async (req, res) => {
+      handler ??= createOssHandler(await runtime)
+      await handler(req, res)
+    } }))
+  })
+  if (config.backend !== 'core') {
+    ctx.inject(['agentPresets'], sub => {
+      sub.effect(async function* () {
+        yield await sub.agentPresets.register({ id: 'omicos', name: 'OmicOS Scientist', description: 'Bioinformatics research with a persistent project kernel and sourced memory.', order: 15,
+          plugins: [{ id: 'omicos-scientist', name: '@omicverse/dsh-omicos/scientist' }] })
+      }, 'omicos: scientist preset')
+    })
+    return
+  }
+
   const pool = new OmicosPool({
     autoStart: config.autoStart,
     npmRegistry: config.npmRegistry || undefined,

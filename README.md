@@ -1,115 +1,154 @@
-# @omicverse/dsh-omicos
+# OmicOS OSS for DeepSeek Harness
 
-Run [OmicVerse](https://github.com/Starlitnightly/omicverse)/OmicOS bioinformatics
-analyses from inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-The dsh agent keeps the wheel; this plugin gives it a persistent Python kernel
-(scanpy / omicverse / R) plus the catalog of analysis skills that OmicOS ships.
+An open scientific workspace: a persistent local Python process, execution records,
+reproducible notebooks, figures with integrity hashes, sourced project memory,
+and an optional official OmicOS cloud subscription store.
 
-> 中文简介：把 OmicOS 的生信分析能力接进 dsh。DeepSeek 负责对话与规划，
-> OmicOS 负责跑分析——持久 Python 内核，`adata` 等状态跨轮累积；
-> 另带账号/订阅标签页与实时执行过程可视化。
+**Development preview (0.3.0).** This branch implements the first scientific and
+commerce vertical slice. It does not yet provide all OmicOS Core capabilities.
+See [implementation status](IMPLEMENTATION_STATUS.md) and the
+[complete migration design](OMICOS_OSS_DESIGN.md). No private Core binary is
+required by the OSS backend; the old Core adapter remains opt-in.
+
+## Run the standalone workspace
+
+Requirements: Node.js 22+, pnpm, and Python 3 available as `python3`.
+Scientific packages are optional and must be installed in your chosen environment.
+The runtime does **not** silently install dependencies, upload data or replay cells.
 
 ```sh
-dsh plugin --profile web add @omicverse/dsh-omicos
+pnpm install --frozen-lockfile
+pnpm build
+pnpm start:oss --workspace /absolute/path/to/research-project
 ```
 
-## Tools
+Open `http://127.0.0.1:18620/omicos/oss`. The store has its own window at
+`http://127.0.0.1:18620/omicos/oss/store`.
 
-One tool runs an analysis; the rest are direct reads of the local kernel that
-cost neither a turn nor a token.
+Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
+`--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
+The service binds only to loopback; exposing it as a public server is unsupported.
 
-| Tool | What it does |
-| --- | --- |
-| `omicos_analyze` | Runs a full OmicOS turn in a persistent kernel bound to the workspace. Repeated calls in one dsh session land on the same OmicOS conversation, so state accumulates. `background: true` hands it to `ctx.jobs` with live tqdm progress. |
-| `omicos_capabilities` | Searches the installed skill/agent catalog (several hundred skills and ~100 agents on a full install) and returns a ranked, bounded projection. Use it to decide whether a task is worth delegating. Omit the query for a category overview. |
-| `omicos_list_variables` | What currently lives in the kernel — name, type, shape, size. |
-| `omicos_query_variable` | One variable in detail. For an AnnData this includes the preprocessing state (`is_int` / `is_normalized` / `is_log1p` / `is_scaled`), which is what decides whether the next step is legal. |
-| `omicos_list_generated_files` | Every file the analyses of this conversation produced. |
+The standalone workspace runs explicit Python cells. Agent chat continues to run
+through Harness; a standalone chat client is not implemented yet.
 
-## Commands
+## Install in Harness
 
-`/omicos-help` (what the plugin adds, and where to look), `/omicos-login`
-(device-code pairing — sign in with phone or email in the browser),
-`/omicos-status`, `/omicos-account`, `/omicos-logout`, `/omicos-stop-kernel`.
+The baseline is the official `dsh-v0.2.1-rc.3` release, Cordis 4.0.5, and
+Schemastery 3.18.5. The obsolete `dsh-client-runtime` dependency is removed.
+Build this checkout, then add its absolute path to your web profile:
 
-Deliberately short: commands are for what the agent *cannot* do for you.
-Listing variables, browsing capabilities or finding outputs is better asked
-of the agent, which has tools for exactly that.
+```sh
+dsh plugin --profile web add /absolute/path/to/dsh-omicos
+```
 
-## UI
-
-The client bundle adds two surfaces to the web profile:
-
-- an **OmicOS tab** next to the conversation — a small console: sign-in state,
-  plan and expiry with links to subscribe or manage; which kernels are attached,
-  where, at what version, and what is bound in them right now; and a search box
-  over the installed capability catalog;
-- a **live tool view** on `omicos_analyze` calls — the steps, tool calls and
-  stdout tail as the analysis runs, instead of a spinner that ends in a wall of
-  text. Generated figures render in the settled card.
-
-If [dsh-better-sidebar](https://github.com/dsh-external/dsh-better-sidebar) is
-installed, an "OmicOS 产物" tab is registered there too; the integration is
-optional and detected at runtime.
-
-## Requirements
-
-- **omicos-core comes with the install.** `@omicverse/omicos` is a dependency,
-  so the ~21 MB platform binary lands in node_modules alongside the plugin
-  rather than being fetched by `npx` in the middle of your first tool call.
-  At run time the plugin still attaches to a kernel you already have running
-  (desktop app or terminal) if there is one, spawns the bundled binary only
-  when there is not, and only ever stops a kernel it started itself.
-- An **OmicOS account** for cloud-backed models and the higher plan tiers.
-  Sign in with `/omicos-login`; no token is ever persisted by this plugin — the
-  approved login is handed to the local core, which keeps it.
-- dsh `0.1.0-rc.6`. Note that some `@deepseek-ai/dsh-*` packages have a stale
-  `latest` dist-tag pointing at `0.0.1-rc.x`, so every dsh dependency here is
-  pinned exactly.
-
-## Configuration
-
-Override in your profile's own `cordis.patch.yml`. A patch **replaces** the
-row's whole config — there is no deep merge — so restate every key you care
-about:
+The OmicOS conversation tab opens the independent workspace and store. Scientific
+tools use the calling session's workspace; an explicit config workspace takes
+precedence. An initial project also follows the Host working directory.
 
 ```yaml
 - id: omicos
   config:
-    workspace: /path/to/project   # '' = follow each dsh session's own cwd
-    autoStart: true               # spawn a kernel when none is attachable
+    backend: oss
+    workspace: /absolute/path/to/research-project
+    python: /absolute/path/to/venv/bin/python
     upstreamBaseUrl: https://auth.omicos.cn
-    npmRegistry: ''               # mirror knob for the kernel spawn
 ```
 
-## Security posture
+The web profile also gains an **OmicOS Scientist** Agent preset. Select it for
+scientific conversations; other presets do not inherit its persona. It shares
+the same Host model loop and project kernels.
 
-- Tools run in core with `permission_mode: "full"`. A single-shot tool result
-  has no room for a mid-flight approval prompt, and blocking on one deadlocks
-  the turn; bridging dsh's approval UI into an OmicOS turn is planned, not done.
-- Catalog search projects before it answers: the skill `source_path` (an
-  absolute local path) and the verbatim `use_when` routing text are indexed but
-  never returned, so they do not travel to the model.
-- The plugin's HTTP routes are pinned to loopback.
+The OSS tool surface is:
 
-## Development
+- `omicos_science_context`: variables, recent scientific executions and project memory.
+- `omicos_run_python`: approved Python execution, optionally asynchronous.
+- `omicos_execution_status`: actual execution state and bounded output.
+- `omicos_cancel_execution`: request cancellation, then query the terminal state.
+- `omicos_project_memory_write`: approved changes to sourced project facts.
+- `omicos_scientific_skill`: public AnnData/QC/differential-expression/figure checklists.
+- `omicos_environment`: interpreter and installed scientific package metadata.
+- `omicos_cloud_store`: cloud account and store/workspace entry points; no payment tool.
+
+Python and memory-write tools use Harness's pre-execution approval mechanism.
+Without an approval service/channel they fail closed. Other tool-policy denials
+are preserved. Python runs with your operating-system permissions; this is a
+trusted research environment, **not a Python security sandbox**.
+
+## Scientific state and recovery
+
+One project owns one Python namespace, shared by its cells and bound sessions.
+Each project has a single execution queue. Different projects use separate
+workers. A project lock prevents competing runtime processes from corrupting its
+metadata; close the original runtime before opening the same project elsewhere.
+
+- `.omicos-oss/executions.json`: atomic execution metadata and bounded stdout.
+- `.omicos-oss/artifacts/`: generated figures, recorded with SHA-256 and byte size.
+- `.omicos-oss/memories.json`: project facts with explicit sources.
+- `.omicos-oss/runtime.lock/`: process ownership and heartbeat, not project data.
+
+Use stable operation IDs when retrying a request. Reusing an ID with different
+code/session is rejected. Host restarts preserve history, artifacts and memory,
+**not live Python objects**. Unfinished executions become `interrupted`, never
+silently rerun. A failed/canceled cell can leave partial variable or file changes.
+The interface makes this distinction explicit. Notebook export preserves source,
+outputs, execution identity, kernel generation and artifact references.
+
+Figures created with matplotlib are saved after successful cells and displayed
+in the workspace. The file endpoint checks workspace containment and integrity.
+No object pickle is automatically loaded on restart.
+
+## Official cloud store
+
+Local work does not require an OmicOS account. The store supports device-code
+login, live server catalog prices, monthly/quarterly/yearly selection, order
+confirmation, WeChat/Alipay QR, order polling/recovery, current subscription,
+and cancel/restore subscription management. Unsupported sales-only combinations
+are disabled or rejected by the server. Lab seats, invoices and advanced cloud
+resource management remain in the migration queue.
+
+Credentials stay in the Host's private state directory (`~/.omicos-oss/cloud.json`
+by default), in an owner-readable file. They are not put in browser storage,
+URLs or Agent responses. This preview uses a private credential file rather
+than an OS keychain. Device approval happens in the official browser page; the
+workspace never requests passwords or SMS codes.
+
+Only official server order status activates the displayed cloud entitlement.
+The client does not call payment webhooks, support mock payment activation, or
+restart charged analysis after purchase. Closing an order panel stops its polls,
+not the cloud order itself. Account changes invalidate quotes and stale responses.
+If order creation times out, do not repeatedly create or pay orders; verify order
+state through the official account before retrying.
+
+Commerce UI and protocol were exercised against an isolated mock cloud and real
+browser. Production checkout, merchant callbacks and real account entitlement
+renewal have **not** been validated by these tests.
+
+## Legacy Core compatibility
+
+Set `backend: core` to use the original delegated Core Agent tools. Install the
+Core package separately if desired; it is no longer downloaded as an OSS package
+dependency. The legacy adapter may attach to/start Core according to its config.
+It has a separate Core-managed cloud identity; OSS login does not migrate it.
+Read [legacy Core instructions](LEGACY_CORE.md) for the existing tool/command
+surface. This compatibility backend is not the standalone open-source path.
+
+## Verify
 
 ```sh
-pnpm install
-pnpm build       # tsc + the client bundle
 pnpm typecheck
-pnpm test        # 89 tests against the real dsh defineTool and a mock core
+pnpm test
+pnpm build
 ```
 
-This package publishes as ONE dependency-light artifact: the `@omicverse/omicos-*`
-SDK is inlined by `esbuild.host.mjs` and kept as devDependencies, while
-`@deepseek-ai/*` stays external (the harness supplies it, and a second copy of
-Schema would fail config validation) and `@omicverse/omicos` stays a real
-dependency (it is spawned as a child process, never imported).
+Tests include real Python processes, project isolation and ownership, cancellation,
+restart recovery, actual Harness rc.3 tool runtime/approval denial, cloud account
+isolation, one-use checkout confirmations, CSRF/origin/Host checks and notebook
+export. A green test suite is not evidence that every Core capability has migrated.
 
-`src/host/dsh-compat.ts` is the only module allowed to import `@deepseek-ai/*`.
-`bridge.ts` / `kernel.ts` / `runner.ts` / `auth.ts` have no dsh dependency at
-all, so a dsh API change is absorbed in the compat layer plus `tools.ts`,
-`commands.ts` and `index.ts`.
+## License
 
-GPL-3.0-only
+GPL-3.0-only, retained from this plugin. New OSS runtime code does not copy private
+Core implementation files. Official cloud service availability, paid resources,
+third-party data and models have their own terms; they are not included by the
+plugin license. Review each proposed Core extraction before public distribution.

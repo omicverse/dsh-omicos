@@ -85,3 +85,5 @@ export function dshSessionIdOf(exec: { agent?: { id: string } }): string | undef
 export function sessionCwdOf(exec: { agent?: { session?: { header?: { cwd?: string } } } }): string | undefined {
   return exec.agent?.session?.header?.cwd
 }
+
+export type { JsonValue } from '@deepseek-ai/dsh-util-values'

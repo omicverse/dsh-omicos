@@ -206,7 +206,7 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
         }
         const persistence = ctx.get('sessionPersistence')
         if (persistence !== undefined) {
-          const headers = (await persistence.list()) as Array<{ id: string; cwd?: string }>
+          const headers = (await persistence.list()).map(snapshot => snapshot.header)
           const cwd = headers.find((h) => String(h.id) === dshSessionId)?.cwd
           if (cwd !== undefined && cwd !== '') {
             const entry = deps.pool.entry(cwd)
