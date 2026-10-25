@@ -1,3 +1,4 @@
+import { DossierError } from './dossier-types.js'
 import { builtinMethodPack } from './methods.js'
 import { MethodError } from './method-types.js'
 import { UploadError, UPLOAD_CHUNK_BYTES } from './upload-types.js'
@@ -165,6 +166,19 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') { if (language === 'python' && project.executionUnavailable) throw new EnvironmentError(409, project.executionUnavailable); result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python, project.usesIsolatedPython) }
+        else if (action?.startsWith('dossier-')) {
+          const dossier = await runtime.dossier(parent.workspace); const id = url.searchParams.get('id') || ''
+          const revision = url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined
+          const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined
+          if (action === 'dossier-list' && method === 'GET') result = dossier.list(url.searchParams.get('q') || '',before)
+          else if (action === 'dossier-document' && method === 'GET') result = dossier.get(id,revision)
+          else if (action === 'dossier-history' && method === 'GET') result = dossier.history(id,before)
+          else if (action === 'dossier-integrity' && method === 'GET') result = await dossier.integrity(id,revision)
+          else if (action === 'dossier-export' && method === 'GET') result = dossier.export(id,revision)
+          else if (action === 'dossier-save' && method === 'POST') { if (data.confirmed !== true) throw new DossierError(400,'Explicit evidence capture required'); result = await dossier.save(data.entry,'user:workbench') }
+          else if (action === 'dossier-review' && method === 'POST') { if (data.confirmed !== true) throw new DossierError(400,'Explicit human dossier review required'); result = await dossier.review(data.review) }
+          else throw new CloudError(405,'Method not allowed')
+        }
         else if (action?.startsWith('method-')) {
           const methods = await runtime.methods(parent.workspace); const id = url.searchParams.get('id') || ''
           const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined
@@ -304,7 +318,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

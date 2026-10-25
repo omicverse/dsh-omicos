@@ -70,6 +70,7 @@ export class ScienceService extends EventEmitter {
     return service
     } catch (error) { service.ledger?.close(); await service.releaseLock(); throw error }
   }
+  get isClosing(): boolean { return this.closing }
   get python(): string { return this.interpreter }
   private get directory(): string { return this.language === 'python' ? join(this.workspace, '.omicos-oss') : join(this.workspace, '.omicos-oss', 'r') }
   private persist(records: readonly Execution[] = this.executions): Promise<void> {

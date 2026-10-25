@@ -71,6 +71,17 @@ plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actu
 outputs. Vector files are downloads, not executable inline documents. See
 [Figure Studio architecture](docs/adr/0005-figure-studio.md).
 
+Project research dossiers retain authored findings, limitations and explicit source
+snapshots from execution/import receipts, methods, figures, Notebooks and plans.
+Snapshots and revisions are hashed; current-source checks are separate from historical
+human review. Changed/missing evidence blocks a new review until you explicitly
+recapture it. Export downloads the exact saved revision without rerunning analyses,
+copying private session memory or uploading to cloud. Import receipt pins do not
+verify later dataset bytes; figure capture checks artifact bytes without embedding
+them. JSON export contains original execution text/paths and is not automatically
+redacted. Limits are 1–10 sources and 2 MB/entry. See
+[dossier decisions](docs/adr/0015-project-research-dossier.md).
+
 The scientific method library accepts plaintext method packs with exact versions,
 authors, source URLs and license declarations. New methods remain drafts until you
 publish them locally; exporting/importing never transfers approval. A key/version

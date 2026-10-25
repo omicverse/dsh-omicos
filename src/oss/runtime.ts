@@ -1,3 +1,5 @@
+import { ProjectDossier } from './dossier.js'
+import { DossierError } from './dossier-types.js'
 import { ScientificMethods } from './methods.js'
 import { DataUploads } from './uploads.js'
 import { ManagedEnvironments } from './managed-environments.js'
@@ -24,6 +26,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private dossierProjects = new Map<string, Promise<ProjectDossier>>()
   private methodProjects = new Map<string, Promise<ScientificMethods>>()
   private uploadProjects = new Map<string, Promise<DataUploads>>()
   private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
@@ -99,6 +102,38 @@ export class OssRuntime {
     }
     return service
   }
+  async dossier(workspace: string): Promise<ProjectDossier> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.dossierProjects.get(parent.workspace)
+    if (!service) {
+      service = ProjectDossier.open(parent.workspace, async source => {
+        if (source.kind === 'execution' || source.kind === 'pipeline-execution') {
+          const pipelines = source.kind === 'pipeline-execution' ? await this.pipelines(parent.workspace) : undefined
+          const execution = pipelines ? await pipelines.execution(source.runId!, source.id, true) : parent.receipt(source.id)
+          if (!execution) throw new DossierError(404, 'Committed execution receipt not found')
+          if (!['succeeded','failed','canceled','interrupted'].includes(execution.state)) throw new DossierError(409, 'Wait for a terminal execution receipt before capturing dossier evidence')
+          const run = pipelines?.get(source.runId!)
+          return { scope: 'Committed execution/code/output/environment/artifact metadata; no exhaustive input I/O or scientific validity inference.', data: { execution, ...(run ? { runId:run.id,definitionId:run.definitionId,methodReviews:run.attempts.find(attempt=>attempt.executionId===execution.id)?.methodReviews } : {}) } }
+        }
+        if (source.kind === 'import') {
+          const record = (await this.uploads(parent.workspace)).get(source.id)
+          if (record.state !== 'completed') throw new DossierError(409, 'Only committed imports can be evidence snapshots')
+          return { scope: 'Import-time receipt/whole-file identity only; current dataset bytes are not read or verified.', data: { id:record.id,state:record.state,target:record.target,bytes:record.bytes,sha256:record.sha256,manifestSha256:record.manifestSha256,expectedSha256:record.expectedSha256,createdAt:record.createdAt } }
+        }
+        if (source.kind === 'method') return { scope:'Current immutable method document and local human publication state; declarations are not independent scientific/legal validation.',data:(await this.methods(parent.workspace)).get(source.id) }
+        if (source.kind === 'figure') {
+          const figures = await this.figures(parent.workspace); const figure = figures.get(source.id); const integrity = await figures.integrity(source.id,figure.revision)
+          if (integrity.state !== 'verified') throw new DossierError(409,`Figure bytes unavailable/changed: ${integrity.reason}`)
+          return { scope:'Current figure revision; artifact bytes checked but not embedded in this snapshot. Figure interpretation and declared sources are not independently validated.',data:{figure,artifactIntegrity:'verified'} }
+        }
+        if (source.kind === 'notebook') return {scope:'Editable Notebook revision and saved execution links; imported rich outputs remain unverified.',data:parent.notebooks.get(source.id)}
+        return {scope:'Scientific plan definitions and human task assessments; not independent scientific validation.',data:(await this.researchPlans(parent.workspace)).get(source.id)}
+      })
+      this.dossierProjects.set(parent.workspace,service); service.catch(()=>{if(this.dossierProjects.get(parent.workspace)===service)this.dossierProjects.delete(parent.workspace)})
+    }
+    return service
+  }
   async methods(workspace: string): Promise<ScientificMethods> {
     const parent = await this.project(workspace)
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
@@ -167,6 +202,8 @@ export class OssRuntime {
   }
   async dispose(): Promise<void> {
     this.closing = true
+    await Promise.allSettled([...this.dossierProjects.values()].map(async service => (await service).dispose()))
+    this.dossierProjects.clear()
     await Promise.allSettled([...this.uploadProjects.values()].map(async service => (await service).dispose()))
     this.uploadProjects.clear()
     await Promise.allSettled([...this.environmentProjects.values()].map(async service => (await service).dispose()))

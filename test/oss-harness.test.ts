@@ -35,6 +35,8 @@ it('cold-loads in real rc.3 Cordis/ToolRuntime; exposes scientific tools and fai
     const figureDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('figure-denied'), name: 'omicos_figure_save', arguments: { figure_json: '{}' } })
     expect(JSON.stringify(figureDenied)).toMatch(/denied|approval/i)
 
+    expect(names).toContain('omicos_dossier_state'); expect(names).toContain('omicos_dossier_propose'); expect(names).not.toContain('omicos_dossier_review')
+    const dossierDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('dossier-denied'), name: 'omicos_dossier_propose', arguments: { entry_json: '{}' } }); expect(JSON.stringify(dossierDenied)).toMatch(/denied|approval/i)
     expect(names).toContain('omicos_method_state'); expect(names).toContain('omicos_method_propose'); expect(names).not.toContain('omicos_method_publish'); expect(names).not.toContain('omicos_method_review')
     const methodDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('method-denied'), name: 'omicos_method_propose', arguments: { pack_json: '{}', operation_id: 'unapproved-method' } })
     expect(JSON.stringify(methodDenied)).toMatch(/denied|approval/i)

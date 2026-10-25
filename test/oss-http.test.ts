@@ -368,6 +368,17 @@ describe('scientific workbench and commerce boundary', () => {
     expect(journal.events.some((event: any) => event.type === 'run/succeeded')).toBe(true)
     expect(seen).toHaveLength(0)
   })
+  it('captures project dossier sources under owner/CSRF control and requires explicit human review',async()=>{
+    const id=(await runtime.list())[0].id;const prefix=`project/${id}/`;const project=await runtime.byId(id);const notebook=await project.notebooks.create('Dossier source','python')
+    const entry={operationId:'capture',title:'HTTP finding',finding:'Owner interpretation',limitations:'Not scientific validation',tags:['test'],sources:[{kind:'notebook',id:notebook.id}]}
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}dossier-list`)).status).toBe(401)
+    expect((await post(`${prefix}dossier-save`,{entry})).status).toBe(400)
+    const captured=await(await post(`${prefix}dossier-save`,{entry,confirmed:true})).json() as any;expect(captured.state).toBe('draft');expect(captured.sources[0].data.title).toBe('Dossier source')
+    const review={id:captured.id,revision:1,operationId:'review',action:'review',note:'Checked source snapshot and limitations'};expect((await post(`${prefix}dossier-review`,{review})).status).toBe(400);expect((await post(`${prefix}dossier-review`,{review,confirmed:true})).status).toBe(200)
+    await project.notebooks.save(notebook.id,1,'Changed source',notebook.cells)
+    const integrity=await(await fetchHost(`${base}/omicos/oss/api/${prefix}dossier-integrity?id=${captured.id}`)).json() as any;expect(integrity.state).toBe('needs-review')
+    const exported=await(await fetchHost(`${base}/omicos/oss/api/${prefix}dossier-export?id=${captured.id}`)).json() as any;expect(exported.entry.sources[0].data.title).toBe('Dossier source');expect(project.snapshot().executions).toEqual([]);expect(seen).toHaveLength(0)
+  })
   it('keeps method publication human-only, preserves immutable versions and rejects withdrawn Pipeline pins before execution', async () => {
     const id=(await runtime.list())[0].id;const prefix=`project/${id}/`;const document={key:'lab.http',version:'1.0.0',title:'HTTP method',description:'Fixture',body:'Inspect source before analysis; no automatic execution.',authors:['Fixture author'],sources:['https://example.org/source'],license:{id:'MIT',text:'Declared fixture license'}};const pack={schema:'omicos.methods/1',methods:[{...document,review:{state:'published'}}]}
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}method-list`)).status).toBe(401)

@@ -228,7 +228,7 @@ export class PipelineService {
   async execution(id: string, executionId: string, committedOnly = false): Promise<Execution> {
     const run = this.store.get(id)
     if (!run.attempts.some(attempt => attempt.executionId === executionId)) throw new PipelineError(404, 'Execution does not belong to this run')
-    const worker = this.workers.get(id); if (worker) { const execution = committedOnly ? worker.receipt(executionId) : worker.get(executionId); if (execution) return execution }
+    const worker = this.workers.get(id); if (worker && !worker.isClosing) { const execution = committedOnly ? worker.receipt(executionId) : worker.get(executionId); if (execution) return execution }
     const ledger = await ScienceLedger.open(await this.directory(id))
     try { const definition = this.store.definition(run.definitionId); const execution = ledger.execution(executionId); if (!execution || execution.language !== definition.language) throw new PipelineError(404, 'Execution receipt missing'); return execution } finally { ledger.close() }
   }
