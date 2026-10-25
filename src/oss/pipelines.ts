@@ -1,3 +1,4 @@
+import type { PipelineListQuery } from './pipeline-types.js'
 import { artifactBytes } from './artifact-bytes.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -32,7 +33,7 @@ export class PipelineService {
   }
   private assertOpen() { if (this.closing) throw new PipelineError(503, 'Pipeline service is shutting down') }
   define(input: unknown) { this.assertOpen(); return this.store.define(input) }
-  list() { return { definitions: this.store.definitions(), runs: this.store.runs().map(({ attempts, inputs, checkpoints, ...run }) => ({ ...run, attempts: attempts.length, checkpoints: checkpoints.length })) } }
+  list(query: PipelineListQuery = {}) { const definitions = this.store.definitionPage(query.definitionsBefore, query.definitionQuery); const runs = this.store.runPage(query.runsBefore, query.runQuery, query.state); return { definitions: definitions.entries, runs: runs.entries, definitionPage: { total: definitions.total, next: definitions.next }, runPage: { total: runs.total, next: runs.next } } }
   get(id: string) { return this.store.get(id) }
   private checkFilesAvailable(definitionId: string, ownId?: string): void {
     const definition = this.store.definition(definitionId)

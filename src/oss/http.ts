@@ -156,7 +156,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         else if (action === 'pipelines' || action?.startsWith('pipeline-')) {
           const pipelines = await runtime.pipelines(parent.workspace)
           const id = String(data?.runId || url.searchParams.get('run') || '')
-          if (action === 'pipelines' && method === 'GET') result = pipelines.list()
+          if (action === 'pipelines' && method === 'GET') result = pipelines.list({ definitionsBefore: url.searchParams.has('definitionsBefore') ? Number(url.searchParams.get('definitionsBefore')) : undefined, runsBefore: url.searchParams.has('runsBefore') ? Number(url.searchParams.get('runsBefore')) : undefined, definitionQuery: url.searchParams.get('definitionQuery') || undefined, runQuery: url.searchParams.get('runQuery') || undefined, state: url.searchParams.get('state') || undefined })
           else if (action === 'pipeline-definition' && method === 'GET') result = pipelines.store.definition(url.searchParams.get('id') || '')
           else if (action === 'pipeline-define' && method === 'POST') result = pipelines.define(data.definition)
           else if (action === 'pipeline-start' && method === 'POST') {

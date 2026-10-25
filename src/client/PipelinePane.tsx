@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './oss-api.js'
-import type { PipelineDefinition, PipelineRun, PipelineEvent } from '../oss/pipeline-types.js'
+import type { PipelineDefinition, PipelineRun, PipelineEvent, PipelineRunSummary } from '../oss/pipeline-types.js'
 import type { Execution } from '../oss/types.js'
-type RunSummary = Omit<PipelineRun, 'attempts' | 'inputs' | 'checkpoints'> & { attempts: number; checkpoints: number }
-interface Listing { definitions: Array<{ id: string; title: string; language: string; steps: number }>; runs: RunSummary[] }
+type RunSummary = PipelineRunSummary
+interface Listing { definitions: Array<{ id: string; title: string; language: string; steps: number }>; runs: RunSummary[]; definitionPage?: { total: number; next?: number }; runPage?: { total: number; next?: number } }
 const message = (error: unknown) => error instanceof Error ? error.message : String(error)
 function example(language: 'python' | 'r' = 'python'): string {
   const checkpoint = `pipeline-${crypto.randomUUID().slice(0, 8)}.json`
@@ -15,11 +15,16 @@ function example(language: 'python' | 'r' = 'python'): string {
 export function PipelinePane({ projectId, visible }: { projectId: string; visible: boolean }): JSX.Element {
   const prefix = `project/${projectId}/`
   const [listing, setListing] = useState<Listing>({ definitions: [], runs: [] })
+  const [definitionsBefore, setDefinitionsBefore] = useState<number>(); const [runsBefore, setRunsBefore] = useState<number>()
+  const [definitionQuery, setDefinitionQuery] = useState(''); const [runQuery, setRunQuery] = useState(''); const [stateFilter, setStateFilter] = useState('')
+  const [runLookup, setRunLookup] = useState(''); const [definitionLookup, setDefinitionLookup] = useState('')
   const [draft, setDraft] = useState(() => example())
   const [definitionId, setDefinitionId] = useState('')
   const [dirty, setDirty] = useState(true)
   const [touched, setTouched] = useState(false)
-  const [runId, setRunId] = useState('')
+  const [runId, storeRunId] = useState('')
+  const runIdentity = useRef(runId); runIdentity.current = runId
+  const setRunId = (id: string) => { runIdentity.current = id; storeRunId(id) }
   const [run, setRun] = useState<PipelineRun>()
   const [runDefinition, setRunDefinition] = useState<PipelineDefinition>()
   const [checkpoint, setCheckpoint] = useState('')
@@ -37,10 +42,11 @@ export function PipelinePane({ projectId, visible }: { projectId: string; visibl
     return () => window.removeEventListener('beforeunload', guard)
   }, [dirty, touched])
   const refresh = useCallback(async (signal?: AbortSignal) => {
-    const listing = await api<Listing>(`${prefix}pipelines`, undefined, signal)
+    const query = new URLSearchParams({ definitionQuery, runQuery, state: stateFilter }); if (definitionsBefore) query.set('definitionsBefore', String(definitionsBefore)); if (runsBefore) query.set('runsBefore', String(runsBefore))
+    const listing = await api<Listing>(`${prefix}pipelines?${query}`, undefined, signal)
     if (!signal?.aborted) setListing(listing)
-    if (runId) { const latest = await api<PipelineRun>(`${prefix}pipeline-run?run=${encodeURIComponent(runId)}`, undefined, signal); if (!signal?.aborted) setRun(latest) }
-  }, [prefix, runId])
+    if (runId) { const latest = await api<PipelineRun>(`${prefix}pipeline-run?run=${encodeURIComponent(runId)}`, undefined, signal); if (!signal?.aborted && runIdentity.current === runId) setRun(latest) }
+  }, [prefix, runId, definitionsBefore, runsBefore, definitionQuery, runQuery, stateFilter])
   useEffect(() => {
     if (!visible) return
     const controller = new AbortController()
@@ -82,12 +88,16 @@ export function PipelinePane({ projectId, visible }: { projectId: string; visibl
   return <article className="oss-card oss-pipeline" aria-label="Pipeline 工作流"><div className="oss-row"><div><small>PINNED SCIENTIFIC WORKFLOWS</small><h2>Pipeline</h2></div><span className="oss-chip">独立内核 · 检查点 · 人工关卡</span></div>
     <p>把分析固定为有版本的步骤。每次运行使用独立 Python/R 进程，工作目录仍是当前项目。定义保存不会执行；批准运行后按顺序执行，人工关卡会暂停。恢复不会假装已丢失的变量仍在。</p>
     {error && <p role="alert" className="oss-error">{error}</p>}
-    <div className="oss-toolbar"><label>固定定义<select aria-label="Pipeline 固定定义" value={definitionId} disabled={busy} onChange={event => { if (event.target.value) openDefinition(event.target.value) }}><option value="">编辑新定义</option>{listing.definitions.map(definition => <option key={definition.id} value={definition.id}>{definition.title} · {definition.language} · {definition.id.slice(0, 8)}</option>)}</select></label><button disabled={busy} onClick={() => { if (!dirty || !touched || window.confirm('替换未保存的定义为 Python 示例？')) { setDraft(example('python')); setDefinitionId(''); setDirty(true); setTouched(false) } }}>Python 示例</button><button disabled={busy} onClick={() => { if (!dirty || !touched || window.confirm('替换未保存的定义为 R 示例？')) { setDraft(example('r')); setDefinitionId(''); setDirty(true); setTouched(false) } }}>R 示例</button></div>
+    <div className="oss-toolbar"><label>查找固定定义<input aria-label="查找 Pipeline 定义" value={definitionQuery} maxLength={200} onChange={event => { setDefinitionQuery(event.target.value); setDefinitionsBefore(undefined) }} /></label><button disabled={busy || !definitionsBefore} onClick={() => setDefinitionsBefore(undefined)}>定义第一页</button><button disabled={busy || !listing.definitionPage?.next} onClick={() => setDefinitionsBefore(listing.definitionPage?.next)}>更早的固定定义</button><small>固定定义共 {listing.definitionPage?.total ?? listing.definitions.length} 个 · 此页 {listing.definitions.length} 个</small></div>
+    <div className="oss-toolbar"><label>按固定定义 SHA-256 打开<input aria-label="Pipeline 定义编号" value={definitionLookup} maxLength={64} onChange={event => setDefinitionLookup(event.target.value)} /></label><button disabled={busy || !definitionLookup.trim()} onClick={() => openDefinition(definitionLookup.trim())}>按编号打开固定定义</button></div>
+    <div className="oss-toolbar"><label>固定定义<select aria-label="Pipeline 固定定义" value={definitionId} disabled={busy} onChange={event => { if (event.target.value) openDefinition(event.target.value) }}><option value="">编辑新定义</option>{definitionId && !listing.definitions.some(item => item.id === definitionId) && <option value={definitionId}>当前固定定义 · {definitionId.slice(0, 12)}</option>}{listing.definitions.map(definition => <option key={definition.id} value={definition.id}>{definition.title} · {definition.language} · {definition.id.slice(0, 8)}</option>)}</select></label><button disabled={busy} onClick={() => { if (!dirty || !touched || window.confirm('替换未保存的定义为 Python 示例？')) { setDraft(example('python')); setDefinitionId(''); setDirty(true); setTouched(false) } }}>Python 示例</button><button disabled={busy} onClick={() => { if (!dirty || !touched || window.confirm('替换未保存的定义为 R 示例？')) { setDraft(example('r')); setDefinitionId(''); setDirty(true); setTouched(false) } }}>R 示例</button></div>
     <details><summary>定义格式与恢复约束</summary><p>parameters 是固定的 JSON 参数，代码可通过 pipeline_parameters 读取；inputs/outputs 为项目内相对文件路径。checkpoint.files 指定持久文件，restoreCode 明确恢复内存状态。references 可嵌入带版本和 SHA-256 的方法或 Skill 原文。编辑任何绑定、引用或代码都会生成新定义。</p><p>运行拥有当前 OS 用户权限。文件哈希与执行成功不代表科学结论有效。取消、失败或中断可能留下文件变化；重跑或恢复前需要核对这些副作用。恢复时会核验输入、检查点和实际环境，不会自动安装依赖。</p></details>
     <label>Pipeline 定义（JSON）<textarea aria-label="Pipeline 定义 JSON" className="oss-code" spellCheck={false} value={draft} disabled={busy} onChange={event => { setDraft(event.target.value); setDirty(true); setTouched(true) }} /></label>
     <div className="oss-row"><div><button disabled={busy || !dirty} onClick={save}>保存固定定义</button><button className="oss-primary" disabled={busy || dirty || !definitionId} onClick={start}>批准运行此定义</button></div><small>{dirty ? '修改尚未固定，不能运行' : `sha256: ${definitionId}`}</small></div>
-    <h3>运行与恢复</h3><label>项目运行<select aria-label="Pipeline 运行" value={runId} disabled={busy} onChange={event => { setRunId(event.target.value); setRun(undefined) }}><option value="">选择运行</option>{listing.runs.map(item => <option value={item.id} key={item.id}>{item.state} · {new Date(item.createdAt).toLocaleString()} · {item.id.slice(0, 8)}</option>)}</select></label>
-    {run && <section aria-label="Pipeline 运行详情"><div className="oss-row"><strong>状态：<span data-pipeline-state>{run.state}</span></strong><small>修订 {run.revision} · 尝试批次 {run.epoch}</small><button disabled={busy} onClick={() => void action(() => refresh())}>刷新运行状态</button></div><p>运行 <code>{run.id}</code><br />固定定义 <code>{run.definitionId}</code><br />阶段 {run.nextStep + 1} / {runDefinition?.steps.length || '…'}：{runDefinition?.steps[run.nextStep]?.title || (run.state === 'succeeded' ? '已完成全部步骤' : '正在读取固定定义')}</p>{run.reason && <p className="oss-note">{run.reason}</p>}
+    <h3>运行与恢复</h3><div className="oss-toolbar"><label>查找运行<input aria-label="查找 Pipeline 运行" value={runQuery} maxLength={200} onChange={event => { setRunQuery(event.target.value); setRunsBefore(undefined) }} /></label><label>运行状态<select aria-label="筛选 Pipeline 状态" value={stateFilter} onChange={event => { setStateFilter(event.target.value); setRunsBefore(undefined) }}><option value="">全部</option>{['preparing','running','waiting','cancelling','canceled','failed','interrupted','succeeded'].map(state => <option key={state} value={state}>{state}</option>)}</select></label><button disabled={busy || !runsBefore} onClick={() => setRunsBefore(undefined)}>运行第一页</button><button disabled={busy || !listing.runPage?.next} onClick={() => setRunsBefore(listing.runPage?.next)}>更早的 Pipeline 运行</button><small>运行共 {listing.runPage?.total ?? listing.runs.length} 次 · 此页 {listing.runs.length} 次</small></div>
+    <div className="oss-toolbar"><label>按完整运行编号打开<input aria-label="Pipeline 运行编号" value={runLookup} maxLength={100} onChange={event => setRunLookup(event.target.value)} /></label><button disabled={busy || !runLookup.trim()} onClick={() => void action(async () => { const opened = await api<PipelineRun>(`${prefix}pipeline-run?run=${encodeURIComponent(runLookup.trim())}`); setRunId(opened.id); setRun(opened) })}>按编号打开 Pipeline 运行</button></div>
+<label>项目运行<select aria-label="Pipeline 运行" value={runId} disabled={busy} onChange={event => { setRunId(event.target.value); setRun(undefined) }}><option value="">选择运行</option>{runId && !listing.runs.some(item => item.id === runId) && <option value={runId}>当前运行 · {run?.state || '读取中'} · {runId.slice(0, 8)}</option>}{listing.runs.map(item => <option value={item.id} key={item.id}>{item.title || item.definitionId.slice(0, 8)} · {item.state} · {new Date(item.createdAt).toLocaleString()} · {item.id.slice(0, 8)}</option>)}</select></label>
+    {run && <section aria-label="Pipeline 运行详情"><div className="oss-row"><strong>状态：<span data-pipeline-state>{run.state}</span></strong><small>修订 {run.revision} · 尝试批次 {run.epoch}</small><button disabled={busy} onClick={() => void action(() => refresh())}>刷新运行状态</button></div><p>运行 <code>{run.id}</code><br />固定定义 <code>{run.definitionId}</code><br />阶段 {Math.min(run.nextStep + 1, runDefinition?.steps.length || run.nextStep + 1)} / {runDefinition?.steps.length || '…'}：{runDefinition?.steps[run.nextStep]?.title || (run.state === 'succeeded' ? '已完成全部步骤' : '正在读取固定定义')}</p>{run.reason && <p className="oss-note">{run.reason}</p>}
       <details><summary>本次运行固定的代码与绑定</summary><pre>{known ? JSON.stringify(runDefinition, null, 2) : '正在读取本次运行的固定定义…'}</pre></details>
       <details><summary>环境与输入证据</summary><pre>{JSON.stringify({ environment: run.environment, inputs: run.inputs, recoveries: run.recoveries }, null, 2)}</pre></details>
       {run.state === 'waiting' && <div><button className="oss-primary" disabled={busy || !known} onClick={() => control('continue')}>批准此阶段并继续</button><button disabled={busy} onClick={() => control('reject')}>拒绝此阶段</button></div>}

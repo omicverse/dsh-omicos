@@ -156,6 +156,24 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}executions`)).status).toBe(401)
   })
 
+  it('exposes paginated Pipeline summaries and exact old IDs without execution or cloud login', async () => {
+    const reference = (await runtime.list())[0]; const project = await runtime.byId(reference.id); const pipelines = await runtime.pipelines(project.workspace)
+    const pinned = pipelines.define({ title: 'Archived pipeline', language: 'python', steps: [{ id: 'only', code: 'print(42)' }] })
+    const runs = Array.from({ length: 121 }, (_, index) => { const run = pipelines.store.create(pinned.id, `archived-run-${index}`).run; return pipelines.store.update(run.id, run.revision, 'fixture/completed', draft => { draft.state = 'succeeded' }) })
+    const prefix = `${base}/omicos/oss/api/project/${reference.id}/`
+    const first = await (await fetchHost(`${prefix}pipelines`)).json() as any
+    expect(first.runs).toHaveLength(50); expect(first.runPage.total).toBe(121)
+    const second = await (await fetchHost(`${prefix}pipelines?runsBefore=${first.runPage.next}`)).json() as any
+    expect(second.runs).toHaveLength(50)
+    const found = await (await fetchHost(`${prefix}pipelines?runQuery=${runs[0].id}`)).json() as any
+    expect(found.runs.map((run: any) => run.id)).toEqual([runs[0].id])
+    expect((await (await fetchHost(`${prefix}pipeline-run?run=${runs[0].id}`)).json() as any).definitionId).toBe(pinned.id)
+    expect((await fetchHost(`${prefix}pipelines?state=unknown`)).status).toBe(400)
+    expect((await fetchHost(`${prefix}pipelines?definitionsBefore=NaN`)).status).toBe(400)
+    expect((await globalThis.fetch(`${prefix}pipelines`)).status).toBe(401)
+    expect(project.kernelState().state).toBe('cold'); expect(seen).toHaveLength(0)
+  })
+
   it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {
     const core = createServer(createOssHandler(runtime, owner, { backend: 'core' })); const address = await listen(core)
     try {

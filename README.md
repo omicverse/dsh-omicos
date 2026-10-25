@@ -311,6 +311,13 @@ or leave external side effects. Windows and Electron-host lifecycle behavior are
 not yet verified. See [Pipeline decisions](docs/adr/0002-persistent-local-pipelines.md)
 and [worker ownership](docs/adr/0003-scientific-worker-ownership.md).
 
+Pipeline definitions and runs also have independent 50-summary pages and search/
+state filters. The current pinned draft and run stay selected while browsing other
+pages; a known definition SHA-256 or full run UUID can be opened directly. Older
+runs keep the same start-operation deduplication and explicit recovery requirements.
+Collection paging does not truncate an individual run's full evidence journal. See
+[Pipeline collection decisions](docs/adr/0010-pipeline-collection-paging.md).
+
 ## Capability discovery
 
 Run `omicos-oss --version` to inspect the installed version without opening a project.

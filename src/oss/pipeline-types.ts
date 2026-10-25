@@ -9,3 +9,5 @@ export interface PipelineRun { id: string; definitionId: string; operationId: st
 export interface PipelineEvent { seq: number; runId: string; type: string; at: string; data: Record<string, unknown> }
 export class PipelineError extends Error { constructor(readonly status: number, message: string) { super(message) } }
 export type PipelineExecution = Execution
+export interface PipelineListQuery { definitionsBefore?: number; runsBefore?: number; definitionQuery?: string; runQuery?: string; state?: string }
+export type PipelineRunSummary = Pick<PipelineRun, 'id' | 'definitionId' | 'operationId' | 'revision' | 'createdAt' | 'updatedAt' | 'state' | 'nextStep' | 'epoch' | 'reason' | 'cancelRequested'> & { attempts: number; checkpoints: number; title: string }
