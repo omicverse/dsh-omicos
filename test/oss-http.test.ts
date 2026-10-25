@@ -59,6 +59,28 @@ describe('scientific workbench and commerce boundary', () => {
   const fetchHost = (url: string, init: RequestInit = {}) => globalThis.fetch(url, { ...init, headers: { authorization: `Bearer ${owner.launchToken}`, ...init.headers } })
   const post = (path: string, data: unknown, headers: Record<string, string> = {}) => fetchHost(`${base}/omicos/oss/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, 'x-omicos-account': encodeURIComponent(runtime.cloud.identity()), ...headers }, body: JSON.stringify(data) })
   const login = async () => { approvals = true; expect((await post('login', {})).status).toBe(200); expect((await post('login/poll', {})).status).toBe(200) }
+  it('protects assembly source capture, human review and SVG downloads with owner/CSRF and exact revisions without execution',async()=>{
+    const reference=(await runtime.list())[0];const project=await runtime.byId(reference.id);const prefix=`project/${reference.id}/`
+    const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=','base64');const artifact={id:'assembly-png',path:'.omicos-oss/http-assembly.png',mime:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length}
+    await writeFile(join(project.workspace,artifact.path),bytes)
+    const ledger=await ScienceLedger.open(project.workspace);try{ledger.saveExecutions('python',[{id:'assembly-receipt',operationId:'assembly-fixture',sessionId:'fixture',language:'python',state:'succeeded',code:'fixture_plot()',output:'',artifacts:[artifact],createdAt:'2026-10-25'}])}finally{ledger.close()}
+    const figure=await (await post(`${prefix}figure-save`,{figure:{title:'Original PNG',caption:'Fixture receipt',source:{kind:'project',language:'python',executionId:'assembly-receipt',artifactId:artifact.id},methods:[],dataReferences:[],operationId:'curate-assembly'}})).json() as any
+    const approved=await (await post(`${prefix}figure-review`,{confirmed:true,review:{id:figure.id,revision:1,decision:'approved',note:'Fixture source review',operationId:'review-assembly-source'}})).json() as any
+    const assembly={title:'HTTP assembly',caption:'No scientific re-execution',operationId:'assembly-save',layout:{width:600,height:400,panels:[{figureId:figure.id,figureRevision:approved.revision,x:10,y:10,width:580,height:380,label:'A'}]}}
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}assembly-list`)).status).toBe(401)
+    expect((await post(`${prefix}assembly-save`,{assembly})).status).toBe(400)
+    expect((await post(`${prefix}assembly-save`,{assembly,confirmed:true},{'x-omicos-csrf':''})).status).toBe(403)
+    const saved=await (await post(`${prefix}assembly-save`,{assembly,confirmed:true})).json() as any;expect(saved.review.state).toBe('draft')
+    const review={id:saved.id,revision:1,decision:'approved',note:'Checked source and layout',operationId:'review-assembly'}
+    expect((await post(`${prefix}assembly-review`,{review})).status).toBe(400)
+    expect((await post(`${prefix}assembly-review`,{review,confirmed:true})).status).toBe(200)
+    const svg=await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-svg?id=${saved.id}&revision=2`);expect(svg.headers.get('content-type')).toBe('application/octet-stream');expect(svg.headers.get('content-disposition')).toContain('.svg');expect(await svg.text()).toContain(bytes.toString('base64'))
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}assembly-svg?id=${saved.id}`)).status).toBe(401)
+    const old=await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-document?id=${saved.id}&revision=1`)).json() as any;expect(old.review.state).toBe('draft')
+    expect((await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-integrity?id=${saved.id}`)).json() as any).state).toBe('verified')
+    expect((await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-history?id=${saved.id}`)).json() as any).revisions).toHaveLength(2)
+    expect(project.snapshot().executions).toEqual([]);expect(seen).toHaveLength(0)
+  })
   it('keeps MCP management owner-only and human-confirmed, preserves revisions and does not activate servers in standalone mode',async()=>{
     const reference=(await runtime.list())[0];const prefix=`project/${reference.id}/mcp-`
     const connection={operationId:'mcp-create',title:'Local research extension',note:'Explicit configuration only',config:{transport:'stdio',serverName:'papers',command:'missing-server-executable',args:[],env:{API_TOKEN:{environment:'RESEARCH_TOKEN'}},toolCallTimeoutMs:5000}}

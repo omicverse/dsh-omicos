@@ -1,3 +1,4 @@
+import { FigureAssembliesPane } from './FigureAssembliesPane.js'
 import { DossierPane } from './DossierPane.js'
 import { McpConnectionsPane } from './McpConnectionsPane.js'
 import { MethodLibraryPane } from './MethodLibraryPane.js'
@@ -171,6 +172,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
     <ScienceChat projectId={project.id} />
     <DataBrowser key={project.id} visible={visible} projectId={project.id} prepare={(nextLanguage, source) => { setLanguage(nextLanguage); setCode(source) }} />
     <AnnDataExplorer projectId={project.id} visible={visible} variables={language === 'python' ? snapshot?.variables || [] : []} />
+    <FigureAssembliesPane key={`assemblies:${project.id}`} projectId={project.id} visible={visible} />
     <FigureStudioPane key={`figures:${project.id}`} projectId={project.id} visible={visible} />
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />
     <article className="oss-card"><ManagedEnvironmentPane key={`environment:${project.id}`} projectId={project.id} visible={visible} /></article>

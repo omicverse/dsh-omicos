@@ -33,3 +33,5 @@ body:has(.oss){margin:0}
 .oss-history-receipt pre{max-height:480px;overflow:auto}
 
 .oss label.oss-checkbox{display:flex;align-items:flex-start;gap:8px}.oss label.oss-checkbox input[type=checkbox]{flex:0 0 auto;margin:4px 0 0}
+
+.oss-assembly-preview{display:block;width:100%;height:auto;max-height:75vh;background:#fff;border:1px solid var(--line);margin:18px 0}

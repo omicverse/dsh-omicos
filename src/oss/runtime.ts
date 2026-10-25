@@ -1,4 +1,5 @@
 import { ProjectDossier } from './dossier.js'
+import { FigureAssemblies } from './assemblies.js'
 import { ProjectMcpConnections } from './mcp.js'
 import { McpAuthorization } from './mcp-authorization.js'
 import type { McpHostBridge } from './mcp-types.js'
@@ -38,6 +39,7 @@ export class OssRuntime {
   private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
   private planProjects = new Map<string, Promise<ResearchPlans>>()
   private figureProjects = new Map<string, Promise<FigureStudio>>()
+  private assemblyProjects = new Map<string, Promise<FigureAssemblies>>()
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
@@ -206,6 +208,13 @@ export class OssRuntime {
     }
     return service
   }
+  async assemblies(workspace:string):Promise<FigureAssemblies>{
+    const parent=await this.project(workspace)
+    if(this.closing)throw new Error('OmicOS OSS runtime is shutting down')
+    let service=this.assemblyProjects.get(parent.workspace)
+    if(!service){service=this.figures(parent.workspace).then(figures=>FigureAssemblies.open(parent.workspace,figures));this.assemblyProjects.set(parent.workspace,service);service.catch(()=>{if(this.assemblyProjects.get(parent.workspace)===service)this.assemblyProjects.delete(parent.workspace)})}
+    return service
+  }
   async list(): Promise<ProjectReference[]> { return structuredClone([...this.known.values()]) }
   async byId(id: string): Promise<ScienceService> {
     const active = this.projects.get(id)
@@ -230,6 +239,8 @@ export class OssRuntime {
     this.mcpAuthority.dispose()
     await Promise.allSettled([...this.dossierProjects.values()].map(async service => (await service).dispose()))
     this.dossierProjects.clear()
+    await Promise.allSettled([...this.assemblyProjects.values()].map(async service=>(await service).dispose()))
+    this.assemblyProjects.clear()
     await Promise.allSettled([...this.uploadProjects.values()].map(async service => (await service).dispose()))
     this.uploadProjects.clear()
     await Promise.allSettled([...this.environmentProjects.values()].map(async service => (await service).dispose()))

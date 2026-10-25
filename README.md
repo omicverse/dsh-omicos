@@ -71,6 +71,16 @@ plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actu
 outputs. Vector files are downloads, not executable inline documents. See
 [Figure Studio architecture](docs/adr/0005-figure-studio.md).
 
+Figure Studio also supports source-pinned multi-panel PNG assemblies. Choose exact
+curated figure versions, arrange a grid or edit panel coordinates, then save/review
+in **Figure Studio 多面板组图**. Exported SVG embeds exact original PNGs and source
+provenance, without regenerating analysis. Fresh review requires current individually
+approved sources; later edits leave old assessments historical and are reported by
+integrity checks. Missing/changed original bytes block image export. Captions and
+execution metadata are preserved without automatic redaction. Font-aware PDF,
+vector/JPEG composition and journal-specific exports remain pending; see the
+[assembly design and limits](docs/adr/0017-source-pinned-figure-assemblies.md).
+
 Project MCP connections reuse the optional published Harness
 `@deepseek-ai/dsh-mcp-client@0.2.1-rc.3` peer. Install that exact package in the
 Harness profile/package environment with its package manager, then use **科研 MCP
