@@ -10,7 +10,7 @@ import { join, sep } from 'node:path'
 import { mkdir, realpath, readFile, stat } from 'node:fs/promises'
 import lockfile from 'proper-lockfile'
 import { ScienceLedger } from './ledger.js'
-import { PROTOCOL_VERSION, type Execution, type KernelEnvironment, type ScienceSnapshot, type Variable } from './types.js'
+import { PROTOCOL_VERSION, type Artifact, type Execution, type KernelEnvironment, type ScienceSnapshot, type Variable } from './types.js'
 
 const supervisor = fileURLToPath(new URL('../../runtime/worker_watchdog.cjs', import.meta.url))
 const workerPaths = { python: fileURLToPath(new URL('../../runtime/python_worker.py', import.meta.url)), r: fileURLToPath(new URL('../../runtime/r_worker.R', import.meta.url)) }
@@ -23,6 +23,8 @@ export class ScienceService extends EventEmitter {
   private generation?: string
   private environment?: KernelEnvironment
   private executions: Execution[] = []
+  private dirtyExecutions = new Map<string, number>()
+  private writeSequence = 0
   private variables: Variable[] = []
   private ledger!: ScienceLedger
   private notebookStore?: NotebookStore
@@ -53,11 +55,8 @@ export class ScienceService extends EventEmitter {
     try {
     service.ledger = await ScienceLedger.open(service.workspace)
     if (language === 'python') service.notebookStore = await NotebookStore.open(service.workspace)
-    service.executions = service.ledger.executions(service.language)
-    for (const job of service.executions) if (!terminal.has(job.state)) {
-      job.state = 'interrupted'; job.endedAt = new Date().toISOString(); job.error = 'Host stopped; execution outcome is unknown. Inspect data before rerunning.'
-    }
-    await service.persist()
+    service.ledger.recoverExecutions(service.language)
+    service.executions = service.ledger.recentExecutions(service.language)
     return service
     } catch (error) { service.ledger?.close(); await service.releaseLock(); throw error }
   }
@@ -65,25 +64,40 @@ export class ScienceService extends EventEmitter {
   private get directory(): string { return this.language === 'python' ? join(this.workspace, '.omicos-oss') : join(this.workspace, '.omicos-oss', 'r') }
   private persist(records: readonly Execution[] = this.executions): Promise<void> {
     if (this.lockFailure) return Promise.reject(new Error(this.lockFailure))
-    const snapshot = JSON.parse(JSON.stringify(records)) as Execution[]
-    const next = this.saving.then(() => { this.ledger.saveExecutions(this.language, snapshot) })
+    const snapshot = JSON.parse(JSON.stringify(records)) as Execution[]; const sequence = ++this.writeSequence
+    for (const job of records) this.dirtyExecutions.set(job.id, sequence)
+    const next = this.saving.then(() => {
+      this.ledger.saveExecutions(this.language, snapshot)
+      for (const job of records) if (this.dirtyExecutions.get(job.id) === sequence) this.dirtyExecutions.delete(job.id)
+      this.retainRecent()
+    })
     this.saving = next.catch(() => {})
     return next
   }
+  private retainRecent(): void {
+    const recent = new Set(this.executions.slice(-100).map(job => job.id))
+    this.executions = this.executions.filter(job => recent.has(job.id) || !terminal.has(job.state) || this.dirtyExecutions.has(job.id) || this.active?.id === job.id || this.finishing?.id === job.id)
+  }
+  history(query: { before?: number; state?: string; search?: string } = {}) { return this.ledger.executionHistory(this.language, query) }
+  historyFor(language: 'python' | 'r', query: { before?: number; state?: string; search?: string } = {}) { return this.ledger.executionHistory(language, query) }
+  artifact(id: string, executionId?: string): Artifact | undefined { if (executionId) return structuredClone(this.get(executionId)?.artifacts.find(item => item.id === id)); const persisted = this.ledger.artifact(this.language, id); if (persisted) return persisted; const matches = this.executions.flatMap(job => job.artifacts).filter(artifact => artifact.id === id); if (matches.length > 1) throw new Error('Artifact identity is ambiguous'); return structuredClone(matches[0]) }
+  memories(sessionId?: string) { return this.ledger.memories(sessionId) }
+  kernelState(): ScienceSnapshot['kernel'] { return structuredClone({ state: this.active ? 'busy' : this.child ? 'ready' : 'cold', generation: this.generation, environment: this.environment }) }
   receipt(id: string): Execution | undefined { return this.ledger.execution(id) }
   figureCandidates(cursor?: string) { return this.ledger.figureCandidates(cursor) }
   get memory() { return this.ledger.memory }
   snapshot(sessionId?: string): ScienceSnapshot {
+    const executions = this.executions.slice(-100); const total = Math.max(this.ledger.executionCount(this.language), this.executions.length)
     return structuredClone({ protocol: PROTOCOL_VERSION, project: this.workspace, eventCursor: this.eventCursor,
-      kernel: { state: this.active ? 'busy' : this.child ? 'ready' : 'cold', generation: this.generation, environment: this.environment },
-      executions: this.executions, variables: this.variables, memories: this.ledger.memories(sessionId) })
+      kernel: this.kernelState(),
+      executionWindow: { shown: executions.length, total, active: this.executions.filter(job => !terminal.has(job.state)).length, hasMore: total > executions.length }, executions, variables: this.variables, memories: this.memories(sessionId) })
   }
-  get(id: string): Execution | undefined { return structuredClone(this.executions.find(job => job.id === id)) }
+  get(id: string): Execution | undefined { const job = this.executions.find(job => job.id === id) || this.ledger.execution(id); return job?.language === this.language ? structuredClone(job) : undefined }
   async submit(code: string, operationId: string, sessionId: string, expectedKernelGeneration?: string): Promise<Execution> {
     if (this.closing) throw new Error('Scientific service is shutting down')
     if (!code.trim() || code.length > 200_000) throw new Error('Code must contain 1–200000 characters')
     if (!operationId || operationId.length > 200 || !sessionId || sessionId.length > 200) throw new Error('Valid operationId and sessionId are required')
-    const existing = this.executions.find(job => job.operationId === operationId)
+    const existing = this.executions.find(job => job.operationId === operationId) || this.ledger.byOperation(this.language, operationId)
     if (existing) {
       if (existing.code !== code || existing.sessionId !== sessionId || existing.expectedKernelGeneration !== expectedKernelGeneration) throw new Error('Operation ID already belongs to another execution')
       return structuredClone(existing)
@@ -91,7 +105,7 @@ export class ScienceService extends EventEmitter {
     const job: Execution = { id: randomUUID(), operationId, sessionId, code, language: this.language, state: 'queued', createdAt: new Date().toISOString(), output: '', artifacts: [], ...(expectedKernelGeneration ? { expectedKernelGeneration } : {}) }
     // Register before awaiting disk: concurrent retries see the same operation.
     this.executions.push(job)
-    try { await this.persist([job]) } catch (error) { this.executions.splice(this.executions.indexOf(job), 1); throw error }
+    try { await this.persist([job]) } catch (error) { this.executions.splice(this.executions.indexOf(job), 1); this.dirtyExecutions.delete(job.id); throw error }
     this.queue.push(job)
     this.emit('change')
     void this.pump().catch(error => this.failWorker(String(error)))
@@ -160,10 +174,10 @@ export class ScienceService extends EventEmitter {
     this.active = next
     if (next.expectedKernelGeneration && (!this.child || this.generation !== next.expectedKernelGeneration)) {
       next.state = 'interrupted'; next.endedAt = new Date().toISOString(); next.error = 'Expected kernel generation is unavailable; restore a checkpoint or explicitly restart. Code was not executed.'
-      await this.persist([next]); this.active = undefined; this.emit('change'); await this.pump(); return
+      await this.persist([next]); this.active = undefined; this.retainRecent(); this.emit('change'); await this.pump(); return
     }
     await this.start()
-    if (next.state === 'canceled') { this.active = undefined; void this.pump(); return }
+    if (next.state === 'canceled') { this.active = undefined; this.retainRecent(); void this.pump(); return }
     if (next.expectedKernelGeneration && this.generation !== next.expectedKernelGeneration) throw new Error('Kernel generation changed before execution; code was not sent')
     next.state = 'running'; next.startedAt = new Date().toISOString(); next.kernelGeneration = this.generation; next.environment = structuredClone(this.environment)
     await this.persist([next]); this.emit('change')
@@ -195,7 +209,7 @@ export class ScienceService extends EventEmitter {
     job.state = outcome
     this.variables = this.generation === generation ? message.variables ?? [] : []
     await this.persist([job])
-    this.active = undefined; this.finishing = undefined
+    this.active = undefined; this.finishing = undefined; this.retainRecent()
     this.emit('change'); await this.pump()
   }
   private failWorker(error: string, forceUnknown = false): void {
@@ -209,11 +223,12 @@ export class ScienceService extends EventEmitter {
     for (const job of this.queue) { job.state = 'interrupted'; job.error = 'Worker unavailable; submit a new operation after inspecting the environment'; job.endedAt = new Date().toISOString(); changed.push(job) }
     this.queue = []
     // Waiters must settle even when the ledger itself is unavailable; never claim durable success.
-    void this.persist(changed).catch(error => this.emit('diagnostic', String(error))).finally(() => this.emit('change'))
+    const settled = this.persist(changed).catch(error => { this.emit('diagnostic', String(error)) }).then(() => { this.emit('change') })
+    this.saving = settled.catch(error => { this.emit('diagnostic', String(error)) })
   }
   async cancel(id: string): Promise<void> {
     const job = this.executions.find(item => item.id === id)
-    if (!job) throw new Error('Execution not found')
+    if (!job) { const archived = this.get(id); if (archived && terminal.has(archived.state)) return; throw new Error('Execution is not owned by this live kernel; inspect its receipt before recovery') }
     if (terminal.has(job.state) || this.finishing === job) return
     if (job !== this.active || job.state === 'queued') {
       job.state = 'canceled'; job.endedAt = new Date().toISOString(); this.queue = this.queue.filter(item => item !== job)
@@ -234,13 +249,16 @@ export class ScienceService extends EventEmitter {
   events(after = 0, limit = 200) { return this.ledger.events(after, limit) }
   get eventCursor(): number { return this.ledger.cursor }
 
-  notebook(): unknown {
-    return { nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { display_name: this.language === 'r' ? 'R' : 'Python 3', language: this.language, name: this.language === 'r' ? 'ir' : 'python3' } }, cells: this.executions.map((job, index) => ({
-      id: job.id, cell_type: 'code', execution_count: job.startedAt ? index + 1 : null, source: job.code,
+  notebookHeader() { return { nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { display_name: this.language === 'r' ? 'R' : 'Python 3', language: this.language, name: this.language === 'r' ? 'ir' : 'python3' } } } }
+  *notebookCells() {
+    const pending = new Map(this.executions.map(job => [job.id, job])); let index = 0
+    const cell = (job: Execution) => { const position = ++index; return { id: job.id, cell_type: 'code', execution_count: job.startedAt ? position : null, source: job.code,
       metadata: { omicos: { state: job.state, invocation_id: job.id, kernel_generation: job.kernelGeneration, environment: job.environment, artifacts: job.artifacts } },
-      outputs: [...(job.output ? [{ output_type: 'stream', name: 'stdout', text: job.output }] : []), ...(job.error ? [{ output_type: 'error', ename: job.state, evalue: job.error, traceback: job.error.split('\n') }] : [])],
-    })) }
+      outputs: [...(job.output ? [{ output_type: 'stream', name: 'stdout', text: job.output }] : []), ...(job.error ? [{ output_type: 'error', ename: job.state, evalue: job.error, traceback: job.error.split('\n') }] : [])] } }
+    for (const archived of this.ledger.scanExecutions(this.language)) { const job = pending.get(archived.id) || archived; pending.delete(archived.id); yield cell(job) }
+    for (const job of pending.values()) yield cell(job)
   }
+  notebook(): unknown { return { ...this.notebookHeader(), cells: [...this.notebookCells()] } }
   dispose(): Promise<void> { return this.disposing ??= this.disposeWorker() }
   private async disposeWorker(): Promise<void> {
     if (this.closing && !this.releaseLock) return

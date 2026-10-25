@@ -12,8 +12,14 @@ export interface Variable { name: string; type: string; shape?: string; preview:
 export interface Memory { id: string; text: string; source: string; updatedAt: string }
 export interface ScienceSnapshot {
   protocol: number; project: string; eventCursor: number; kernel: { state: 'cold' | 'ready' | 'busy'; generation?: string; environment?: KernelEnvironment }
+  executionWindow?: { shown: number; total: number; active: number; hasMore: boolean }
   executions: Execution[]; variables: Variable[]; memories: Memory[]
 }
 export interface PlanEntry {
   code: string; name: string; prices: Record<string, number>; [key: string]: unknown
 }
+export interface ExecutionSummary {
+  id: string; operationId: string; sessionId: string; language: 'python' | 'r'; state: JobState; createdAt: string; startedAt?: string; endedAt?: string
+  codePreview: string; outputTail: string; errorTail?: string; artifactCount: number; environmentFingerprint?: string
+}
+export class HistoryError extends Error { constructor(readonly status: number, message: string) { super(message) } }

@@ -9,6 +9,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Private Core removed from the default installation graph; explicit Core mode retains its original account/kernel/capability console and delegated tool surface. OSS Scientist chat is not advertised in Core mode; workspace resolution waits for the active session identity. Real Cordis tests cover Core routing and missing chat, and the actual Harness browser renders the retained console against an isolated legacy DTO fixture.
 - Independent Node Host / public Python worker protocol with no model loop or private runtime dependency.
 - Persistent per-project Python and separate R namespaces, queue, stable invocation deduplication, cancellation and bounded output.
+- Ad hoc scientific history scales independently of snapshots: recent-100 response/cache windows retain all live/dirty work; exact old receipts, invocation deduplication and artifact bytes stay available in SQLite. Owner-authenticated 50-summary cursor pages support language/state/code-or-ID filters without launching kernels. Notebook cells load archived outputs/images explicitly; complete legacy Notebook downloads stream 25-record ledger pages with backpressure and disconnect handling. Pipeline exact receipt reads and generation/memory checks avoid full-history cloning. Older unfinished jobs outside the recent window recover as interrupted without replay.
 - SQLite WAL execution/memory ledger with transactional receipts, one-time JSON migration preserving originals, lazy durable project registry, incomplete-job recovery, project-level heartbeat lock, distinct kernel generations.
 - Figure Studio v1: private SQLite immutable revisions, versioned captions/method/data declarations, project Python/R and Pipeline source receipts, explicit human review with assessed digest, reset-to-draft edits, search/history/source-catalog paging, byte-integrity status, version comparison and original artifact/provenance manifest downloads. Source changes reject download/approval without rerunning code; historical reviews remain audit records. Agent tools read/propose through Harness approval but cannot independently approve figures. Python retains PNG/PDF/SVG; vectors download as nosniff attachments, and Notebook local PNG outputs render directly.
 - Figure capture/integrity checks, variable inspection, sourced memory CRUD and notebook export.
@@ -43,14 +44,15 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the complete 187-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
-- 187 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the complete 191-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
+- 191 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Pipeline flow fixed a definition, persisted its background run over page reload, approved a human gate, and verified actual output/journal. Native Node 22.13.1 tests cover checkpoint restoration after Host restart, changed-file/environment blocking, namespace isolation, true cancellation and interrupted-work deduplication.
 - Browser memory flow saves a proposal, confirms it, inspects immutable history, reloads it and withdraws it; full Harness mock-provider requests contain active shared facts and exclude private/unconfirmed notes.
 - AnnData browser flow inspects the actual shared Python object, selects an existing embedding/obs field, approves a bounded plot and verifies real PNG plus sample evidence. Cross-version fixtures exercised AnnData 0.10.9 and a temporary Python 3.11 environment with AnnData 0.12.19, pandas 2.3.3, NumPy 2.4.6 and Matplotlib 3.11.2; the existing scientific environment was not modified.
 - Partial Python figures are captured under their failed execution, then closed; a following successful cell cannot inherit the previous failed cell's open figure. Real figure tests preserve failed-state provenance and verify no stale artifacts.
 - Browser Figure Studio flow executes a real Notebook plot, approves its source-pinned figure, downloads an assessed provenance manifest, revises to draft, compares a prior caption and restores the document after reload. Actual Python/Pipeline PNG/PDF/SVG source downloads survive runtime restart without launching an interpreter.
+- History fixtures seed 250 receipts with old unfinished jobs, verify complete recovery/export and replay deduplication, and queue 110 actual Python increments to prove evicted work is still addressable without rerunning. Browser history flow ages Notebook outputs beyond 110 later executions, then reads their historical stdout/image and pages/searches the archive.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
@@ -73,7 +75,7 @@ Verification at this checkpoint:
 - Real staging account / payment sandbox / actual merchant callbacks and entitlement refresh contract.
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.
 - Runtime installer/downloader and environment provisioning, with user-approved installation and rollback.
-- Broader event-ledger provenance coverage, retention and large-history paging. SQLite migration and durable execution receipts are implemented.
+- Broader event-ledger provenance coverage, retention/deletion policies and Pipeline run-list paging. Ad hoc execution paging, bounded recent windows, old-receipt lookup and complete streamed legacy export are implemented.
 - Agent-token streaming and event-driven chat beyond the scientific SSE stream.
 - OS keychain integration; current credentials are restricted local files.
 

@@ -129,12 +129,12 @@ export class PipelineService {
     if (checkpoint) await this.verify(checkpoint.files, signal)
     signal.throwIfAborted()
     const worker = await this.worker(run, definition, Boolean(recovery))
-    if (!recovery && run.kernelGeneration && (worker.snapshot().kernel.state !== 'ready' || worker.snapshot().kernel.generation !== run.kernelGeneration)) throw new PipelineError(409, 'Namespace lost; restore a checkpoint or explicitly restart instead')
+    if (!recovery && run.kernelGeneration && (worker.kernelState().state !== 'ready' || worker.kernelState().generation !== run.kernelGeneration)) throw new PipelineError(409, 'Namespace lost; restore a checkpoint or explicitly restart instead')
     signal.throwIfAborted()
     const environment = await worker.prepare()
     signal.throwIfAborted()
     if (recovery) this.store.update(id, undefined, 'environment/observed', draft => { Object.assign(draft.recoveries.at(-1)!, { expectedFingerprint: run.environment?.fingerprint, observedFingerprint: environment.fingerprint, expectedEnvironment: run.environment, observedEnvironment: environment }) })
-    const preparedKernel = worker.snapshot().kernel
+    const preparedKernel = worker.kernelState()
     if (preparedKernel.state !== 'ready' || !preparedKernel.generation) throw new PipelineError(409, 'Pipeline namespace was lost during environment preparation')
     if (!recovery && run.kernelGeneration && preparedKernel.generation !== run.kernelGeneration) throw new PipelineError(409, 'Pipeline namespace changed; code was not submitted')
     if (run.environment && run.environment.fingerprint !== environment.fingerprint && !recovery?.allowEnvironmentChange) throw new PipelineError(409, 'Environment changed. Review package/interpreter differences and explicitly accept before recovery code runs.')
@@ -194,7 +194,7 @@ export class PipelineService {
     }
     if (action === 'continue') {
       if (run.state !== 'waiting') throw new PipelineError(409, 'Only a waiting gate can continue in its live namespace')
-      const worker = this.workers.get(id); const kernel = worker?.snapshot().kernel
+      const worker = this.workers.get(id); const kernel = worker?.kernelState()
       if (!kernel || kernel.state !== 'ready' || kernel.generation !== run.kernelGeneration) throw new PipelineError(409, 'Namespace lost; restore a checkpoint or explicitly restart instead')
       await this.verify(run.inputs || [])
       const checkpoint = run.checkpoints.at(-1); if (checkpoint) await this.verify(checkpoint.files)
@@ -216,7 +216,7 @@ export class PipelineService {
     if (!run.attempts.some(attempt => attempt.executionId === executionId)) throw new PipelineError(404, 'Execution does not belong to this run')
     const worker = this.workers.get(id); if (worker) { const execution = worker.get(executionId); if (execution) return execution }
     const ledger = await ScienceLedger.open(await this.directory(id))
-    try { const definition = this.store.definition(run.definitionId); const execution = ledger.executions(definition.language).find(job => job.id === executionId); if (!execution) throw new PipelineError(404, 'Execution receipt missing'); return execution } finally { ledger.close() }
+    try { const definition = this.store.definition(run.definitionId); const execution = ledger.execution(executionId); if (!execution || execution.language !== definition.language) throw new PipelineError(404, 'Execution receipt missing'); return execution } finally { ledger.close() }
   }
   async artifact(id: string, executionId: string, artifactId: string): Promise<{ bytes: Buffer; mime: string }> {
     const execution = await this.execution(id, executionId); const artifact = execution.artifacts.find(artifact => artifact.id === artifactId)

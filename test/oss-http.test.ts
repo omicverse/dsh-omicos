@@ -137,6 +137,25 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await fetchHost(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}&language=r`)).status).toBe(404)
   })
 
+  it('serves archived receipts/artifacts and streams the complete legacy Notebook independently of its recent snapshot', async () => {
+    const reference = (await runtime.list())[0]; const project = await runtime.byId(reference.id); const prefix = `project/${reference.id}/`
+    const bytes = Buffer.from('archived-figure'); const artifact = { id: 'archived-figure', path: '.omicos-oss/archived.png', mime: 'image/png', bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }
+    await writeFile(join(project.workspace, artifact.path), bytes)
+    const ledger = await ScienceLedger.open(project.workspace)
+    try { ledger.saveExecutions('python', Array.from({ length: 130 }, (_, index) => ({ id: `archived-${index}`, operationId: `archived-${index}`, sessionId: 'fixture', language: 'python' as const, state: 'succeeded' as const, code: `print(${index})`, output: String(index), artifacts: index === 0 ? [artifact] : [], createdAt: '2026-10-25' }))) } finally { ledger.close() }
+    const read = async (path: string) => fetchHost(`${base}/omicos/oss/api/${prefix}${path}`)
+    const first = await (await read('executions')).json() as any; expect(first.entries).toHaveLength(50); expect(first.total).toBe(130)
+    expect((await (await read(`executions?before=${first.next}`)).json() as any).entries).toHaveLength(50)
+    expect((await read('executions?before=invalid')).status).toBe(400)
+    expect((await (await read('execution?id=archived-0')).json() as any).output).toBe('0')
+    expect(Buffer.from(await (await read('artifact?id=archived-figure&execution=archived-0')).arrayBuffer())).toEqual(bytes)
+    expect(Buffer.from(await (await read('artifact?id=archived-figure')).arrayBuffer())).toEqual(bytes)
+    const exported = await read('notebook'); expect(exported.headers.get('content-disposition')).toContain('attachment')
+    const book = await exported.json() as any; expect(book.cells).toHaveLength(130); expect(book.cells[0].outputs[0].text).toBe('0'); expect(book.cells.at(-1).source).toBe('print(129)')
+    expect(project.snapshot().kernel.state).toBe('cold')
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}executions`)).status).toBe(401)
+  })
+
   it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {
     const core = createServer(createOssHandler(runtime, owner, { backend: 'core' })); const address = await listen(core)
     try {

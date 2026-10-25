@@ -27,6 +27,13 @@ owner credential that is exchanged for an HttpOnly browser cookie and removed fr
 the address bar. Keep this link private. The store opens from the workbench.
 When hosted by Harness, both windows use its existing local owner authentication.
 
+Normal snapshots contain the latest 100 executions, not the complete archive.
+Use the history browser or `omicos_execution_history` to page earlier summaries;
+exact receipt IDs, operation deduplication, original images and Notebook exports
+remain available. Older Notebook cells can load their archived result explicitly.
+The complete legacy Notebook download streams all cells in bounded pages, without
+replaying code. See [execution history decisions](docs/adr/0009-execution-history-windows.md).
+
 Notebook documents are stored in each project's private runtime directory. Create or
 import an `.ipynb`, edit/reorder cells, save and explicitly approve individual runs.
 Imports never execute. Python and R use their respective shared project kernels;

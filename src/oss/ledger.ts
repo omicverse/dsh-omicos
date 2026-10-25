@@ -1,3 +1,4 @@
+import { HistoryError, type Artifact, type ExecutionSummary, type JobState } from './types.js'
 import { FigureError } from './figure-types.js'
 import { MemoryTree } from './memory-store.js'
 import type { MemoryAccess } from './memory-types.js'
@@ -72,6 +73,35 @@ export class ScienceLedger {
   }
   executions(language: string): Execution[] {
     return this.db.prepare('SELECT record_json FROM executions WHERE language=? ORDER BY rowid').all(language).map(row => JSON.parse(String(row.record_json)) as Execution)
+  }
+  *scanExecutions(language: string): Generator<Execution> {
+    const upper = Number(this.db.prepare('SELECT COALESCE(MAX(rowid),0) AS maximum FROM executions WHERE language=?').get(language)!.maximum)
+    let after = 0
+    for (;;) { const rows = this.db.prepare('SELECT rowid,record_json FROM executions WHERE language=? AND rowid>? AND rowid<=? ORDER BY rowid LIMIT 25').all(language, after, upper); if (!rows.length) return; for (const row of rows) yield JSON.parse(String(row.record_json)) as Execution; after = Number(rows.at(-1)!.rowid) }
+  }
+  recentExecutions(language: string): Execution[] { return this.db.prepare('SELECT record_json FROM executions WHERE language=? ORDER BY rowid DESC LIMIT 100').all(language).reverse().map(row => JSON.parse(String(row.record_json)) as Execution) }
+  executionCount(language: string): number { return Number(this.db.prepare('SELECT COUNT(*) AS total FROM executions WHERE language=?').get(language)!.total) }
+  byOperation(language: string, operationId: string): Execution | undefined { const row = this.db.prepare('SELECT record_json FROM executions WHERE language=? AND operation_id=?').get(language, operationId); return row ? JSON.parse(String(row.record_json)) as Execution : undefined }
+  recoverExecutions(language: string): void {
+    let after = 0
+    for (;;) {
+      const rows = this.db.prepare("SELECT rowid,record_json FROM executions WHERE language=? AND rowid>? AND json_extract(record_json,'$.state') IN ('queued','running') ORDER BY rowid LIMIT 50").all(language, after)
+      if (!rows.length) return
+      const records = rows.map(row => ({ ...JSON.parse(String(row.record_json)) as Execution, state: 'interrupted' as const, endedAt: new Date().toISOString(), error: 'Host stopped; execution outcome is unknown. Inspect data before rerunning.' }))
+      this.saveExecutions(language, records); after = Number(rows.at(-1)!.rowid)
+    }
+  }
+  executionHistory(language: string, query: { before?: number; state?: string; search?: string } = {}) {
+    const before = query.before ?? Number.MAX_SAFE_INTEGER; const state = query.state || ''; const search = query.search || ''
+    if (!['python', 'r'].includes(language) || !Number.isSafeInteger(before) || before < 1 || (state && !STATES.has(state)) || search.length > 200) throw new HistoryError(400, 'Invalid execution history cursor/language/filter')
+    const rows = this.db.prepare(`SELECT rowid,id,operation_id,language,json_extract(record_json,'$.sessionId') AS session_id,json_extract(record_json,'$.state') AS state,json_extract(record_json,'$.createdAt') AS created_at,json_extract(record_json,'$.startedAt') AS started_at,json_extract(record_json,'$.endedAt') AS ended_at,substr(json_extract(record_json,'$.code'),1,240) AS code_preview,substr(json_extract(record_json,'$.output'),-1000) AS output_tail,substr(json_extract(record_json,'$.error'),-1000) AS error_tail,json_array_length(record_json,'$.artifacts') AS artifacts,json_extract(record_json,'$.environment.fingerprint') AS fingerprint FROM executions WHERE language=? AND rowid<? AND (?='' OR json_extract(record_json,'$.state')=?) AND (?='' OR instr(id,?)>0 OR instr(operation_id,?)>0 OR instr(json_extract(record_json,'$.code'),?)>0) ORDER BY rowid DESC LIMIT 51`).all(language, before, state, state, search, search, search, search)
+    const entries: ExecutionSummary[] = rows.slice(0, 50).map(row => ({ id: String(row.id), operationId: String(row.operation_id), sessionId: String(row.session_id), language: String(row.language) as 'python' | 'r', state: String(row.state) as JobState, createdAt: String(row.created_at), startedAt: row.started_at ? String(row.started_at) : undefined, endedAt: row.ended_at ? String(row.ended_at) : undefined, codePreview: String(row.code_preview || ''), outputTail: String(row.output_tail || ''), errorTail: row.error_tail ? String(row.error_tail) : undefined, artifactCount: Number(row.artifacts || 0), environmentFingerprint: row.fingerprint ? String(row.fingerprint) : undefined }))
+    return { entries, total: this.executionCount(language), next: rows.length > 50 ? Number(rows[49].rowid) : undefined }
+  }
+  artifact(language: string, id: string): Artifact | undefined {
+    const rows = this.db.prepare("SELECT a.value AS artifact FROM executions e,json_each(e.record_json,'$.artifacts') a WHERE e.language=? AND json_extract(a.value,'$.id')=? LIMIT 2").all(language, id)
+    if (rows.length > 1) throw new HistoryError(409, 'Artifact identity is ambiguous; inspect the source receipts')
+    return rows[0] ? JSON.parse(String(rows[0].artifact)) as Artifact : undefined
   }
   execution(id: string): Execution | undefined { const row = this.db.prepare('SELECT record_json FROM executions WHERE id=?').get(id); return row ? JSON.parse(String(row.record_json)) as Execution : undefined }
   figureCandidates(cursor?: string) {

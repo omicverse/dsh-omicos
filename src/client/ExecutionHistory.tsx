@@ -1,0 +1,24 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api } from './oss-api.js'
+import type { Execution, ExecutionSummary } from '../oss/types.js'
+interface Page { entries: ExecutionSummary[]; total: number; next?: number }
+export function ExecutionHistory({ projectId, language, visible }: { projectId: string; language: 'python' | 'r'; visible: boolean }): JSX.Element {
+  const [open, setOpen] = useState(false); const [page, setPage] = useState<Page>({ entries: [], total: 0 }); const [before, setBefore] = useState<number>(); const [state, setState] = useState(''); const [search, setSearch] = useState(''); const [version, setVersion] = useState(0)
+  const [receipt, setReceipt] = useState<Execution>(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
+  const identity = useRef(''); const readSequence = useRef(0)
+  const prefix = `project/${projectId}/`
+  identity.current = `${prefix}:${language}`
+  const refresh = useCallback(() => setVersion(value => value + 1), [])
+  useEffect(() => { setBefore(undefined); setReceipt(undefined) }, [language])
+  useEffect(() => {
+    if (!open || !visible) return
+    const controller = new AbortController(); setLoading(true); setError('')
+    const query = new URLSearchParams({ language, state, q: search }); if (before) query.set('before', String(before))
+    void api<Page>(`${prefix}executions?${query}`, undefined, controller.signal).then(value => { if (!controller.signal.aborted) setPage(value) }, error => { if (!controller.signal.aborted) setError(String(error)) }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [prefix, language, state, search, before, version, open, visible])
+  const read = async (id: string) => { const key = identity.current; const sequence = ++readSequence.current; setLoading(true); setError(''); try { const receipt = await api<Execution>(`${prefix}execution?language=${language}&id=${encodeURIComponent(id)}`); if (identity.current === key && readSequence.current === sequence) setReceipt(receipt) } catch (error) { if (identity.current === key && readSequence.current === sequence) setError(String(error)) } finally { if (identity.current === key && readSequence.current === sequence) setLoading(false) } }
+  return <details className="oss-card oss-execution-history" onToggle={event => setOpen(event.currentTarget.open)} aria-label="完整执行历史"><summary>完整执行历史 · {language === 'r' ? 'R' : 'Python'}</summary><p>按游标读取持久回执，每页最多 50 条摘要。读取完整回执不会启动内核或重新执行代码。筛选状态是已记录状态，排队/运行中的任务需刷新核对。</p><div className="oss-toolbar"><label>历史状态<select aria-label="历史状态" value={state} onChange={event => { setState(event.target.value); setBefore(undefined) }}><option value="">全部</option>{['queued', 'running', 'succeeded', 'failed', 'canceled', 'interrupted'].map(value => <option key={value} value={value}>{value}</option>)}</select></label><label>查找代码或执行编号<input aria-label="查找执行历史" value={search} maxLength={200} onChange={event => { setSearch(event.target.value); setBefore(undefined) }} /></label><button disabled={loading} onClick={refresh}>刷新历史页</button></div>{error && <p role="alert" className="oss-error">{error}；当前查询未完成，下方如有内容为上一次读取的结果。</p>}<p>{language} 持久回执共 {page.total} 条 · 此页 {page.entries.length} 条{loading ? ' · 读取中…' : ''}</p><div className="oss-history-list">{page.entries.map(entry => <article className="oss-variable" key={entry.id}><div className="oss-row"><strong>{entry.state}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small><button disabled={loading} onClick={() => void read(entry.id)}>读取回执 {entry.id.slice(0, 8)}</button></div><code>{entry.id}</code><pre>{entry.codePreview}</pre>{entry.outputTail && <pre>{entry.outputTail}</pre>}{entry.errorTail && <pre className="oss-error">{entry.errorTail}</pre>}<small>{entry.artifactCount} 个产物 · 请求 {entry.operationId}</small></article>)}</div><div className="oss-toolbar"><button disabled={!before || loading} onClick={() => setBefore(undefined)}>历史第一页</button><button disabled={!page.next || loading} onClick={() => setBefore(page.next)}>更早的执行历史</button></div>
+    {receipt && <article className="oss-history-receipt"><h3>历史完整回执 · {receipt.language} · {receipt.state}</h3><code>{receipt.id}</code><pre>{receipt.code}</pre>{receipt.output && <pre className="oss-output">{receipt.output}</pre>}{receipt.error && <pre className="oss-error">{receipt.error}</pre>}<p>实际环境指纹 <code>{receipt.environment?.fingerprint || '未记录'}</code></p>{receipt.artifacts.map(artifact => { const url = `/omicos/oss/api/${prefix}artifact?execution=${encodeURIComponent(receipt.id)}&language=${receipt.language}&id=${encodeURIComponent(artifact.id)}`; return <figure key={artifact.id}>{artifact.mime === 'image/png' && <img loading="lazy" src={url} alt="历史执行图形" />}<figcaption><a href={url} download>下载 {artifact.mime} ↗</a> · <code>{artifact.sha256}</code></figcaption></figure> })}</article>}
+  </details>
+}

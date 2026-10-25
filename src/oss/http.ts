@@ -1,5 +1,5 @@
 import { runtimeCapabilities } from './capabilities.js'
-import { PROTOCOL_VERSION } from './types.js'
+import { HistoryError, PROTOCOL_VERSION } from './types.js'
 import { FigureError } from './figure-types.js'
 import { artifactBytes } from './artifact-bytes.js'
 import { MemoryError } from './memory-types.js'
@@ -139,6 +139,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           if (data.expectedGeneration !== undefined && (typeof data.expectedGeneration !== 'string' || !/^[a-f0-9-]{36}$/.test(data.expectedGeneration))) throw new AnnDataError(400, 'Invalid expected kernel generation')
           result = await parent.submit(plotAnnDataCode(data.settings), String(data.operationId || ''), 'workbench:anndata-plot', data.expectedGeneration)
         }
+        else if (action === 'executions' && method === 'GET') result = parent.historyFor(language, { before: url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined, state: url.searchParams.get('state') || undefined, search: url.searchParams.get('q') || undefined })
         else if (action === 'execution' && method === 'GET') { const job = parent.receipt(url.searchParams.get('id') || ''); if (!job || job.language !== language) throw new AnnDataError(404, 'Project execution receipt not found'); result = job }
         else if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
           if (!runtime.chat) {
@@ -218,16 +219,26 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           response.setHeader('content-disposition', 'attachment; filename="omicos-notebook.ipynb"')
           result = parent.notebooks.export(document.id, (_language, id) => kernel.get(id))
         }
-        else if (action === 'snapshot' && method === 'GET') result = { ...project.snapshot(), memories: parent.snapshot().memories }
+        else if (action === 'snapshot' && method === 'GET') result = project.snapshot()
         else if (action === 'execute' && method === 'POST') {
           if (data.confirmed !== true || typeof data.code !== 'string') throw new CloudError(400, 'Explicit execution approval required')
           result = await project.submit(data.code, String(data.operationId || ''), String(data.sessionId || 'workbench'))
         } else if (action === 'cancel' && method === 'POST') { await project.cancel(String(data.id)); result = { ok: true } }
         else if (action === 'memory' && method === 'POST') { await project.remember(String(data.id || ''), String(data.text || ''), String(data.source || ''), { owner: true, actor: 'user:workbench' }); result = { ok: true } }
         else if (action === 'notebook' && method === 'GET') {
-          response.setHeader('content-disposition', 'attachment; filename="omicos-analysis.ipynb"'); result = project.notebook()
+          response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': 'attachment; filename="omicos-analysis.ipynb"', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+          const write = async (chunk: string): Promise<boolean> => {
+            if (response.destroyed) return false
+            if (response.write(chunk)) return true
+            if (response.destroyed || response.writableEnded) return false
+            return new Promise(resolve => { const done = (okay: boolean) => { response.off('drain', drain); response.off('close', close); response.off('error', close); resolve(okay) }; const drain = () => done(true); const close = () => done(false); response.once('drain', drain); response.once('close', close); response.once('error', close) })
+          }
+          if (!await write(JSON.stringify(project.notebookHeader()).slice(0, -1) + ',"cells":[')) return
+          let first = true
+          for (const cell of project.notebookCells()) { if (!await write((first ? '' : ',') + JSON.stringify(cell))) return; first = false }
+          response.end(']}'); return
         } else if (action === 'artifact' && method === 'GET') {
-          const artifact = project.snapshot().executions.flatMap(job => job.artifacts).find(item => item.id === url.searchParams.get('id'))
+          const artifact = project.artifact(url.searchParams.get('id') || '', url.searchParams.get('execution') || undefined)
           if (!artifact) throw new CloudError(404, 'Artifact not found')
           const bytes = await artifactBytes(project.workspace, artifact)
           sendArtifact(response, { bytes, mime: artifact.mime }); return
@@ -236,7 +247,8 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
       sendJson(response, 200, result)
     } catch (error) {
       if (response.writableEnded) return
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      if (response.headersSent) { response.destroy(); return }
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }
