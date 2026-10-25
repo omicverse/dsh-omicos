@@ -81,7 +81,10 @@ execution metadata are preserved without automatic redaction. Owner-confirmed PD
 embeds a checked label font and maps physical size explicitly. Choose original
 PNG/provenance attachments, or page-only output with no source attachments or
 assembly title/caption/date metadata. Visible pixels and internal font/ICC data
-remain; page-only is not automatic anonymization. Select the bundled OFL font or a
+remain; page-only is not automatic anonymization. Save/reuse project publication
+preferences with immutable history and archive/restore. Loading or editing a
+preference never carries export consent; font/source bytes are checked again at
+export, and applied saved versions are bound by exact revision/digest. Select the bundled OFL font or a
 checksum-pinned static project TTF/OTF with an embedding-license declaration.
 CFF/no-subsetting fonts embed in full; missing glyphs reject. PNG samples
 (including 16-bit, alpha and Adam7) retain their represented precision, with a
@@ -100,7 +103,8 @@ inherit prior assembly approval. The bundled original Source Sans 3 font remains
 separately licensed under OFL with its notice and source/checksum manifest in
 `runtime/fonts`. See [PDF rendering/font scope](docs/adr/0018-font-aware-assembly-pdf.md) and
 [PNG color interpretation and bounds](docs/adr/0019-png-color-managed-publication.md),
-[attachment policy and sharing limits](docs/adr/0020-pdf-attachment-policy.md).
+[attachment policy and sharing limits](docs/adr/0020-pdf-attachment-policy.md),
+[saved publication preferences](docs/adr/0021-saved-publication-profiles.md).
 
 Project MCP connections reuse the optional published Harness
 `@deepseek-ai/dsh-mcp-client@0.2.1-rc.3` peer. Install that exact package in the

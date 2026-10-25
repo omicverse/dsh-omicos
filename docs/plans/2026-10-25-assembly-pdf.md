@@ -15,3 +15,5 @@ Follow-up implemented: direct exact 16-bit grayscale/RGB/alpha PDF image streams
 Color follow-up implemented in ADR 0019: ICC/sRGB/gAMA/cHRM PDF spaces, independent all-depth PNG decoding, declared missing-primary assumptions and output-level sample/profile tests. HDR, animation, broader proofing and journal profiles remain pending.
 
 Attachment follow-up implemented in ADR 0020: explicit provenance/page-only output, strict unknown-field rejection, response policy acknowledgement, no source attachment/document metadata in page-only mode, unchanged rendering checks. Reusable named profiles and broader content redaction remain pending.
+
+Reusable project preferences implemented in ADR 0021: immutable DPI/font/attachment versions, exact historical selection, CAS/archive/restore, stable retry receipts, explicit owner save and bound saved-revision export. Physical page/journal presets and broader anonymization remain pending.

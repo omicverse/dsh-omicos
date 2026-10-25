@@ -171,6 +171,14 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') { if (language === 'python' && project.executionUnavailable) throw new EnvironmentError(409, project.executionUnavailable); result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python, project.usesIsolatedPython) }
+        else if(action?.startsWith('publication-profile-')){
+          const profiles=await runtime.publicationProfiles(parent.workspace);const id=url.searchParams.get('id')||'';const revision=url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined;const before=url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined
+          if(action==='publication-profile-list'&&method==='GET'){const archived=url.searchParams.get('archived');if(archived!==null&&!['true','false'].includes(archived))throw new PublicationError(400,'Invalid archived filter');result=profiles.list(url.searchParams.get('q')||'',before,archived==='true')}
+          else if(action==='publication-profile-document'&&method==='GET')result=profiles.get(id,revision)
+          else if(action==='publication-profile-history'&&method==='GET')result=profiles.history(id,before)
+          else if(action==='publication-profile-save'&&method==='POST'){if(data.confirmed!==true)throw new PublicationError(400,'Explicit publication profile save required; saving never authorizes export');result=await profiles.save(data.draft)}
+          else throw new PublicationError(405,'Method not allowed')
+        }
         else if(action?.startsWith('assembly-')){
           const assemblies=await runtime.assemblies(parent.workspace);const id=url.searchParams.get('id')||''
           const revision=url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined
@@ -185,7 +193,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else if(action==='assembly-pdf'&&method==='POST'){
             if(data.confirmed!==true)throw new PublicationError(400,'Explicit PDF font/physical-size/attachment export confirmation required')
             const profile=publicationProfile(data.profile);const cancel=new AbortController();const abort=()=>cancel.abort();response.once('close',abort)
-            try{const bytes=await runtime.assemblyPdf(parent.workspace,id,revision,profile,cancel.signal);response.writeHead(200,{'content-type':'application/pdf','x-omicos-pdf-attachments':profile.attachments,'x-content-type-options':'nosniff','content-disposition':'attachment; filename="omicos-assembly.pdf"','x-omicos-export-sha256':createHash('sha256').update(bytes).digest('hex')});response.end(bytes);return}finally{response.removeListener('close',abort)}
+            try{const bytes=await runtime.assemblyPdf(parent.workspace,id,revision,profile,cancel.signal,data.savedProfile);response.writeHead(200,{'content-type':'application/pdf','x-omicos-pdf-attachments':profile.attachments,'x-omicos-publication-profile':data.savedProfile?.digest||'none','x-content-type-options':'nosniff','content-disposition':'attachment; filename="omicos-assembly.pdf"','x-omicos-export-sha256':createHash('sha256').update(bytes).digest('hex')});response.end(bytes);return}finally{response.removeListener('close',abort)}
           }
           else if(action==='assembly-svg'&&method==='GET'){const bytes=await assemblies.svg(id,revision);response.writeHead(200,{'content-type':'application/octet-stream','x-content-type-options':'nosniff','content-disposition':'attachment; filename="omicos-assembly.svg"'});response.end(bytes);return}
           else throw new CloudError(405,'Method not allowed')

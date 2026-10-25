@@ -1,3 +1,4 @@
+import type {PublicationProfileReference} from '../oss/publication-profile-types.js'
 import type {PdfPublicationProfile} from '../oss/publication-types.js'
 let csrf = ''
 let accountIdentity: string | undefined
@@ -44,10 +45,11 @@ export interface CloudAccount { server?: string; logged_in: boolean; user?: { id
 export interface Session { csrf: string; backend?: 'oss' | 'core'; account: CloudAccount; projects: Array<{ id: string; workspace: string }>; protocol: number }
 
 /** Pure local PDF export: retry only the known pre-dispatch CSRF rejection. */
-export async function apiPdf(path:string,data:{confirmed:boolean;profile:PdfPublicationProfile},signal:AbortSignal,retried=false):Promise<{blob:Blob;sha256:string}>{
+export async function apiPdf(path:string,data:{confirmed:boolean;profile:PdfPublicationProfile;savedProfile?:PublicationProfileReference},signal:AbortSignal,retried=false):Promise<{blob:Blob;sha256:string}>{
  const response=await fetch(`/omicos/oss/api/${path}`,{method:'POST',cache:'no-store',signal,headers:{'x-omicos-protocol':'1','content-type':'application/json','x-omicos-csrf':csrf},body:JSON.stringify(data)})
  if(!response.ok){const error=await response.json();if(response.status===403&&error.error==='Invalid CSRF token'&&!retried){await api<Session>('session',undefined,signal);if(typeof window!=='undefined')window.dispatchEvent(new Event(HOST_REFRESH_EVENT));return apiPdf(path,data,signal,true)}throw new ApiError(response.status,error.error||`HTTP ${response.status}`)}
  const policy=data.profile.attachments??'provenance';if(response.headers.get('x-omicos-pdf-attachments')!==policy){await response.body?.cancel();throw new ApiError(409,'Host did not confirm the selected PDF attachment policy; update/refresh before exporting')}
+ if(data.savedProfile&&response.headers.get('x-omicos-publication-profile')!==data.savedProfile.digest){await response.body?.cancel();throw new ApiError(409,'Host did not confirm the selected saved publication profile revision')}
  if(response.headers.get('content-type')!=='application/pdf')throw new ApiError(502,'PDF export returned an unexpected content type')
  const expected=response.headers.get('x-omicos-export-sha256');if(!expected||!/^[a-f0-9]{64}$/.test(expected))throw new ApiError(502,'PDF export digest is missing')
  const blob=await response.blob();if(blob.size>64000000)throw new ApiError(413,'PDF exceeds 64 MB')

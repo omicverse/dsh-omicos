@@ -1,6 +1,6 @@
 # ADR 0020: Explicit PDF attachment policy and page-only output
 
-Status: implemented; reusable named publication profiles remain separate work.
+Status: implemented; ADR 0021 adds reusable named project preferences.
 
 The export profile accepts `attachments: 'provenance' | 'none'`. Omitting it
 retains the existing provenance behavior for API compatibility. The workbench

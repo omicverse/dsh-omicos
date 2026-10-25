@@ -112,3 +112,7 @@ it('accepts a PDF only after matching the attachment acknowledgement and actual 
  const fetcher=vi.fn(async()=>new Response(bytes,{headers:{'content-type':'application/pdf','x-omicos-pdf-attachments':'none','x-omicos-export-sha256':digest}}));vi.stubGlobal('fetch',fetcher)
  const {apiPdf}=await import('../src/client/oss-api.js');const result=await apiPdf('project/id/assembly-pdf',{confirmed:true,profile:{dpi:180,attachments:'none'}},new AbortController().signal);expect(result.sha256).toBe(digest);expect(Buffer.from(await result.blob.arrayBuffer())).toEqual(bytes);expect(fetcher).toHaveBeenCalledTimes(1)
 })
+
+it('rejects a Host that acknowledges attachments but ignores an exact saved publication profile revision',async()=>{
+ const fetcher=vi.fn(async()=>new Response('%PDF-unbound',{headers:{'content-type':'application/pdf','x-omicos-pdf-attachments':'none'}}));vi.stubGlobal('fetch',fetcher);const {apiPdf}=await import('../src/client/oss-api.js');await expect(apiPdf('project/id/assembly-pdf',{confirmed:true,profile:{dpi:180,attachments:'none'},savedProfile:{id:'saved',revision:1,digest:'a'.repeat(64)}},new AbortController().signal)).rejects.toThrow(/saved publication profile/);expect(fetcher).toHaveBeenCalledTimes(1)
+})

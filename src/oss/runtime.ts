@@ -1,3 +1,5 @@
+import type {PublicationProfileReference} from './publication-profile-types.js'
+import {PublicationProfiles} from './publication-profiles.js'
 import { ProjectDossier } from './dossier.js'
 import { FigureAssemblies } from './assemblies.js'
 import { PdfPublications } from './publication.js'
@@ -42,6 +44,7 @@ export class OssRuntime {
   private planProjects = new Map<string, Promise<ResearchPlans>>()
   private figureProjects = new Map<string, Promise<FigureStudio>>()
   private assemblyProjects = new Map<string, Promise<FigureAssemblies>>()
+  private publicationProfileProjects=new Map<string,Promise<PublicationProfiles>>()
   private pdfPublications=new PdfPublications()
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
@@ -218,10 +221,14 @@ export class OssRuntime {
     if(!service){service=this.figures(parent.workspace).then(figures=>FigureAssemblies.open(parent.workspace,figures));this.assemblyProjects.set(parent.workspace,service);service.catch(()=>{if(this.assemblyProjects.get(parent.workspace)===service)this.assemblyProjects.delete(parent.workspace)})}
     return service
   }
-  async assemblyPdf(workspace:string,id:string,revision:number|undefined,profile:PdfPublicationProfile,signal?:AbortSignal):Promise<Buffer>{
+  async publicationProfiles(workspace:string):Promise<PublicationProfiles>{
+    const parent=await this.project(workspace);if(this.closing)throw new Error('OmicOS OSS runtime is shutting down');let service=this.publicationProfileProjects.get(parent.workspace)
+    if(!service){service=PublicationProfiles.open(parent.workspace);this.publicationProfileProjects.set(parent.workspace,service);service.catch(()=>{if(this.publicationProfileProjects.get(parent.workspace)===service)this.publicationProfileProjects.delete(parent.workspace)})}return service
+  }
+  async assemblyPdf(workspace:string,id:string,revision:number|undefined,profile:PdfPublicationProfile,signal?:AbortSignal,savedProfile?:PublicationProfileReference):Promise<Buffer>{
     const parent=await this.project(workspace)
     if(this.closing)throw new Error('OmicOS OSS runtime is shutting down')
-    return this.pdfPublications.render(parent.workspace,async()=>{const source=await (await this.assemblies(parent.workspace)).publicationSource(id,revision);if(this.closing)throw new Error('OmicOS OSS runtime is shutting down');return source},profile,this.sensitiveFiles,signal)
+    return this.pdfPublications.render(parent.workspace,async()=>{const source=await (await this.assemblies(parent.workspace)).publicationSource(id,revision);if(savedProfile){const record=(await this.publicationProfiles(parent.workspace)).resolve(savedProfile,profile);Object.assign(source.metadata,{savedPublicationProfile:record})}if(this.closing)throw new Error('OmicOS OSS runtime is shutting down');return source},profile,this.sensitiveFiles,signal)
   }
   async list(): Promise<ProjectReference[]> { return structuredClone([...this.known.values()]) }
   async byId(id: string): Promise<ScienceService> {
@@ -241,6 +248,8 @@ export class OssRuntime {
   }
   private async shutdown():Promise<void>{
     await this.pdfPublications.dispose()
+    await Promise.allSettled([...this.publicationProfileProjects.values()].map(async service=>(await service).dispose()))
+    this.publicationProfileProjects.clear()
     await this.mcpHost?.dispose()
     this.mcpHost=undefined
     await Promise.allSettled([...this.mcpProjects.values()].map(async service => (await service).dispose()))
