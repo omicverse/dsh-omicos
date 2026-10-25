@@ -38,8 +38,8 @@ export class ManagedEnvironments {
   private closing = false
   private disposing?: Promise<void>
   private writes: Promise<unknown> = Promise.resolve()
-  private constructor(private db: Database, readonly workspace: string, readonly basePython: string, private sensitive: readonly string[]) {}
-  static async open(workspace: string, basePython: string, sensitive: readonly string[]): Promise<ManagedEnvironments> {
+  private constructor(private db: Database, readonly workspace: string, readonly basePython: string, private sensitive: readonly string[], private baseUnavailable?:string) {}
+  static async open(workspace: string, basePython: string, sensitive: readonly string[], baseUnavailable?:string): Promise<ManagedEnvironments> {
     const directory = join(workspace,'.omicos-oss','environments'); await mkdir(directory,{recursive:true,mode:0o700})
     if (await realpath(directory) !== directory) throw new EnvironmentError(403,'Managed environment directory cannot be a symbolic link')
     const path = join(workspace,'.omicos-oss','environments.sqlite'); const file = await open(path,'a',0o600); await file.close(); await chmod(path,0o600)
@@ -52,7 +52,7 @@ export class ManagedEnvironments {
         if (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().length) throw new Error('Unknown managed environment database')
         db.exec(`BEGIN IMMEDIATE; CREATE TABLE environments(id TEXT PRIMARY KEY,operation_id TEXT NOT NULL UNIQUE,record_json TEXT NOT NULL); CREATE TABLE selection(revision INTEGER PRIMARY KEY,record_json TEXT NOT NULL); CREATE TABLE operations(id TEXT PRIMARY KEY,request_hash TEXT NOT NULL); INSERT INTO selection VALUES(1,'{"revision":1,"environmentId":null,"at":"initial"}'); PRAGMA application_id=${0x4f454e56}; PRAGMA user_version=1; COMMIT;`)
       }
-      const service = new ManagedEnvironments(db,workspace,basePython,sensitive)
+      const service = new ManagedEnvironments(db,workspace,basePython,sensitive,baseUnavailable)
       for (;;) { const rows = db.prepare("SELECT id FROM environments WHERE json_extract(record_json,'$.state') IN ('preparing','installing','verifying') LIMIT 50").all(); if (!rows.length) break; for (const row of rows) service.update(String(row.id),{state:'interrupted',error:'Host stopped. Inspect the partial environment; a new explicitly approved installation is required.'}) }
       return service
     } catch(error) { db.close(); throw error }
@@ -66,6 +66,7 @@ export class ManagedEnvironments {
   selectionHistory(before = Number.MAX_SAFE_INTEGER) { cursor(before); const rows = this.db.prepare('SELECT revision,record_json FROM selection WHERE revision<? ORDER BY revision DESC LIMIT 51').all(before); return { entries: rows.slice(0,50).map(row=>JSON.parse(String(row.record_json)) as EnvironmentSelection), next: rows.length>50?Number(rows[49].revision):undefined } }
   start(input: EnvironmentInstallRequest): ManagedPythonEnvironment {
     if (this.closing) throw new EnvironmentError(409,'Environment manager is closing')
+    if(this.baseUnavailable)throw new EnvironmentError(409,this.baseUnavailable)
     if (process.platform === 'win32') throw new EnvironmentError(503,'Managed installation is currently verified on POSIX only')
     const normalized = normalizeEnvironmentInstall(input); const {operationId,...definition}=normalized; const requestSha256 = hash(JSON.stringify(definition))
     const previous = this.db.prepare('SELECT id FROM environments WHERE operation_id=?').get(operationId)
@@ -79,6 +80,7 @@ export class ManagedEnvironments {
   private env(): NodeJS.ProcessEnv { const env=workerEnvironment(process.env); for (const name of Object.keys(env)) if (/^(PYTHON|VIRTUAL_ENV|CONDA_|R_)/i.test(name)) delete env[name]; return {...env,PIP_CONFIG_FILE:devNull,PIP_DISABLE_PIP_VERSION_CHECK:'1',PIP_NO_INPUT:'1',PYTHONDONTWRITEBYTECODE:'1',...(process.versions.electron?{ELECTRON_RUN_AS_NODE:'1'}:{})} }
   private kill(child: ChildProcess) { if(child.exitCode!==null || child.signalCode!==null || this.killed.has(child))return; try { if(child.pid)process.kill(-child.pid,'SIGKILL');this.killed.add(child) } catch(error) { if((error as NodeJS.ErrnoException).code!=='ESRCH')throw error } }
   private command(command: string, args: string[], id?: string): Promise<string> {
+    if(this.baseUnavailable)return Promise.reject(new EnvironmentError(409,this.baseUnavailable))
     if(process.platform==='win32')return Promise.reject(new EnvironmentError(503,'Managed environment commands are currently verified on POSIX only'))
     if(this.closing || this.stopping) return Promise.reject(new EnvironmentError(409,this.stopping || 'Environment manager is closing'))
     const pending = new Promise<string>((resolve,reject)=>{
@@ -98,7 +100,7 @@ export class ManagedEnvironments {
   }
   private async manifest(record: ManagedPythonEnvironment): Promise<{manifestSha256:string;installed:Record<string,string>;pythonVersion:string}> {
     const directory=await this.safeDirectory(record.id);const venv=join(directory,'venv');if(await realpath(venv)!==venv)throw new EnvironmentError(403,'Virtual environment path changed')
-    const output=await this.command(this.basePython,['-I','-S',manifestScript,venv]);const result=JSON.parse(output)
+    const output=await this.command(this.basePython,['-I','-S','-B',manifestScript,venv]);const result=JSON.parse(output)
     if(!/^[a-f0-9]{64}$/.test(result.manifestSha256) || !result.installed || typeof result.pythonVersion!=='string')throw new EnvironmentError(409,'Invalid environment manifest')
     return result
   }

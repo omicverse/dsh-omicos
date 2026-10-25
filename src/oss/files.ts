@@ -12,7 +12,7 @@ export async function workspacePath(workspace: string, path: string, sensitive: 
   if (file !== workspace && !file.startsWith(workspace + sep)) throw new Error('Path resolves outside the project')
   if (relative(workspace, file).split(sep).some(part => PRIVATE_PARTS.has(part) || part.startsWith('.env.'))) throw new Error('Resolved path enters a private/runtime directory')
   const forbidden = await Promise.all(sensitive.map(async path => { try { return await realpath(path) } catch { return resolve(path) } }))
-  if (forbidden.includes(file)) throw new Error('Private Host credentials cannot be served by the workspace browser')
+  if (forbidden.some(path => file === path || file.startsWith(path + sep))) throw new Error('Private Host credentials cannot be served by the workspace browser')
   return file
 }
 export async function listWorkspace(workspace: string, path = '', sensitive: readonly string[] = []): Promise<{ path: string; entries: WorkspaceFile[]; truncated: boolean }> {

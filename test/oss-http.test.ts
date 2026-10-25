@@ -48,6 +48,16 @@ describe('scientific workbench and commerce boundary', () => {
     csrf = (await (await fetchHost(`${base}/omicos/oss/api/session`)).json() as any).csrf
   })
   afterEach(async () => { await close(server); await runtime.dispose(); await close(cloud); await rm(directory, { recursive: true, force: true }) })
+  it('requires owner and explicit approval for global base runtime installation/selection, without cloud calls',async()=>{
+    const path=`${base}/omicos/oss/api/base-runtime-list`;expect((await fetch(path)).status).toBe(401)
+    const listing=await(await fetchHost(path)).json() as any;expect(listing.selection.revision).toBe(1);expect(listing.operatorOverride).toBe(false);expect(listing.entries).toEqual([])
+    expect((await post('base-runtime-install',{spec:{},operationId:'unapproved'})).status).toBe(400)
+    expect((await post('base-runtime-select',{selection:{operationId:'unapproved',revision:1,runtimeId:null}})).status).toBe(400)
+    expect(runtime.baseRuntimes.selection().revision).toBe(1)
+    const changed=await post('base-runtime-select',{selection:{operationId:'explicit-rollback',revision:1,runtimeId:null},confirmed:true});expect(changed.status).toBe(200);expect(await changed.json()).toMatchObject({revision:2,runtimeId:null})
+    expect((await post('base-runtime-select',{selection:{operationId:'stale-rollback',revision:1,runtimeId:null},confirmed:true})).status).toBe(409)
+    expect((await(await fetchHost(`${base}/omicos/oss/api/base-runtime-history`)).json() as any).entries).toHaveLength(2);expect(seen).toHaveLength(0)
+  })
   it('owner-authenticates chat SSE and projects stream availability without creating a conversation on cold reads',async()=>{
     const project=await runtime.project(join(directory,'stream-project'));const id=(await runtime.list()).find(entry=>entry.workspace===project.workspace)!.id;let closed=0,canceled=0
     runtime.chat={read:async()=>({sessionId:'fixed',messages:[],busy:false,cursor:0,hasMore:false}),send:async()=>({sessionId:'fixed',accepted:true}),cancel:async()=>{canceled++},async *follow(_workspace,signal){try{yield {sessionId:'fixed',messages:[],busy:true,cursor:0,hasMore:false,live:{attemptId:'a',text:'Public partial',truncated:false}};await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}))}finally{closed++}}}
@@ -188,7 +198,7 @@ describe('scientific workbench and commerce boundary', () => {
     const capabilityResponse = await fetchHost(`${base}/omicos/oss/api/capabilities`, { headers: { 'x-omicos-protocol': '999' } })
     expect(capabilityResponse.status).toBe(200); const capabilities = await capabilityResponse.json() as any
     expect(capabilities.protocol.current).toBe(1)
-    expect(capabilities.features.find((item: any) => item.id === 'runtime.provisioning').state).toBe('unavailable')
+    expect(capabilities.features.find((item: any) => item.id === 'runtime.provisioning').state).toBe(process.platform==='win32'?'unavailable':'available')
     expect((await fetchHost(`${base}/omicos/oss/api/session`, { headers: { 'x-omicos-protocol': '999' } })).status).toBe(426)
     expect((await post('login', {}, { 'x-omicos-protocol': '2' })).status).toBe(426)
     expect(seen).toHaveLength(0)

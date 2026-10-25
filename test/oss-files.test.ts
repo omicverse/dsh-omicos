@@ -28,6 +28,11 @@ describe('scientific workspace file boundary', () => {
     await expect(previewWorkspaceFile(workspace, 'state.json', [inside])).rejects.toThrow('credentials')
     expect((await listWorkspace(workspace, '', [inside])).entries).toHaveLength(0)
   })
+  it('excludes entire configured runtime caches, including descendant paths and directory aliases',async()=>{
+    const cache=join(workspace,'host-cache');await mkdir(cache);await mkdir(join(cache,'payload'));await writeFile(join(cache,'payload','manifest.json'),'private runtime inventory');await symlink(cache,join(workspace,'alias'))
+    for(const path of ['host-cache','host-cache/payload/manifest.json','alias/payload/manifest.json'])await expect(workspacePath(workspace,path,[cache])).rejects.toThrow('credentials')
+    expect((await listWorkspace(workspace,'',[cache])).entries).toEqual([])
+  })
   it('never renders a binary dataset as text or executes it while browsing', async () => {
     await writeFile(join(workspace, 'dataset.h5ad'), Buffer.from([0,1,2,3]))
     expect(await previewWorkspaceFile(workspace, 'dataset.h5ad')).toEqual({ path: 'dataset.h5ad', kind: 'data', bytes: 4 })

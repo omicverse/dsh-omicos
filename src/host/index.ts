@@ -50,7 +50,7 @@ export interface Config {
 
 export const Config = Schema.object({
   backend: Schema.union(['oss', 'core']).default('oss'),
-  python: Schema.string().default('python3'),
+  python: Schema.string().default(''),
   rscript: Schema.string().default('Rscript'),
   workerEnvNames: Schema.array(Schema.string()).default([]),
   mcpSecretEnvNames: Schema.array(Schema.string()).default([]),

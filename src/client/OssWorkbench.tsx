@@ -1,3 +1,4 @@
+import { BaseRuntimePane } from './BaseRuntimePane.js'
 import {ProjectSearch} from './ProjectSearch.js'
 import { FigureAssembliesPane } from './FigureAssembliesPane.js'
 import { DossierPane } from './DossierPane.js'
@@ -176,6 +177,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
     <FigureAssembliesPane key={`assemblies:${project.id}`} projectId={project.id} visible={visible} />
     <FigureStudioPane key={`figures:${project.id}`} projectId={project.id} visible={visible} />
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />
+    <article className="oss-card"><BaseRuntimePane visible={visible} /></article>
     <article className="oss-card"><ManagedEnvironmentPane key={`environment:${project.id}`} projectId={project.id} visible={visible} /></article>
     <ResearchPlanPane key={`plan:${project.id}`} projectId={project.id} visible={visible} executions={snapshot?.executions || []} />
     <McpConnectionsPane key={`mcp:${project.id}`} projectId={project.id} visible={visible} />

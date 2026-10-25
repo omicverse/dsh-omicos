@@ -12,7 +12,7 @@ required by the OSS backend; the old Core adapter remains opt-in.
 
 ## Run the standalone workspace
 
-Requirements: Node.js 22.13+ or Node.js 24+, pnpm, and Python 3 available as `python3`. Optional R cells require Rscript and jsonlite.
+Requirements: Node.js 22.13+ or Node.js 24+, pnpm, and either Python 3 available as `python3` or an explicitly installed base Python runtime. The workbench can open before Python is installed. Optional R cells require Rscript and jsonlite.
 Scientific packages are optional and must be installed in your chosen environment.
 The runtime does **not** silently install dependencies, upload data or replay cells.
 
@@ -167,21 +167,46 @@ requires a separate sharing approval. Long-term memory is currently scoped to on
 project. Declared file/citation references are not automatically read or verified.
 See [memory architecture](docs/adr/0004-scoped-revisioned-memory.md).
 
+The **base Python runtime** panel can install an independent CPython archive on
+macOS/Linux without a preinstalled Python. The built-in pin is currently CPython
+3.12.15 / python-build-standalone 20261021 for macOS arm64; other supported targets
+require an owner-supplied descriptor. Review the exact version/platform, HTTPS
+origin allowlist, archive byte length, SHA-256 and upstream license notices, then
+explicitly approve installation and native interpreter verification. An absolute
+`archiveFile` enables offline installation with identical size/hash checks.
+
+Downloads never receive cloud authorization/cookies. Redirects must stay within
+the approved origin set. Extraction uses a private staging directory and bounded
+worker, rejects traversal/case aliases/devices and escaping/dangling/cyclic links,
+and records the full file/link/directory inventory. Files remain in the Host state
+cache, outside project browsing/import destinations. Cancellation waits for owned
+work to stop; cleanup removes only failed/canceled/interrupted partial files while
+preserving receipts. Another live Host cannot take over an active installation.
+No read or Agent tool automatically installs or activates a runtime.
+
+Select a verified ready base runtime for the **next Host start**, or roll back to
+external Python. An explicit `--python`/Harness `python` setting takes precedence;
+leave Harness `python` empty to use the selection. Current kernels remain intact.
+Startup and selection verify the complete inventory before executing downloaded
+Python. Changed/missing files block Python execution/provisioning and preserve the
+workbench rollback entry; they never silently invoke a replacement interpreter.
+Native distributions run with OS-user permissions, not in a security sandbox.
+See [base runtime decisions](docs/adr/0031-base-python-runtime-bootstrap.md).
+
 The Python environment panel can explicitly create an independent managed venv.
 Provide exact package versions and SHA-256 wheel hashes, including all dependencies;
 leave the package array empty for a base environment. Only binary wheels install,
 from public PyPI or a project-relative offline wheel directory. Nothing installs on
 reads or Agent calls. Installations show bounded logs and can be canceled; unfinished
 files can be explicitly removed while keeping receipts. Failures never replace the
-previous environment. No base Python interpreter or R installer is bundled.
+previous environment. No interpreter binary is bundled in the npm package; base Python is an optional explicit download. An R installer is not implemented.
 
 Select a ready environment (or external Python for rollback) for the **next Host
 start**. The current kernel and its variables stay intact. Selected files are checked
 before selection/startup; changed/missing environments block new Python work while
 the workbench remains available for rollback. Python Pipeline defaults follow the
 next-start choice and recovery retains environment checks. This currently has POSIX
-coverage; Windows/Electron, full base-runtime download and public scientific lock
-catalogs remain unverified/unimplemented. See
+coverage; Windows/Electron and public scientific lock catalogs remain unverified/unimplemented. See
 [managed environment decisions](docs/adr/0012-managed-python-environments.md).
 `pnpm test:provisioning` checks forced Host death/recovery; the optional
 `pnpm test:provisioning:online` explicitly downloads one small pinned PyPI fixture

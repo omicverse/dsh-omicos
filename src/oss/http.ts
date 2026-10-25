@@ -1,3 +1,4 @@
+import { BASE_RUNTIME_CATALOG } from './runtime-catalog.js'
 import {streamPipelineExport} from './pipeline-export-http.js'
 import {searchProjects,ProjectSearchError} from './project-search.js'
 import {streamChat} from './chat-events.js'
@@ -104,6 +105,19 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         result = (await runtime.list()).find(item => item.workspace === project.workspace)
       }
       else if(path==='/omicos/oss/api/project-search'&&method==='GET'){const privateFlag=url.searchParams.get('private');if(privateFlag!==null&&!['true','false'].includes(privateFlag))throw new CloudError(400,'Invalid private search flag');result=await searchProjects(await runtime.list(),url.searchParams.get('q')||'',privateFlag==='true',url.searchParams.get('cursor')||undefined)}
+      else if(path.startsWith('/omicos/oss/api/base-runtime-')){
+        const action=path.slice('/omicos/oss/api/base-runtime-'.length),manager=runtime.baseRuntimes
+        if(action==='list'&&method==='GET')result={...manager.list(url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined),currentInterpreter:runtime.python,currentUnavailable:runtime.baseRuntimeError,operatorOverride:runtime.pythonOverride,catalog:BASE_RUNTIME_CATALOG.filter(item=>item.platform===process.platform&&item.arch===process.arch)}
+        else if(action==='document'&&method==='GET')result=manager.get(url.searchParams.get('id')||'')
+        else if(action==='history'&&method==='GET')result=manager.history(url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined)
+        else if(method==='POST'&&['install','select','cancel','remove'].includes(action)){
+          if(data.confirmed!==true)throw new EnvironmentError(400,'Explicit owner approval of the base runtime action is required')
+          if(action==='install')result=manager.start(data.spec,data.operationId)
+          else if(action==='select')result=await manager.select(data.selection)
+          else if(action==='cancel')result=await manager.cancel(data.id)
+          else result=await manager.removePartial(data.id)
+        }else throw new EnvironmentError(405,'Method not allowed')
+      }
       else if (path === '/omicos/oss/api/login' && method === 'POST') result = await cloud.beginLogin()
       else if (path === '/omicos/oss/api/login/poll' && method === 'POST') result = await cloud.pollLogin()
       else if (path === '/omicos/oss/api/logout' && method === 'POST') { await cloud.logout(); result = cloud.snapshot() }

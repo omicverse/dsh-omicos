@@ -1,3 +1,4 @@
+import { BaseRuntimes } from './base-runtimes.js'
 import type {PublicationProfileReference} from './publication-profile-types.js'
 import {PublicationProfiles} from './publication-profiles.js'
 import { ProjectDossier } from './dossier.js'
@@ -49,20 +50,26 @@ export class OssRuntime {
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
-  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string, private envNames: readonly string[], private mcpAuthority:McpAuthorization) {}
+  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string, private envNames: readonly string[], private mcpAuthority:McpAuthorization, readonly baseRuntimes:BaseRuntimes, readonly baseRuntimeError?:string, private basePythonManaged=false, readonly pythonOverride=false) {}
   static async open(options: { cloudBase?: string; stateDir?: string; python?: string; rscript?: string; workerEnvNames?: readonly string[] } = {}): Promise<OssRuntime> {
     const stateDir = resolve(options.stateDir || join(homedir(), '.omicos-oss'))
-    const runtime = new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(stateDir, 'cloud.json')), options.python || 'python3', options.rscript || 'Rscript', stateDir, options.workerEnvNames || [], await McpAuthorization.open(stateDir))
-    const registry = await readJson<{ protocol: number; projects: ProjectReference[] }>(join(stateDir, 'projects.json'), { protocol: 1, projects: [] })
-    if (registry.protocol !== 1 || !Array.isArray(registry.projects)) throw new Error('Unsupported project registry; preserve the file and use a compatible runtime')
-    for (const entry of registry.projects) {
-      if (typeof entry?.workspace !== 'string' || !isAbsolute(entry.workspace) || projectId(entry.workspace) !== entry.id) throw new Error('Invalid persisted project identity; refusing to open an unintended directory')
-      runtime.known.set(entry.id, entry)
-    }
-    return runtime
+    const baseRuntimes=await BaseRuntimes.open(stateDir)
+    let runtime:OssRuntime|undefined
+    try {
+      let python=options.python?.trim(),baseRuntimeError:string|undefined,basePythonManaged=false
+      if(!python){try{python=await baseRuntimes.selectedInterpreter();basePythonManaged=Boolean(python)}catch(error){baseRuntimeError=`Selected base Python is unavailable: ${String(error)}. Use base runtime settings to choose an explicit rollback for the next Host start.`}}
+      runtime = new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(stateDir, 'cloud.json')), python || 'python3', options.rscript || 'Rscript', stateDir, options.workerEnvNames || [], await McpAuthorization.open(stateDir),baseRuntimes,baseRuntimeError,basePythonManaged,Boolean(options.python?.trim()))
+      const registry = await readJson<{ protocol: number; projects: ProjectReference[] }>(join(stateDir, 'projects.json'), { protocol: 1, projects: [] })
+      if (registry.protocol !== 1 || !Array.isArray(registry.projects)) throw new Error('Unsupported project registry; preserve the file and use a compatible runtime')
+      for (const entry of registry.projects) {
+        if (typeof entry?.workspace !== 'string' || !isAbsolute(entry.workspace) || projectId(entry.workspace) !== entry.id) throw new Error('Invalid persisted project identity; refusing to open an unintended directory')
+        runtime.known.set(entry.id, entry)
+      }
+      return runtime
+    }catch(error){if(runtime)await runtime.dispose();else await baseRuntimes.dispose();throw error}
   }
   get stateDirectory(): string { return this.stateDir }
-  get sensitiveFiles(): readonly string[] { return [...this.cloud.sensitiveFiles, join(this.stateDir, 'http-owner.json'), join(this.stateDir, 'projects.json'), join(this.stateDir,'mcp-authorization.sqlite'), join(this.stateDir,'mcp-authorization.sqlite-wal'), join(this.stateDir,'mcp-authorization.sqlite-shm')] }
+  get sensitiveFiles(): readonly string[] { return [...this.cloud.sensitiveFiles, join(this.stateDir, 'http-owner.json'), join(this.stateDir, 'projects.json'), join(this.stateDir,'mcp-authorization.sqlite'), join(this.stateDir,'mcp-authorization.sqlite-wal'), join(this.stateDir,'mcp-authorization.sqlite-shm'), this.baseRuntimes.directory, join(this.stateDir,'python-runtimes.sqlite'),join(this.stateDir,'python-runtimes.sqlite-wal'),join(this.stateDir,'python-runtimes.sqlite-shm')] }
   private saveRegistry(): Promise<void> {
     const snapshot = { protocol: 1, projects: [...this.known.values()] }
     const write = this.registryWrites.then(() => writeJson(join(this.stateDir, 'projects.json'), snapshot))
@@ -79,11 +86,12 @@ export class OssRuntime {
     if (!service) {
       service = ScienceService.open(path, this.python, 'python', this.envNames).then(async service => {
         try {
-          const managerPromise = ManagedEnvironments.open(service.workspace, this.python, this.sensitiveFiles)
+          const managerPromise = ManagedEnvironments.open(service.workspace, this.python, this.sensitiveFiles, this.baseRuntimeError)
           this.environmentProjects.set(id, managerPromise)
           const manager = await managerPromise
-          try { service.configureColdInterpreter(await manager.selectedInterpreter(), undefined, Boolean(manager.selection().environmentId)) }
+          try { if(this.baseRuntimeError)throw new Error(this.baseRuntimeError);service.configureColdInterpreter(await manager.selectedInterpreter(), undefined, Boolean(manager.selection().environmentId)||this.basePythonManaged) }
           catch (error) { service.configureColdInterpreter(this.python, `Selected Python environment is unavailable: ${String(error)}. Open managed environments and explicitly choose a rollback for the next Host start.`) }
+          if(this.baseRuntimeError)service.configureColdInterpreter(this.python,this.baseRuntimeError)
           this.known.set(id, { id, workspace: service.workspace })
           await this.saveRegistry()
           return service
@@ -276,5 +284,6 @@ export class OssRuntime {
     await Promise.allSettled([...this.projects.values()].map(async project => (await project).dispose()))
     this.projects.clear()
     await this.registryWrites
+    await this.baseRuntimes.dispose()
   }
 }
