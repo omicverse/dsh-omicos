@@ -36,3 +36,46 @@ it('does not replay a subscription mutation across an account/origin change afte
   await expect(api('subscription/manage', { action: 'cancel', confirmed: true })).rejects.toThrow('账号')
   expect(mutations).toBe(1)
 })
+
+it('sends the observed cloud identity on mutations and never retries a stale-window rejection', async () => {
+  let mutationHeader: string | undefined
+  const account = { server: 'https://auth.omicos.cn', logged_in: true, user: { id: '账户-user' }, generation: 7 }
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/session')) return new Response(JSON.stringify({ csrf: 'host', account }), { status: 200 })
+    mutationHeader = (init?.headers as Record<string, string>)['x-omicos-account']
+    return new Response(JSON.stringify({ error: 'Cloud account changed; refresh before submitting' }), { status: 409 })
+  })
+  vi.stubGlobal('fetch', fetcher)
+  const { api } = await import('../src/client/oss-api.js')
+  await api('session')
+  await expect(api('subscription/manage', { action: 'cancel', confirmed: true })).rejects.toThrow('云账号已变化')
+  expect(mutationHeader).toBe(encodeURIComponent(JSON.stringify([account.server, true, account.user.id, 7])))
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})
+
+it('keeps a form bound to its rendered account even if a background session refresh observes another account', async () => {
+  const original = { server: 'https://auth.omicos.cn', logged_in: true, user: { id: 'old-user' }, generation: 1 }
+  const current = { ...original, user: { id: 'new-user' }, generation: 3 }
+  let observed: string | undefined
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/session')) return new Response(JSON.stringify({ csrf: 'same-host', account: current }))
+    observed = (init?.headers as Record<string, string>)['x-omicos-account']
+    return new Response(JSON.stringify({ error: 'Cloud account changed; refresh before submitting' }), { status: 409 })
+  }))
+  const { api } = await import('../src/client/oss-api.js')
+  await api('session')
+  await expect(api('invoice', { confirmed: true }, undefined, original)).rejects.toThrow('本次操作未发送')
+  expect(observed).toBe(encodeURIComponent(JSON.stringify([original.server, true, original.user.id, 1])))
+})
+
+it('keeps local workspace resolution independent of cloud account changes during CSRF recovery', async () => {
+  let sessions = 0; let attempts = 0
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.endsWith('/session')) return new Response(JSON.stringify({ csrf: `nonce-${++sessions}`, account: { server: 'https://auth.omicos.cn', logged_in: true, user: { id: `user-${sessions}` }, generation: sessions } }))
+    return ++attempts === 1 ? new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403 }) : new Response(JSON.stringify({ id: 'local-project' }))
+  }))
+  const { api } = await import('../src/client/oss-api.js')
+  await api('session')
+  expect(await api('open-session-project', { sessionId: 'same-workspace' })).toEqual({ id: 'local-project' })
+  expect(attempts).toBe(2)
+})

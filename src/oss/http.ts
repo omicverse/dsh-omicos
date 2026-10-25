@@ -60,6 +60,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
       if (method !== 'GET' && request.headers['x-omicos-csrf'] !== nonce) throw new CloudError(403, 'Invalid CSRF token')
       const data = method === 'POST' ? await body(request, /\/notebook-(create|save)$/.test(path) ? 2_100_000 : 300_000) : undefined
       const cloud = runtime.cloud
+      if (method === 'POST' && path.startsWith('/omicos/oss/api/') && !path.startsWith('/omicos/oss/api/project/') && path !== '/omicos/oss/api/open-session-project' && request.headers['x-omicos-account'] !== encodeURIComponent(cloud.identity())) throw new CloudError(409, 'Cloud account changed; refresh before submitting')
       let result: unknown
       if (path === '/omicos/oss/api/open-session-project' && method === 'POST') {
         if (!runtime.resolveSessionWorkspace) throw new CloudError(503, 'Harness workspace service is unavailable')

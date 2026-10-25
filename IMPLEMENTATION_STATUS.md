@@ -20,6 +20,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Paid-order/invoice UI, explicit invoice application/withdrawal, live lab pricing and owner-filtered seat management/top-up payment; browser flow tested against an isolated mock cloud.
 - Workspace data browser, bounded text previews, prepared CSV/TSV/H5AD/RDS loading cells and approved AnnData metadata inspection; real AnnData tests verify X remains unchanged.
 - DSH entry resolves the active session workspace through the formal Host controller instead of silently opening the Host process working directory.
+- Every cloud mutation carries the rendered account/origin/login-generation identity and is rejected before dispatch when stale; automatic refresh never replays account-mismatched billing actions. Project execution and workspace resolution remain account-independent.
 - Cloud credentials are bound to their origin; changing cloud bases never forwards previously saved tokens.
 - Durable SSE scientific events with Last-Event-ID replay, slow-reader backpressure and snapshot recovery; frontend retry is restricted to pre-dispatch CSRF rejection and preserves operation IDs.
 - Python/R workers and environment probes inherit a deliberate runtime variable projection; additional scientific variables require explicit name allowlisting. A real Python test verifies a synthetic Host secret is absent.
@@ -35,8 +36,8 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the 139-test suite passed on actual Node 22.13.1 before commerce recovery additions. Current local Node ran the expanded 147-test suite; the new commerce suite also runs on Node 22.13.1.
-- 147 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the 139-test suite passed on actual Node 22.13.1 before commerce recovery additions. Current local Node ran the expanded 151-test suite; the new commerce suite also runs on Node 22.13.1.
+- 151 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,

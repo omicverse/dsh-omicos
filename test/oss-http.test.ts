@@ -53,7 +53,7 @@ describe('scientific workbench and commerce boundary', () => {
   })
 
   const fetchHost = (url: string, init: RequestInit = {}) => globalThis.fetch(url, { ...init, headers: { authorization: `Bearer ${owner.launchToken}`, ...init.headers } })
-  const post = (path: string, data: unknown, headers: Record<string, string> = {}) => fetchHost(`${base}/omicos/oss/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, ...headers }, body: JSON.stringify(data) })
+  const post = (path: string, data: unknown, headers: Record<string, string> = {}) => fetchHost(`${base}/omicos/oss/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, 'x-omicos-account': encodeURIComponent(runtime.cloud.identity()), ...headers }, body: JSON.stringify(data) })
   const login = async () => { approvals = true; expect((await post('login', {})).status).toBe(200); expect((await post('login/poll', {})).status).toBe(200) }
   it('blocks cross-origin, DNS rebinding and unauthenticated mutations', async () => {
     expect((await post('logout', {}, { origin: 'https://attacker.invalid' })).status).toBe(403)
@@ -132,6 +132,19 @@ describe('scientific workbench and commerce boundary', () => {
     await post('logout', {})
     expect((await post('checkout', { confirmation: next.confirmation })).status).toBe(409)
     expect((await fetchHost(`${base}/omicos/oss/api/order?id=ord_1`)).status).toBe(401)
+  })
+  it('rejects stale-window cloud mutations before dispatch, including relogin to the same account', async () => {
+    await login()
+    const observed = encodeURIComponent(runtime.cloud.identity())
+    await post('logout', {})
+    await login()
+    const before = seen.length
+    const stale = await post('subscription/manage', { action: 'cancel', confirmed: true }, { 'x-omicos-account': observed })
+    expect(stale.status).toBe(409)
+    expect((await stale.json() as any).error).toBe('Cloud account changed; refresh before submitting')
+    expect(seen).toHaveLength(before)
+    expect((await post('quote', { plan_code: 'pro', period: 'monthly', provider: 'wechat' }, { 'x-omicos-account': '' })).status).toBe(409)
+    expect(seen).toHaveLength(before)
   })
   it('uses authoritative lab prices and validates seat and period constraints', async () => {
     await login()

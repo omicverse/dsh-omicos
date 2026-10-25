@@ -231,3 +231,9 @@ With `backend: core`, the OmicOS tab retains its original account, kernel and
 capability console and delegated Core tools. Its optional local workbench does
 not advertise the OSS Scientist preset; use the original Harness/Core conversation
 or select the OSS backend. The OSS backend never needs a private Core binary.
+
+Cloud mutations are bound to the account and login generation visible when the
+form was opened. If another window switches accounts, the Host rejects stale
+subscription, invoice and seat actions before contacting the cloud, refreshes the
+UI, and asks the user to review the current account. It never silently replays
+those actions. Local execution and workspace resolution remain account-independent.

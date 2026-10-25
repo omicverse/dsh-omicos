@@ -42,6 +42,7 @@ export class CloudService {
     return data
   }
   get sensitiveFiles(): readonly string[] { return [this.credentialFile, ...this.orders.sensitiveFiles] }
+  identity(): string { return JSON.stringify([this.base, Boolean(this.credentials), this.credentials?.user.id || null, this.generation]) }
   snapshot(): unknown {
     return { server: this.base, logged_in: Boolean(this.credentials), user: this.credentials?.user, generation: this.generation,
       login: this.login ? { user_code: this.login.code, verification_uri: this.login.uri, expires_at: this.login.expires } : undefined }
