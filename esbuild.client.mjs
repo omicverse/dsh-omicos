@@ -9,6 +9,7 @@
  * from the loader's module table. Everything else is inlined.
  */
 import { build } from 'esbuild'
+import { resolve } from 'node:path'
 import { writeBundleNotices } from './scripts/notices.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 
@@ -32,6 +33,10 @@ const EXTERNALS = [
 
 await build({
   entryPoints: ['src/client/index.ts'],
+  plugins: [{ name: 'inline-css', setup(builder) {
+    builder.onResolve({ filter: /\.css\?inline$/ }, args => ({ path: resolve(args.resolveDir, args.path.replace(/\?inline$/, '')), namespace: 'inline-css' }))
+    builder.onLoad({ filter: /.*/, namespace: 'inline-css' }, async args => ({ contents: `export default ${JSON.stringify(await readFile(args.path, 'utf8'))}`, loader: 'js' }))
+  } }],
   bundle: true,
   outfile: 'lib/client.cjs.tmp',
   platform: 'browser',

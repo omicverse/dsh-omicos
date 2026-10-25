@@ -55,6 +55,7 @@ function run(arguments_, env, cwd) {
     const config = [
       '- id: omicos', '  config:', '    backend: oss', `    workspace: ${JSON.stringify(workspace)}`,
       `    stateDir: ${JSON.stringify(path.join(directory, 'state'))}`, `    python: ${JSON.stringify(process.env.OMICOS_SCIENCE_TEST_PYTHON || 'python3')}`,
+      `    rscript: ${JSON.stringify(process.env.OMICOS_SCIENCE_TEST_RSCRIPT || 'Rscript')}`,
       '    autoStart: false', '    upstreamBaseUrl: http://127.0.0.1:9',
       '- id: llm-deepseek', '  config:', `    baseURL: http://127.0.0.1:${model.address().port}`, '    reasoningEffort: off',
       '- id: llm-deepseek-account', '  disabled: true', '',
@@ -143,11 +144,42 @@ function run(arguments_, env, cwd) {
     await page.screenshot({ path: path.join(output, 'harness-scientist.png'), fullPage: true });
     await main.screenshot({ path: path.join(output, 'harness-main.png'), fullPage: true });
     await main.getByRole('tab', { name: 'OmicOS', exact: true }).click();
-    const entry = main.getByRole('link', { name: '打开独立科研工作台 ↗', exact: true }); await entry.waitFor();
-    const opened = context.waitForEvent('page'); await entry.click(); const linked = await opened;
-    linked.on('pageerror', error => errors.push(String(error)));
-    await linked.getByRole('button', { name: '新建 Notebook', exact: true }).waitFor();
-    assert(new URL(linked.url()).searchParams.has('project'));
+    const entry = main.locator('.omicos-conversation-tools'); await entry.waitFor();
+    assert.equal(await entry.locator('a[target="_blank"][href^="/omicos/oss"]').count(), 0, 'Scientific tools must stay inside the real application');
+    await entry.getByRole('navigation', { name: '会话科研工具' }).getByRole('button', { name: 'Notebook', exact: true }).click();
+    await entry.getByRole('button', { name: '新建 Notebook', exact: true }).click();
+    await entry.getByLabel('Notebook 标题', { exact: true }).fill('Native Harness UI verification');
+    await entry.getByLabel('Notebook 单元 1 内容', { exact: true }).fill('print(6 * 7)');
+    await entry.getByRole('button', { name: '保存并批准运行单元 1', exact: true }).click();
+    await entry.locator('.oss-notebook .oss-output').filter({ hasText: '42' }).waitFor();
+    await entry.getByLabel('Notebook 单元 1 内容', { exact: true }).fill('# unsaved native navigation draft\nprint(43)');
+    const rail = main.getByRole('navigation', { name: 'OmicOS 功能导航', exact: true });
+    await rail.getByRole('button', { name: '数据盘', exact: true }).click();
+    await main.locator('[data-omicos-page="data"]').waitFor();
+    await rail.getByRole('button', { name: 'Notebook', exact: true }).click();
+    const nativeNotebook = main.locator('[data-omicos-page="notebook"]');
+    await nativeNotebook.getByRole('button', { name: '恢复草稿', exact: true }).click();
+    assert.equal(await nativeNotebook.getByLabel('Notebook 单元 1 内容', { exact: true }).inputValue(), '# unsaved native navigation draft\nprint(43)');
+    const saved = main.waitForResponse(response => response.url().includes('/notebook-save') && response.request().method() === 'POST');
+    await nativeNotebook.getByRole('button', { name: '保存 Notebook', exact: true }).click();
+    assert.equal((await saved).status(), 200);
+    assert.equal(await nativeNotebook.locator('.oss-notebook .oss-output').count(), 0, 'Editing invalidates prior outputs and never runs the draft');
+    if (process.env.OMICOS_SCIENCE_TEST_RSCRIPT) {
+      await nativeNotebook.getByLabel('分析语言', { exact: true }).selectOption('r');
+      await nativeNotebook.getByRole('button', { name: '新建 Notebook', exact: true }).click();
+      await nativeNotebook.getByLabel('Notebook 单元 1 内容', { exact: true }).fill('mean(c(2, 4, 6))');
+      await nativeNotebook.getByRole('button', { name: '保存并批准运行单元 1', exact: true }).click();
+      await nativeNotebook.locator('.oss-notebook .oss-output').filter({ hasText: '[1] 4' }).waitFor();
+    }
+    await rail.getByRole('button', { name: '对话', exact: true }).click();
+    const expandRight = main.locator('[data-sidebar-right-expand]');
+    if (await expandRight.isVisible()) await expandRight.click();
+    const right = main.locator('[data-rightbar-col]');
+    await right.locator('[data-sidebar-right-guide-entry="omicos-memory"]').click();
+    await right.locator('[data-omicos-page="memory"]').waitFor();
+    await right.getByText('BROWSER_CONFIRMED_GRCh38', { exact: false }).first().waitFor();
+    await main.screenshot({ path: path.join(output, 'harness-scientific-sidebar.png'), fullPage: true });
+    await right.getByRole('button', { name: /^(Collapse right sidebar|收起右侧边栏)$/ }).click();
     await main.screenshot({ path: path.join(output, 'harness-entry.png'), fullPage: true });
     assert.deepEqual(errors, []);
     // Render the retained legacy console against its public DTO fixture, without a private Core binary.
@@ -165,7 +197,7 @@ function run(arguments_, env, cwd) {
     await main.getByText('尚未连接 Core 内核。', { exact: false }).waitFor()
     await main.screenshot({ path: path.join(output, 'core-compat-entry.png'), fullPage: true })
     assert.deepEqual(errors, [])
-    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', mcp: 'real Scientist-scoped stdio plugin, UI enable/disable, actual separate call approval and immutable history', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller follow -> visible partial text -> reload/reconnect partial baseline without another model call -> one committed assistant message -> reload; no second model loop', pageErrors: errors }));
+    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', mcp: 'real Scientist-scoped stdio plugin, UI enable/disable, actual separate call approval and immutable history', scientist: 'scoped persona and Notebook tools', entry: 'native OmicOS conversation tools and main panels; real Notebook Python 42; unsaved draft restored after navigation without execution', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller follow -> visible partial text -> reload/reconnect partial baseline without another model call -> one committed assistant message -> reload; no second model loop', pageErrors: errors }));
   } finally {
     await browser?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }

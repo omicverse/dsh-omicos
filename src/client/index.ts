@@ -17,6 +17,7 @@ import type { Context } from '@deepseek-ai/cordis'
 // into the program so the register call types.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
+import { registerOmicosShell } from './OmicosShell.js'
 import { OssEntry } from './OssEntry.js'
 import { registerBetterSidebarTab } from './betterSidebar.js'
 import { OmicosToolView } from './OmicosToolView.js'
@@ -26,6 +27,7 @@ export const name = 'omicos-client'
 export const inject = ['slots']
 
 export function apply(ctx: Context): void {
+  registerOmicosShell(ctx)
   ctx.slots.inject('conversation.view', () =>
     ctx.slots.register(
       {

@@ -1,0 +1,393 @@
+/* Application tokens, shared by native Harness conversations, settings and panels. */
+html[data-omicos-shell] body {
+  --omicos-bg: #f8fbf9;
+  --omicos-surface: #eef4f1;
+  --omicos-card: #fff;
+  --omicos-text: #1b231f;
+  --omicos-muted: #76847d;
+  --omicos-line: #d6e0db;
+  --omicos-brand: #4c7a69;
+  --dsw-alias-bg-base: var(--omicos-bg);
+  --dsw-alias-bg-layer-1: var(--omicos-card);
+  --dsw-alias-bg-layer-2: var(--omicos-surface);
+  --dsw-alias-bg-layer-3: #e3ece7;
+  --dsw-alias-bg-module-platform: var(--omicos-surface);
+  --dsw-alias-bg-overlay: #e3ece7;
+  --dsw-specific-sidebar-fill: var(--omicos-bg);
+  --dsw-specific-sidebar-nav-item-active-accent: #dfeae4;
+  --dsw-specific-sidebar-nav-item-active: #e8efeb;
+  --dsw-specific-sidebar-nav-item-hover: #eef4f1;
+  --dsw-alias-border-l1: #e3ece7;
+  --dsw-alias-border-l2: var(--omicos-line);
+  --dsw-alias-border-l3: #c9d5cf;
+  --dsw-alias-border-l4: #b8c9c0;
+  --dsw-alias-brand-primary: var(--omicos-brand);
+  --dsw-alias-brand-text: var(--omicos-brand);
+  --dsw-alias-brand-primary-new-colorprimary-new-color: var(--omicos-brand);
+  --dsw-static-deepseek-100: #dfeae4;
+  --dsw-static-deepseek-500: var(--omicos-brand);
+  --dsw-static-deepseek-400: #78aa95;
+  --dsw-font-family-brand: var(--dsw-font-family);
+  color: var(--omicos-text);
+}
+html[data-omicos-shell] body[data-ds-dark-theme] {
+  --omicos-bg: #121212;
+  --omicos-surface: #252824;
+  --omicos-card: #1c1f1c;
+  --omicos-text: #f5f0e6;
+  --omicos-muted: #9caaa1;
+  --omicos-line: #373e38;
+  --omicos-brand: #78aa95;
+  --dsw-alias-bg-layer-3: #2c2f2b;
+  --dsw-alias-bg-overlay: #30382f;
+  --dsw-specific-sidebar-nav-item-active-accent: #293f34;
+  --dsw-specific-sidebar-nav-item-active: #29312c;
+  --dsw-specific-sidebar-nav-item-hover: #222923;
+  --dsw-alias-border-l1: #252c26;
+  --dsw-alias-border-l3: #424d44;
+  --dsw-alias-border-l4: #556358;
+  --dsw-static-deepseek-100: #293f34;
+}
+.omicos-wordmark {
+  font-size: 20px;
+  letter-spacing: -0.7px;
+  font-weight: 650;
+  color: var(--omicos-text);
+}
+.omicos-wordmark small {
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--omicos-brand);
+  font-weight: 550;
+  margin-left: 7px;
+}
+.omicos-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  color: var(--omicos-brand);
+  padding: 24px 0 8px;
+}
+.omicos-hero > span {
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -1.5px;
+  color: var(--omicos-text);
+}
+.omicos-hero > p {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--omicos-muted);
+  margin: 18px 0 8px;
+  letter-spacing: 0.5px;
+}
+.oss.omicos-panel {
+  --ink: var(--omicos-text, #1b231f);
+  --muted: var(--omicos-muted, #76847d);
+  --line: var(--omicos-line, #d6e0db);
+  --paper: var(--omicos-bg, #f8fbf9);
+  --green: var(--omicos-brand, #4c7a69);
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: inherit;
+  line-height: 1.65;
+  font-size: 14px;
+}
+.omicos-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 40px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.oss .omicos-panel-head h1 {
+  font-family: inherit;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+.omicos-panel-head p {
+  margin: 5px 0 0;
+  font-size: 13px;
+}
+.omicos-edition {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.omicos-panel-content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 26px 40px 60px;
+}
+.omicos-project-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 24px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.omicos-project-bar select {
+  max-width: calc(100% - 60px);
+  flex: 1;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--ink);
+  font-size: 12px;
+}
+.omicos-project-bar strong {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+  min-width: 0;
+}
+.omicos-cloud-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin: 0 0 24px;
+  font-size: 13px;
+}
+.oss.omicos-panel .oss-card,
+.oss.omicos-panel .oss-plan,
+.oss.omicos-panel .oss-membership {
+  background: var(--omicos-card, #fff);
+  border-radius: 14px;
+  border-color: var(--line);
+  box-shadow: none;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.oss.omicos-panel h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.oss.omicos-panel h3 {
+  font-size: 14px;
+}
+.oss.omicos-panel button {
+  background: var(--omicos-card, #fff);
+  border-color: var(--line);
+  color: var(--ink);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 8px 13px;
+}
+.oss.omicos-panel button:hover:not(:disabled) {
+  background: var(--omicos-surface, #eef4f1);
+  border-color: var(--green);
+}
+.oss.omicos-panel .oss-primary {
+  background: var(--green);
+  color: var(--omicos-bg, #fff);
+}
+.oss.omicos-panel input,
+.oss.omicos-panel textarea,
+.oss.omicos-panel select {
+  background: var(--omicos-bg, #f8fbf9);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.oss.omicos-panel .oss-code,
+.oss.omicos-panel .oss-output,
+.oss.omicos-panel .oss-note,
+.oss.omicos-panel .oss-confirm {
+  background: var(--omicos-surface, #eef4f1);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.oss.omicos-panel .oss-section-head h1 {
+  font-family: inherit;
+  font-size: 24px;
+  letter-spacing: -0.5px;
+}
+@media (max-width: 700px) {
+  .omicos-panel-head {
+    padding: 22px 20px;
+  }
+  .omicos-panel-content {
+    padding: 20px 16px 40px;
+  }
+  .omicos-edition {
+    display: none;
+  }
+  .omicos-cloud-status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .oss.omicos-panel .oss-card {
+    padding: 18px;
+  }
+}
+.omicos-conversation-tools {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.omicos-conversation-tools > .omicos-panel {
+  flex: 1;
+}
+.omicos-science-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--omicos-line);
+  overflow: auto;
+  flex-shrink: 0;
+  background: var(--omicos-bg);
+}
+.omicos-science-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 12px;
+  color: var(--omicos-muted);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.omicos-science-tabs button[aria-current='page'] {
+  background: var(--omicos-surface);
+  color: var(--omicos-brand);
+}
+[data-omicos-frame] {
+  margin-left: 68px;
+  width: calc(100% - 68px);
+  box-sizing: border-box;
+}
+.omicos-rail {
+  box-sizing: border-box;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 13px;
+  width: 68px;
+  padding: 24px 8px 16px;
+  background: var(--omicos-bg);
+  color: var(--omicos-muted);
+  border-right: 1px solid var(--omicos-line);
+  pointer-events: auto;
+  overflow: auto;
+  z-index: 4;
+}
+.omicos-rail-mark {
+  color: var(--omicos-brand);
+  margin: 4px 0 24px;
+}
+.omicos-rail > button {
+  border: 0;
+  background: transparent;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  color: inherit;
+  cursor: pointer;
+}
+.omicos-rail > button:hover {
+  color: var(--omicos-brand);
+  background: var(--omicos-surface);
+}
+.omicos-rail > button[aria-current='page'] {
+  background: color-mix(in srgb, var(--omicos-brand) 15%, transparent);
+  color: var(--omicos-brand);
+}
+.omicos-rail > button:focus-visible {
+  outline: 2px solid var(--omicos-brand);
+  outline-offset: 2px;
+}
+.omicos-rail-footer {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--omicos-brand);
+  margin-top: auto;
+  padding-top: 28px;
+}
+@media (max-width: 700px) {
+  [data-omicos-frame] {
+    margin-left: 52px;
+    width: calc(100% - 52px);
+  }
+  .omicos-rail {
+    width: 52px;
+    padding: 18px 4px;
+    gap: 8px;
+  }
+  .omicos-rail > button {
+    width: 40px;
+    height: 40px;
+  }
+  .omicos-rail-mark {
+    margin-bottom: 15px;
+  }
+}
+
+.omicos-core-entry {
+  height: 100%;
+  overflow: auto;
+  padding: 24px;
+  color: var(--omicos-text);
+  background: var(--omicos-bg);
+}
+.omicos-rail-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.omicos-rail-footer button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  background: var(--omicos-surface);
+  color: var(--omicos-brand);
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.omicos-rail-footer button:focus-visible {
+  outline: 2px solid var(--omicos-brand);
+  outline-offset: 2px;
+}
+.omicos-language-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 18px;
+}
+.oss .omicos-language-bar label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.omicos-language-bar select {
+  min-width: 110px;
+}
+html[data-omicos-shell][data-platform='darwin']:not([data-fullscreen])
+  .omicos-rail {
+  padding-top: 64px;
+}
+html[data-omicos-shell][data-windows-titlebar] .omicos-rail {
+  top: var(--dsh-windows-titlebar-height, 36px);
+}
+.omicos-mark{color:var(--omicos-brand,#4c7a69)}

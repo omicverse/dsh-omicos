@@ -3,7 +3,7 @@ import type { ScienceSnapshot } from '../oss/types.js'
 import { api } from './oss-api.js'
 
 /** Snapshot + durable invalidation stream, with bounded polling only as recovery. */
-export function useScienceSnapshot(projectId: string, language: 'python' | 'r') {
+export function useScienceSnapshot(projectId: string, language: 'python' | 'r', enabled = true) {
   const [snapshot, setSnapshot] = useState<ScienceSnapshot>()
   const [error, setError] = useState('')
   const [connection, setConnection] = useState<'connecting' | 'live' | 'reconnecting'>('connecting')
@@ -11,6 +11,7 @@ export function useScienceSnapshot(projectId: string, language: 'python' | 'r') 
   identity.current = `${projectId}:${language}`
   const refresh = useCallback(async () => { const expected = `${projectId}:${language}`; const value = await api<ScienceSnapshot>(`project/${projectId}/snapshot?language=${language}`); if (identity.current === expected) setSnapshot(value) }, [projectId, language])
   useEffect(() => {
+    if (!enabled) return
     const abort = new AbortController(); let source: EventSource | undefined
     let debounce: ReturnType<typeof setTimeout>; let running = false; let dirty = false; let live = false
     const load = async () => {
@@ -34,6 +35,6 @@ export function useScienceSnapshot(projectId: string, language: 'python' | 'r') 
     let ticks = 0
     const recovery = setInterval(() => { ticks++; if (!document.hidden && (!live || ticks % 5 === 0)) void load() }, 2000)
     return () => { abort.abort(); source?.close(); clearTimeout(debounce); clearInterval(recovery) }
-  }, [projectId, language])
+  }, [projectId, language, enabled])
   return { snapshot, error, connection, refresh }
 }

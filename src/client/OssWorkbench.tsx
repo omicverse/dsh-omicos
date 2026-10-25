@@ -33,7 +33,7 @@ interface Plan { code: string; name: string; display_name?: string; tagline?: st
 interface Checkout { recovery_warning?: string; order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
 interface Quote { selection?: string; confirmation: string; plan: string; catalog_amount_rmb: number | null; notice: string; checkout: { period: string; provider: string; seats?: number } }
 
-function Store({ account, refresh, visible, domain, setDomain }: { account: CloudAccount; refresh: () => Promise<void>; visible: boolean; domain: string; setDomain: (domain: string) => void }): JSX.Element {
+export function Store({ account, refresh, visible, domain, setDomain }: { account: CloudAccount; refresh: () => Promise<void>; visible: boolean; domain: string; setDomain: (domain: string) => void }): JSX.Element {
   const scopedApi = <T,>(path: string, data?: unknown, signal?: AbortSignal) => api<T>(path, data, signal, account)
   const [plans, setPlans] = useState<Plan[]>([])
   const [period, setPeriod] = useState('monthly')

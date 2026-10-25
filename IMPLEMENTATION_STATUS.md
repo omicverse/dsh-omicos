@@ -2,6 +2,51 @@
 
 Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
+## Active application goal (2026-10-25)
+
+The current goal is to turn the actual Harness application into OmicOS OSS. The
+standalone workbench is retained for diagnostics/compatibility and is not the primary
+UI deliverable. Existing runtime/migration work remains available; no Core parity
+claim is implied by the UI integration.
+
+### Native application shell checkpoint
+
+- Added an OmicOS function rail beside the native workspace/session browser, OmicOS
+  brand/welcome/product locales, document title, light sage and neutral charcoal
+  palettes, and a persisted native theme toggle. Core engine sources, session format,
+  native models, streaming, approvals, settings and plugin ownership remain intact.
+- Eight native main pages integrate Data/AnnData, Notebook/execution history,
+  Figures/assemblies, Memory, Plans/Pipelines, Methods/Dossier, Runtime/MCP and the
+  existing official Store. The conversation OmicOS view renders tools directly.
+  Six native right-sidebar types use normal docking/guide/session scoping; retained
+  hidden tabs pause scientific streams and polling. No iframe or dashboard popup.
+- Notebook browser-tab drafts survive navigation with explicit recovery, stale
+  output invalidation and normal server CAS on save. Native Python/R language
+  selection remains available. Legacy Core mode keeps its original account,
+  kernel and capability console rather than advertising an unavailable OSS Agent.
+- Added `pnpm start:app` over a genuine pinned Harness profile, with isolated user
+  state, a generated overlay separate from user patches, initial workspace cwd,
+  per-session scientific workspace resolution and default OmicOS Scientist. Native
+  saved preset selection wins over the deployment default. Duplicate launch is
+  rejected before profile mutation; signal shutdown releases the profile lease.
+- Actual Chrome rendered the complete keyless/unmocked preview, eight in-app pages,
+  navigation round trip, light/dark appearance and a 390px viewport without document
+  overflow or browser errors. Separate isolated Harness integration exercised native
+  approval before a real Python side effect, scoped MCP approval/disable/history,
+  fixed Scientist streaming/reconnect/memory filtering, real Notebook Python 42,
+  unsaved draft recovery, real R mean 4, the actual scientific memory side tab and
+  retained Core DTO compatibility. The model fixture belongs only to that isolated
+  integration test; the user preview contains no synthetic model/account.
+- Typecheck/build and client-bundle/Harness unit checks passed. Existing remote-import,
+  upload and HTTP boundaries passed 51 tests after preserving the previous runtime
+  checkpoint separately. See `docs/plans/2026-10-25-omicos-harness-application.md`.
+
+Remaining application work: refine compact/mobile session navigation and editing
+lifetimes beyond Notebook; broaden native scientific-page journeys, verify true
+Electron window chrome/packaging, and finish the requirement-by-requirement visual
+and behavioral audit. The new goal remains active. Real provider credentials and
+production payment transactions were not exercised or fabricated.
+
 ## Implemented and verified
 
 - Harness release baseline updated to `0.2.1-rc.3`, Cordis `4.0.5`, Schemastery `3.18.5`.

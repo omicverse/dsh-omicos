@@ -12,6 +12,27 @@ export function NotebookPane({ projectId, language, executions, onLanguage, refr
   const currentDocument = useRef(document); currentDocument.current = document
   useEffect(() => { setArchived({}) }, [document?.id])
   const [dirty, setDirty] = useState(false)
+  const draftKey = `omicos:notebook-draft:${projectId}`
+  const [recovery, setRecovery] = useState<NotebookDocument>()
+  const [draftWarning, setDraftWarning] = useState('')
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftKey)
+      if (!raw) return
+      const value = JSON.parse(raw)
+      const doc = value.document
+      if (value.schema !== 1 || value.projectId !== projectId || !doc || typeof doc.id !== 'string' || typeof doc.title !== 'string' || !Number.isSafeInteger(doc.revision) || !['python', 'r'].includes(doc.language) || !Array.isArray(doc.cells) || doc.cells.some((cell: { id?: unknown; kind?: unknown; source?: unknown }) => typeof cell.id !== 'string' || !['code', 'markdown', 'raw'].includes(String(cell.kind)) || typeof cell.source !== 'string')) throw new Error('Invalid Notebook draft')
+      setRecovery(doc)
+    } catch { setDraftWarning('此浏览器中的 Notebook 草稿无法读取；已保存的项目文件不受影响。') }
+  }, [draftKey, projectId])
+  useEffect(() => {
+    if (!document) return
+    try {
+      if (dirty) sessionStorage.setItem(draftKey, JSON.stringify({ schema: 1, projectId, document }))
+      else { sessionStorage.removeItem(draftKey); setRecovery(undefined) }
+      setDraftWarning('')
+    } catch { setDraftWarning('浏览器无法暂存草稿。离开此页面前，请保存 Notebook 或导出未保存内容。') }
+  }, [dirty, document, draftKey, projectId])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const pending = useRef<{ cellId: string; source: string; operationId: string }>()
@@ -28,7 +49,7 @@ export function NotebookPane({ projectId, language, executions, onLanguage, refr
     if (busy) return; setBusy(true); setError('')
     try { await action() } catch (error) { setError(message(error)) } finally { setBusy(false) }
   }
-  const mayDiscard = () => !dirty || window.confirm('当前 Notebook 有未保存修改，放弃这些修改？')
+  const mayDiscard = () => (!dirty && !recovery) || window.confirm('当前 Notebook 有未保存修改，放弃这些修改？')
   const adopt = (next: NotebookDocument) => { setDocument(next); setDirty(false); onLanguage(next.language) }
   const open = (id: string) => void run(async () => { if (!mayDiscard()) return; adopt(await api<NotebookDocument>(`${prefix}notebook-document?id=${encodeURIComponent(id)}`)) })
   const create = (imported?: unknown, title?: string) => void run(async () => {
@@ -66,6 +87,8 @@ export function NotebookPane({ projectId, language, executions, onLanguage, refr
     catch (error) { setError(message(error)) }
   }
   return <article className="oss-card oss-notebook" aria-label="Notebook 编辑器"><div className="oss-row"><div><small>REPRODUCIBLE ANALYSIS</small><h2>Notebook</h2></div><span className="oss-chip">{document ? `${document.language === 'r' ? 'R' : 'Python'} · 修订 ${document.revision}${dirty ? ' · 未保存' : ''}` : '持久单元与执行引用'}</span></div>
+    {draftWarning && <p role="status" className="oss-error">{draftWarning}</p>}
+    {recovery && !document && <section className="oss-confirm"><strong>发现未保存的 Notebook 草稿：{recovery.title}</strong><p>恢复后仍需保存；历史输出不会自动执行。</p><button onClick={() => { setDocument(recovery); setDirty(true); onLanguage(recovery.language); setRecovery(undefined) }}>恢复草稿</button><button onClick={() => { try { sessionStorage.removeItem(draftKey); setRecovery(undefined) } catch { setDraftWarning('无法移除浏览器草稿。') } }}>放弃草稿</button></section>}
     <p>导入仅载入文本和历史输出。批准运行后，单元才会在项目的共享内核执行；修改代码会使旧结果失效。执行顺序和内核状态由实际运行决定。</p>
     {error && <p role="alert" className="oss-error">{error}</p>}
     <div className="oss-toolbar"><label>项目 Notebook<select aria-label="项目 Notebook" value={document?.id || ''} disabled={busy} onChange={event => { if (event.target.value) open(event.target.value) }}><option value="">选择 Notebook</option>{books.map(book => <option key={book.id} value={book.id}>{book.title} · {book.language} · {book.cells} 单元</option>)}</select></label><button disabled={busy} onClick={() => create()}>新建 Notebook</button><label>导入 .ipynb<input aria-label="导入 Notebook" type="file" accept=".ipynb,application/json" disabled={busy} onChange={event => { void importFile(event.target.files?.[0]); event.target.value = '' }} /></label></div>

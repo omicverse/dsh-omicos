@@ -1,14 +1,56 @@
-# OmicOS OSS for DeepSeek Harness
+# OmicOS OSS
 
-An open scientific workspace: a persistent local Python process, execution records,
-reproducible notebooks, figures with integrity hashes, sourced project memory,
-and an optional official OmicOS cloud subscription store.
+A research application built on open-source Harness: native conversations, Agents,
+approvals and plugins, with persistent Python/R, data, notebooks, figures, project
+memory, scientific workflows and an optional OmicOS cloud subscription store.
 
 **Development preview (0.3.0).** This branch implements the first scientific and
 commerce vertical slice. It does not yet provide all OmicOS Core capabilities.
 See [implementation status](IMPLEMENTATION_STATUS.md) and the
 [complete migration design](OMICOS_OSS_DESIGN.md). No private Core binary is
 required by the OSS backend; the old Core adapter remains opt-in.
+
+## Run the OmicOS application
+
+The primary UI is the complete Harness application, restyled and composed as OmicOS:
+a narrow function rail, the native workspace/session browser, central conversations,
+and dockable scientific side tabs. Data, Notebook, Figures, Memory, Pipelines,
+Methods/Evidence, Runtime and Store open inside the application. The conversation's
+OmicOS view also contains these project tools directly; no iframe or separate dashboard
+is needed. The stock Agent, streaming, model selection, approval, settings and plugin
+mechanisms remain available. The deployment default is OmicOS Scientist; a user's
+chosen default in native Settings takes precedence.
+
+Use Node.js 24+ (the Harness minimum also accepts Node.js 22.19+) and pnpm:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm start:app --workspace /absolute/path/to/research-project
+```
+
+The command installs the pinned published Harness engine into an isolated OmicOS
+profile and opens its actual root application on loopback. Its default home is
+`~/.omicos-oss/application`; `--home`, `--python`, `--rscript`, `--port`, `--locale en|zh`
+and `--no-open` are available. Initial engine installation requires npm registry access.
+Models are configured through native settings; the launcher does not synthesize a key
+or copy model/cloud credentials from the environment. OmicOS cloud accounts and
+subscriptions are managed separately in the Store.
+
+The selected directory is the initial working directory, not a global override of
+other conversations: scientific tools and docked panes follow each native Session's
+workspace. Main scientific pages also expose their project selector. The generated
+application overlay is separate from user profile patches and model settings. An
+exclusive profile lease rejects duplicate launch before changing its configuration;
+graceful shutdown releases the lease. Native approvals still govern Agent actions,
+and data reads never start an analysis or purchase.
+
+Notebook edits are temporarily retained in this browser tab across native navigation.
+Restoring a draft is explicit and does not execute its cells; saving still uses the
+server's revision checks. Closing the browser tab can discard this temporary copy.
+The independent workbench remains a diagnostic/compatibility entry below, rather than
+the main OmicOS application. Native Electron packaging and broader UI refinements are
+still tracked in [implementation status](IMPLEMENTATION_STATUS.md).
 
 ## Run the standalone workspace
 
