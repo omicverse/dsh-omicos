@@ -33,6 +33,7 @@ export function apply(ctx: Context): void {
         id: 'omicos',
         order: 20,
         label: () => 'OmicOS',
+        inject: (sessionId: string) => ({ sessionId }),
       },
       OssEntry,
     ),

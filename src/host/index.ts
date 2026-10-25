@@ -77,7 +77,8 @@ export function apply(ctx: Context, config: Config): void {
       const service = await runtime
       const chat = new HarnessScienceChat(sub.sessionController)
       service.chat = chat
-      yield () => { if (service.chat === chat) service.chat = undefined }
+      service.resolveSessionWorkspace = (sessionId, signal) => chat.workspaceForSession(sessionId, signal)
+      yield () => { if (service.chat === chat) { service.chat = undefined; service.resolveSessionWorkspace = undefined } }
     }, 'omicos: Harness conversation bridge')
   })
   if (config.backend !== 'core') {

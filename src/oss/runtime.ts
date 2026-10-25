@@ -8,6 +8,7 @@ import { ScienceService } from './science.js'
 
 export class OssRuntime {
   chat?: ScienceChat
+  resolveSessionWorkspace?: (sessionId: string, signal: AbortSignal) => Promise<string>
   private closing = false
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()

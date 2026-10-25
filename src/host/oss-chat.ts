@@ -35,16 +35,19 @@ export class HarnessScienceChat implements ScienceChat {
     const state = await readJson<{ sessionId: string } | null>(this.file(workspace), null)
     return state?.sessionId
   }
-  private async opening(sessionId: string, workspace: string, signal: AbortSignal): Promise<Extract<SessionFollowFrame, { type: 'snapshot' }>> {
+  private async opening(sessionId: string, workspace: string | undefined, signal: AbortSignal): Promise<Extract<SessionFollowFrame, { type: 'snapshot' }>> {
     const own = new AbortController()
     const combined = AbortSignal.any([signal, own.signal, AbortSignal.timeout(20000)])
     const iterator = this.controller.follow({ address: { kind: 'session', sessionId: SessionId(sessionId) }, maxMessages: 50 }, combined)[Symbol.asyncIterator]()
     try {
       const first = await iterator.next()
       if (first.done || first.value.type !== 'snapshot') throw new Error('Harness did not provide a conversation opening snapshot')
-      if (!first.value.header.cwd || resolve(first.value.header.cwd) !== resolve(workspace)) throw new Error('Conversation is bound to a different workspace; refusing to expose it')
+      if (!first.value.header.cwd || (workspace !== undefined && resolve(first.value.header.cwd) !== resolve(workspace))) throw new Error('Conversation is bound to a different workspace; refusing to expose it')
       return first.value
     } finally { own.abort(); await iterator.return?.() }
+  }
+  async workspaceForSession(sessionId: string, signal: AbortSignal): Promise<string> {
+    return (await this.opening(sessionId, undefined, signal)).header.cwd!
   }
   private async ensure(workspace: string, signal: AbortSignal): Promise<string> {
     let pending = this.creating.get(workspace)

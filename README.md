@@ -71,6 +71,8 @@ The OSS tool surface is:
 - `omicos_execution_status`: actual execution state and bounded output.
 - `omicos_cancel_execution`: request cancellation, then query the terminal state.
 - `omicos_project_memory_write`: approved changes to sourced project facts.
+- `omicos_workspace_files`: bounded project data inventory with private-path protection.
+- `omicos_inspect_anndata`: approved metadata-only audit without changing expression values.
 - `omicos_scientific_skill`: public AnnData/QC/differential-expression/figure checklists.
 - `omicos_environment`: interpreter and installed scientific package metadata.
 - `omicos_cloud_store`: cloud account and store/workspace entry points; no payment tool.
@@ -102,6 +104,11 @@ outputs, execution identity, kernel generation and artifact references.
 Figures created with matplotlib are saved after successful cells; R graphics are captured as PDF with a PNG preview when supported. Figures are displayed
 in the workspace. The file endpoint checks workspace containment and integrity.
 No object pickle is automatically loaded on restart.
+
+The data browser previews bounded text and prepares CSV/TSV/H5AD/RDS loading code
+for review; it does not execute or deserialize a dataset just because it is selected.
+AnnData inspection reports layers, raw/embedding metadata and uniqueness, leaving
+normalization/log state explicitly unknown unless supported by separate evidence.
 
 ## Official cloud store
 

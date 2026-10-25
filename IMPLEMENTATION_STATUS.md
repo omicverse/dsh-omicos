@@ -17,6 +17,9 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
   cancellation/restoration, account-switch invalidation, order-number recovery.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
 - Paid-order/invoice UI, explicit invoice application/withdrawal, live lab pricing and owner-filtered seat management/top-up payment; browser flow tested against an isolated mock cloud.
+- Workspace data browser, bounded text previews, prepared CSV/TSV/H5AD/RDS loading cells and approved AnnData metadata inspection; real AnnData tests verify X remains unchanged.
+- DSH entry resolves the active session workspace through the formal Host controller instead of silently opening the Host process working directory.
+- Cloud credentials are bound to their origin; changing cloud bases never forwards previously saved tokens.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
 - Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
@@ -25,7 +28,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed.
-- 112 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 117 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Browser screenshots: workspace-level `outputs/omicos-oss/`. No real payments were made.
@@ -47,7 +50,7 @@ Verification at this checkpoint:
 
 ### M2–M4 capability migration
 
-- Richer dataset/AnnData state and data file browser/import; broader R environment provisioning and platform matrix.
+- Richer dataset/AnnData charts, upload/import workflows and broader R environment provisioning/platform matrix.
 - Notebook cell editing/re-execution semantics, richer figure review/Studio.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
 - Agent delegation constraints, scientific plans/approvals, session and long-term memory tree/consolidation.

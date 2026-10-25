@@ -1,3 +1,5 @@
+import { listWorkspace, previewWorkspaceFile } from './files.js'
+import { inspectAnnDataCode } from './anndata.js'
 import { inspectEnvironment, inspectREnvironment } from './environment.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID, createHash } from 'node:crypto'
@@ -52,7 +54,14 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
       const data = method === 'POST' ? await body(request) : undefined
       const cloud = runtime.cloud
       let result: unknown
-      if (path === '/omicos/oss/api/login' && method === 'POST') result = await cloud.beginLogin()
+      if (path === '/omicos/oss/api/open-session-project' && method === 'POST') {
+        if (!runtime.resolveSessionWorkspace) throw new CloudError(503, 'Harness workspace service is unavailable')
+        if (typeof data.sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(data.sessionId)) throw new CloudError(400, 'Invalid session identity')
+        const workspace = await runtime.resolveSessionWorkspace(data.sessionId, AbortSignal.timeout(20000))
+        const project = await runtime.project(workspace)
+        result = (await runtime.list()).find(item => item.workspace === project.workspace)
+      }
+      else if (path === '/omicos/oss/api/login' && method === 'POST') result = await cloud.beginLogin()
       else if (path === '/omicos/oss/api/login/poll' && method === 'POST') result = await cloud.pollLogin()
       else if (path === '/omicos/oss/api/logout' && method === 'POST') { await cloud.logout(); result = cloud.snapshot() }
       else if (path === '/omicos/oss/api/plans' && method === 'GET') result = await cloud.plans(url.searchParams.get('domain') || '')
@@ -87,7 +96,13 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
         const language = data?.language ?? url.searchParams.get('language') ?? 'python'
         if (!['python', 'r'].includes(language)) throw new CloudError(400, 'Unsupported scientific language')
         const project = language === 'r' && ['snapshot', 'execute', 'cancel', 'notebook', 'artifact'].includes(action || '') ? await runtime.rProject(parent.workspace) : parent
-        if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
+        if (action === 'files' && method === 'GET') result = await listWorkspace(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
+        else if (action === 'file-preview' && method === 'GET') result = await previewWorkspaceFile(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
+        else if (action === 'anndata' && method === 'POST') {
+          if (data.confirmed !== true) throw new CloudError(400, 'Explicit inspection approval required')
+          result = await parent.submit(inspectAnnDataCode(String(data.variable || '')), String(data.operationId || ''), 'workbench:anndata-inspection')
+        }
+        else if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
           if (!runtime.chat) {
             if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
             throw new CloudError(503, '此工作台未连接 Harness 对话服务。请从 DSH 的 OmicOS 入口打开工作台；本地 Python 不受影响。')

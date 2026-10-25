@@ -63,6 +63,12 @@ describe('scientific workbench and commerce boundary', () => {
     await post('logout', {})
     expect(await readFile(credentials, 'utf8')).toBe('null')
   })
+  it('never reuses official credentials against a different cloud origin', async () => {
+    await login()
+    const other = await CloudService.open('https://other.example.invalid', join(directory, 'state', 'cloud.json'), async () => { throw new Error('No request should carry old credentials') })
+    expect(other.snapshot()).toMatchObject({ logged_in: false })
+    await expect(other.subscription()).rejects.toMatchObject({ status: 401 })
+  })
   it('requires login, a valid quote and one-use confirmation before creating orders', async () => {
     const choice = { plan_code: 'pro', period: 'monthly', provider: 'wechat' }
     expect((await post('quote', choice)).status).toBe(401)

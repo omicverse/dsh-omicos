@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { readJson, writeJson } from './storage.js'
 
 interface Identity { id: string; email?: string; phone?: string; display_name?: string }
-interface Credentials { token: string; user: Identity }
+interface Credentials { server: string; token: string; user: Identity }
 export interface Checkout { plan_code: string; period: 'monthly' | 'quarterly' | 'yearly'; provider: 'wechat' | 'alipay'; domain?: string; seats?: number; lab_id?: string; lab_name?: string }
 interface CatalogPlan { code: string; name: string; display_name?: string; tagline?: string; monthly_price_rmb: number | null; quarterly_price_rmb?: number | null; yearly_price_rmb: number | null }
 export class CloudError extends Error { constructor(readonly status: number, message: string) { super(message) } }
@@ -20,7 +20,9 @@ export class CloudService {
     if (url.protocol !== 'https:' && !(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && url.protocol === 'http:')) throw new Error('Cloud requires HTTPS (HTTP allowed only for local test servers)')
     if (url.username || url.password || url.search || url.hash || !['', '/'].includes(url.pathname)) throw new Error('Cloud base must be an origin without credentials')
     const cloud = new CloudService(url.origin, credentialFile, fetcher)
-    cloud.credentials = await readJson<Credentials | undefined>(credentialFile, undefined)
+    const saved = await readJson<Credentials | undefined>(credentialFile, undefined)
+    // Credentials are audience-bound; changing cloud origins must never forward an old token.
+    if (saved?.server === cloud.base && typeof saved.token === 'string' && saved.user?.id) cloud.credentials = saved
     return cloud
   }
   private async request(path: string, method = 'GET', body?: unknown, authenticated = true): Promise<any> {
@@ -36,6 +38,7 @@ export class CloudService {
     if (!response.ok) throw new CloudError(response.status, String(data.detail?.message ?? data.detail ?? data.message ?? `云服务 HTTP ${response.status}`))
     return data
   }
+  get sensitiveFiles(): readonly string[] { return [this.credentialFile] }
   snapshot(): unknown {
     return { logged_in: Boolean(this.credentials), user: this.credentials?.user, generation: this.generation,
       login: this.login ? { user_code: this.login.code, verification_uri: this.login.uri, expires_at: this.login.expires } : undefined }
@@ -61,7 +64,7 @@ export class CloudService {
     if (data.status === 'approved') {
       if (!data.user_token || !data.user?.id) throw new Error('Invalid cloud identity response')
       const user: Identity = { id: String(data.user.id), ...(typeof data.user.email === 'string' ? { email: data.user.email } : {}), ...(typeof data.user.phone === 'string' ? { phone: data.user.phone } : {}), ...(typeof data.user.display_name === 'string' ? { display_name: data.user.display_name } : {}) }
-      const credentials = { token: data.user_token, user }
+      const credentials = { server: this.base, token: data.user_token, user }
       // Persist only explicit-login credentials, never process/admin keys.
       await writeJson(this.credentialFile, credentials)
       if (generation !== this.generation || this.login !== login) { await writeJson(this.credentialFile, this.credentials ?? null); throw new CloudError(409, '登录已取消') }
@@ -84,7 +87,7 @@ export class CloudService {
   }
   async quote(input: Checkout): Promise<unknown> {
     if (!this.credentials) throw new CloudError(401, '购买前请登录')
-    if (!['plus', 'pro', 'lab', 'enterprise'].includes(input.plan_code) || !['monthly', 'quarterly', 'yearly'].includes(input.period) || !['wechat', 'alipay'].includes(input.provider)) throw new CloudError(400, '无效套餐、周期或支付方式')
+    if (typeof input.plan_code !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.plan_code) || !['monthly', 'quarterly', 'yearly'].includes(input.period) || !['wechat', 'alipay'].includes(input.provider)) throw new CloudError(400, '无效套餐、周期或支付方式')
     const checkout: Checkout = { plan_code: input.plan_code, period: input.period, provider: input.provider }
     if (input.domain) { if (!/^[a-zA-Z0-9_-]{1,80}$/.test(input.domain)) throw new CloudError(400, '无效服务域'); checkout.domain = input.domain }
     if (input.plan_code === 'lab') {
