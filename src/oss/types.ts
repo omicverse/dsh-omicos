@@ -3,7 +3,7 @@ export const PROTOCOL_VERSION = 1
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted'
 export interface Artifact { id: string; path: string; mime: string; sha256: string; bytes: number }
 export interface Execution {
-  id: string; operationId: string; sessionId: string; language: 'python'; code: string
+  id: string; operationId: string; sessionId: string; language: 'python' | 'r'; code: string
   state: JobState; createdAt: string; startedAt?: string; endedAt?: string
   output: string; error?: string; artifacts: Artifact[]; kernelGeneration?: string
 }

@@ -8,7 +8,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Obsolete client-runtime removed; current UI renderer contract and job progress API adapted.
 - Private Core removed from the default installation graph; compatibility mode retained explicitly.
 - Independent Node Host / public Python worker protocol with no model loop or private runtime dependency.
-- Persistent per-project Python namespace, queue, stable invocation deduplication, cancellation and bounded output.
+- Persistent per-project Python and separate R namespaces, queue, stable invocation deduplication, cancellation and bounded output.
 - Atomic metadata, incomplete-job recovery, project-level heartbeat lock, distinct kernel generations.
 - Figure capture/integrity checks, variable inspection, sourced memory CRUD and notebook export.
 - Standalone responsive React scientific workspace; separate store route/window; DSH entry links.
@@ -17,14 +17,14 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
   cancellation/restoration, account-switch invalidation, order-number recovery.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
-- Python interpreter/package metadata diagnostic endpoint/tool.
+- Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
 - Scoped OmicOS Scientist preset and four original public scientific checklists; real Loader/preset mounting tested.
 
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed.
-- 108 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 110 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Browser screenshots: workspace-level `outputs/omicos-oss/`. No real payments were made.
@@ -46,7 +46,7 @@ Verification at this checkpoint:
 
 ### M2–M4 capability migration
 
-- R, richer dataset/AnnData state and data file browser/import.
+- Richer dataset/AnnData state and data file browser/import; broader R environment provisioning and platform matrix.
 - Notebook cell editing/re-execution semantics, richer figure review/Studio.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
 - Agent delegation constraints, scientific plans/approvals, session and long-term memory tree/consolidation.

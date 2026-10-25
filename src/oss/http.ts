@@ -1,4 +1,4 @@
-import { inspectEnvironment } from './environment.js'
+import { inspectEnvironment, inspectREnvironment } from './environment.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID, createHash } from 'node:crypto'
 import { readFile, realpath } from 'node:fs/promises'
@@ -69,8 +69,11 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
         result = await cloud.manageSubscription(data.action, data.domain)
       } else if (path.startsWith('/omicos/oss/api/project/')) {
         const parts = path.slice('/omicos/oss/api/project/'.length).split('/')
-        const project = await runtime.byId(parts[0] || '')
+        const parent = await runtime.byId(parts[0] || '')
         const action = parts[1]
+        const language = data?.language ?? url.searchParams.get('language') ?? 'python'
+        if (!['python', 'r'].includes(language)) throw new CloudError(400, 'Unsupported scientific language')
+        const project = language === 'r' && ['snapshot', 'execute', 'cancel', 'notebook', 'artifact'].includes(action || '') ? await runtime.rProject(parent.workspace) : parent
         if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
           if (!runtime.chat) {
             if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
@@ -82,8 +85,8 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
           else if (action === 'chat-cancel' && method === 'POST') { await runtime.chat.cancel(project.workspace); result = { ok: true } }
           else throw new CloudError(405, 'Method not allowed')
         }
-        else if (action === 'environment' && method === 'GET') result = await inspectEnvironment(project.python)
-        else if (action === 'snapshot' && method === 'GET') result = project.snapshot()
+        else if (action === 'environment' && method === 'GET') result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python)
+        else if (action === 'snapshot' && method === 'GET') result = { ...project.snapshot(), memories: parent.snapshot().memories }
         else if (action === 'execute' && method === 'POST') {
           if (data.confirmed !== true || typeof data.code !== 'string') throw new CloudError(400, 'Explicit execution approval required')
           result = await project.submit(data.code, String(data.operationId || ''), String(data.sessionId || 'workbench'))

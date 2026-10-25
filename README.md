@@ -12,7 +12,7 @@ required by the OSS backend; the old Core adapter remains opt-in.
 
 ## Run the standalone workspace
 
-Requirements: Node.js 22+, pnpm, and Python 3 available as `python3`.
+Requirements: Node.js 22+, pnpm, and Python 3 available as `python3`. Optional R cells require Rscript and jsonlite.
 Scientific packages are optional and must be installed in your chosen environment.
 The runtime does **not** silently install dependencies, upload data or replay cells.
 
@@ -26,7 +26,7 @@ Open `http://127.0.0.1:18620/omicos/oss`. The store has its own window at
 `http://127.0.0.1:18620/omicos/oss/store`.
 
 Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
-`--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
+`--rscript /path/to/Rscript`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
 The service binds only to loopback; exposing it as a public server is unsupported.
 
 The standalone CLI runs explicit Python cells without Harness. When this same
@@ -67,6 +67,7 @@ The OSS tool surface is:
 
 - `omicos_science_context`: variables, recent scientific executions and project memory.
 - `omicos_run_python`: approved Python execution, optionally asynchronous.
+- `omicos_run_r`: approved persistent R execution with PDF/PNG capture.
 - `omicos_execution_status`: actual execution state and bounded output.
 - `omicos_cancel_execution`: request cancellation, then query the terminal state.
 - `omicos_project_memory_write`: approved changes to sourced project facts.
@@ -81,7 +82,7 @@ trusted research environment, **not a Python security sandbox**.
 
 ## Scientific state and recovery
 
-One project owns one Python namespace, shared by its cells and bound sessions.
+One project owns one Python namespace and an optional separate R namespace, shared by their cells and bound sessions.
 Each project has a single execution queue. Different projects use separate
 workers. A project lock prevents competing runtime processes from corrupting its
 metadata; close the original runtime before opening the same project elsewhere.
@@ -95,10 +96,10 @@ Use stable operation IDs when retrying a request. Reusing an ID with different
 code/session is rejected. Host restarts preserve history, artifacts and memory,
 **not live Python objects**. Unfinished executions become `interrupted`, never
 silently rerun. A failed/canceled cell can leave partial variable or file changes.
-The interface makes this distinction explicit. Notebook export preserves source,
+R history and variables are separate from Python; its execution metadata lives under `.omicos-oss/r/`. The interface makes this distinction explicit. Notebook export preserves source,
 outputs, execution identity, kernel generation and artifact references.
 
-Figures created with matplotlib are saved after successful cells and displayed
+Figures created with matplotlib are saved after successful cells; R graphics are captured as PDF with a PNG preview when supported. Figures are  displayed
 in the workspace. The file endpoint checks workspace containment and integrity.
 No object pickle is automatically loaded on restart.
 

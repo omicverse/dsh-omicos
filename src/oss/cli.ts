@@ -6,12 +6,12 @@ import { createOssHandler } from './http.js'
 const options = new Map<string, string>()
 for (let index = 2; index < process.argv.length; index += 2) {
   const name = process.argv[index]!
-  if (!['--workspace', '--port', '--python', '--cloud-base', '--state-dir'].includes(name) || !process.argv[index + 1]) throw new Error(`Unknown or missing option: ${name}`)
+  if (!['--workspace', '--port', '--python', '--rscript', '--cloud-base', '--state-dir'].includes(name) || !process.argv[index + 1]) throw new Error(`Unknown or missing option: ${name}`)
   options.set(name, process.argv[index + 1]!)
 }
 const port = Number(options.get('--port') || '18620')
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid port')
-const runtime = await OssRuntime.open({ python: options.get('--python'), cloudBase: options.get('--cloud-base'), stateDir: options.get('--state-dir') })
+const runtime = await OssRuntime.open({ python: options.get('--python'), rscript: options.get('--rscript'), cloudBase: options.get('--cloud-base'), stateDir: options.get('--state-dir') })
 await runtime.project(options.get('--workspace') || process.cwd())
 const server = createServer(createOssHandler(runtime))
 server.requestTimeout = 30_000; server.headersTimeout = 15_000

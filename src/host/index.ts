@@ -5,25 +5,12 @@ import { OssRuntime } from '../oss/runtime.js'
 import { createOssHandler } from '../oss/http.js'
 import { registerOssTools } from './oss-tools.js'
 /**
- * `@omicverse/dsh-omicos` — OmicOS as a deepseek-harness plugin, Mode A
- * (DSH-PLUGIN.md §3): the dsh/DeepSeek agent keeps the wheel; omicos is a
- * capability (tools + background jobs + login commands + an account tab).
- *
- * The host half is the whole plugin on a headless profile; the client
- * bundle (`dsh.client`) only adds surfaces — the OmicOS account tab and
- * the live-activity tool view. Figures reach the user through
- * `presentationMeta` + the `/omicos/figure` route, NOT as ImageBlocks in
- * the tool result: tool-result content is replayed into the model, and
- * dsh's DeepSeek adapter fails the whole turn on image content.
- *
- * Entry-point shape is the VERIFIED loader contract: named exports
- * `name` / `inject` / `Config` / `apply(ctx, config)`, NO default export
- * (`unwrapExports` would take the default INSTEAD of the namespace).
- *
- * Teardown is ONE generator effect: disposers run LIFO, so yielding the
- * kernel-stop first and the registrations after means unload unregisters
- * tools/commands BEFORE SIGTERMing a self-spawned core (D1 — parallel
- * async disposers would race those).
+ * OmicOS OSS Harness Host plugin. The default backend registers explicit
+ * scientific tools and a shared Python/R runtime. Harness remains the sole
+ * Agent loop. Official cloud commerce is optional and Host-owned.
+ * `backend: core` retains the original delegated Core adapter for migration.
+ * Every registration is lifecycle-owned; teardown waits for startup and
+ * worker quiescence before releasing project ownership.
  */
 import { AccountService } from './account.js'
 import { ActivityStore } from './activity-store.js'
@@ -41,6 +28,7 @@ export const inject = ['tools']
 export interface Config {
   backend: 'oss' | 'core'
   python: string
+  rscript: string
   stateDir: string
   /** Explicit workspace override; empty = follow each dsh session's own workspace (`session.header.cwd`). */
   workspace: string
@@ -57,6 +45,7 @@ export interface Config {
 export const Config = Schema.object({
   backend: Schema.union(['oss', 'core']).default('oss'),
   python: Schema.string().default('python3'),
+  rscript: Schema.string().default('Rscript'),
   stateDir: Schema.string().default(''),
   workspace: Schema.string().default(''),
   autoStart: Schema.boolean().default(true),
@@ -66,7 +55,7 @@ export const Config = Schema.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
-  const runtime = OssRuntime.open({ python: config.python, stateDir: config.stateDir || undefined, cloudBase: config.upstreamBaseUrl }).then(async service => {
+  const runtime = OssRuntime.open({ python: config.python, rscript: config.rscript, stateDir: config.stateDir || undefined, cloudBase: config.upstreamBaseUrl }).then(async service => {
     try { await service.project(config.workspace || process.cwd()); return service }
     catch (error) { await service.dispose(); throw error }
   })

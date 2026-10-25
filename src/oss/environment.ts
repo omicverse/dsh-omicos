@@ -13,3 +13,14 @@ print(json.dumps({'python':sys.version.split()[0],'executable':sys.executable,'p
   const { stdout } = await execute(python, ['-c', code], { timeout: 15000, maxBuffer: 128000 })
   return JSON.parse(stdout) as EnvironmentInfo
 }
+
+export interface REnvironmentInfo { language: 'r'; version: string; packages: Record<string, string | null> }
+export async function inspectREnvironment(rscript: string): Promise<REnvironmentInfo> {
+  const code = `if (!requireNamespace('jsonlite',quietly=TRUE)) stop('Selected R environment requires jsonlite; install it explicitly.')
+names <- c('jsonlite','Seurat','SingleCellExperiment','DESeq2','edgeR','ggplot2','BiocManager')
+installed <- utils::installed.packages()
+packages <- setNames(lapply(names,function(name) if (name %in% rownames(installed)) unname(installed[name,'Version']) else NULL), names)
+cat(jsonlite::toJSON(list(language='r',version=R.version.string,packages=packages),auto_unbox=TRUE,null='null'))`
+  const { stdout } = await execute(rscript, ['--vanilla', '-e', code], { timeout: 30000, maxBuffer: 128000 })
+  return JSON.parse(stdout) as REnvironmentInfo
+}

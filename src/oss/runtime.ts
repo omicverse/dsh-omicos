@@ -9,10 +9,11 @@ import { ScienceService } from './science.js'
 export class OssRuntime {
   chat?: ScienceChat
   private closing = false
+  private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
-  private constructor(readonly cloud: CloudService, readonly python: string) {}
-  static async open(options: { cloudBase?: string; stateDir?: string; python?: string } = {}): Promise<OssRuntime> {
-    return new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(options.stateDir || join(homedir(), '.omicos-oss'), 'cloud.json')), options.python || 'python3')
+  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string) {}
+  static async open(options: { cloudBase?: string; stateDir?: string; python?: string; rscript?: string } = {}): Promise<OssRuntime> {
+    return new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(options.stateDir || join(homedir(), '.omicos-oss'), 'cloud.json')), options.python || 'python3', options.rscript || 'Rscript')
   }
   async project(workspace: string): Promise<ScienceService> {
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
@@ -28,6 +29,13 @@ export class OssRuntime {
     }
     return service
   }
+  async rProject(workspace: string): Promise<ScienceService> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.rProjects.get(parent.workspace)
+    if (!service) { service = ScienceService.open(parent.workspace, this.rscript, 'r'); this.rProjects.set(parent.workspace, service); service.catch(() => { if (this.rProjects.get(parent.workspace) === service) this.rProjects.delete(parent.workspace) }) }
+    return service
+  }
   async list(): Promise<Array<{ id: string; workspace: string }>> {
     return Promise.all([...this.projects].map(async ([id, service]) => ({ id, workspace: (await service).workspace })))
   }
@@ -36,5 +44,5 @@ export class OssRuntime {
     if (!project) throw new Error('Project not registered; open it from the trusted Host first')
     return project
   }
-  async dispose(): Promise<void> { this.closing = true; await Promise.allSettled([...this.projects.values()].map(async project => (await project).dispose())); this.projects.clear() }
+  async dispose(): Promise<void> { this.closing = true; await Promise.allSettled([...this.rProjects.values()].map(async project => (await project).dispose())); this.rProjects.clear(); await Promise.allSettled([...this.projects.values()].map(async project => (await project).dispose())); this.projects.clear() }
 }
