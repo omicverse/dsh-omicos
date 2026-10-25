@@ -52,7 +52,7 @@ describe.skipIf(!rAvailable)('real persistent R worker', () => {
       expect(artifact.bytes.length).toBe(final.artifacts[0].bytes)
       expect((r.notebook() as any).metadata.kernelspec.language).toBe('r')
     } finally { await runtime.dispose(); await rm(directory, { recursive: true, force: true }) }
-  })
+  }, 30000) // Starts real R, Python and an isolated Pipeline; allow concurrent native scientific fixtures.
   it('recovers after R errors and cancellation without silently replacing the namespace', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'omicos-r-cancel-'))
     const r = await ScienceService.open(workspace, 'Rscript', 'r')

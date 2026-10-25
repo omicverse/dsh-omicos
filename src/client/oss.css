@@ -31,3 +31,5 @@ body:has(.oss){margin:0}
 .oss-execution-history pre,.oss-execution-history code{white-space:pre-wrap;overflow-wrap:anywhere}.oss-history-list{max-height:650px;overflow:auto;margin:16px 0}.oss-history-receipt{border-top:1px solid #dce2da;padding-top:20px}.oss-history-receipt img{width:100%;max-height:500px;object-fit:contain}.oss-execution-history input,.oss-execution-history select{max-width:100%}
 
 .oss-history-receipt pre{max-height:480px;overflow:auto}
+
+.oss label.oss-checkbox{display:flex;align-items:flex-start;gap:8px}.oss label.oss-checkbox input[type=checkbox]{flex:0 0 auto;margin:4px 0 0}

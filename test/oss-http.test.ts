@@ -59,6 +59,24 @@ describe('scientific workbench and commerce boundary', () => {
   const fetchHost = (url: string, init: RequestInit = {}) => globalThis.fetch(url, { ...init, headers: { authorization: `Bearer ${owner.launchToken}`, ...init.headers } })
   const post = (path: string, data: unknown, headers: Record<string, string> = {}) => fetchHost(`${base}/omicos/oss/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, 'x-omicos-account': encodeURIComponent(runtime.cloud.identity()), ...headers }, body: JSON.stringify(data) })
   const login = async () => { approvals = true; expect((await post('login', {})).status).toBe(200); expect((await post('login/poll', {})).status).toBe(200) }
+  it('keeps MCP management owner-only and human-confirmed, preserves revisions and does not activate servers in standalone mode',async()=>{
+    const reference=(await runtime.list())[0];const prefix=`project/${reference.id}/mcp-`
+    const connection={operationId:'mcp-create',title:'Local research extension',note:'Explicit configuration only',config:{transport:'stdio',serverName:'papers',command:'missing-server-executable',args:[],env:{API_TOKEN:{environment:'RESEARCH_TOKEN'}},toolCallTimeoutMs:5000}}
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}state`)).status).toBe(401)
+    expect((await post(`${prefix}save`,{connection,confirmed:true},{'x-omicos-csrf':''})).status).toBe(403)
+    expect((await post(`${prefix}save`,{connection})).status).toBe(400)
+    const saved=await (await post(`${prefix}save`,{connection,confirmed:true})).json() as any;expect(saved.enabled).toBe(false)
+    const decision={id:saved.id,revision:saved.revision,operationId:'mcp-enable',enabled:true,note:'Allow this project on a future Harness connection'}
+    expect((await post(`${prefix}enabled`,{decision})).status).toBe(400)
+    expect((await post(`${prefix}enabled`,{decision,confirmed:true})).status).toBe(200)
+    const state=await (await fetchHost(`${base}/omicos/oss/api/${prefix}state`)).json() as any;expect(state.host.available).toBe(false);expect(state.connections[0].revision).toBe(2)
+    const reconnect={id:saved.id,revision:2,operationId:'mcp-reconnect',note:'Explicit reconnect revision'}
+    expect((await (await post(`${prefix}reconnect`,{decision:reconnect,confirmed:true})).json() as any).revision).toBe(3)
+    expect((await (await post(`${prefix}reconnect`,{decision:reconnect,confirmed:true})).json() as any).revision).toBe(3)
+    const exported=await (await fetchHost(`${base}/omicos/oss/api/${prefix}export?id=${saved.id}&revision=2`)).json() as any;expect(exported.enabled).toBe(false);expect(exported.origin.revision).toBe(2);expect(exported.connection.config.env.API_TOKEN).toEqual({environment:'RESEARCH_TOKEN'})
+    expect((await (await fetchHost(`${base}/omicos/oss/api/${prefix}history?id=${saved.id}`)).json() as any).revisions).toHaveLength(3)
+    expect((await (await runtime.byId(reference.id)).snapshot()).executions).toEqual([]);expect(seen).toHaveLength(0)
+  })
   it('blocks cross-origin, DNS rebinding and unauthenticated mutations', async () => {
     expect((await post('logout', {}, { origin: 'https://attacker.invalid' })).status).toBe(403)
     expect((await post('logout', {}, { 'x-omicos-csrf': '' })).status).toBe(403)

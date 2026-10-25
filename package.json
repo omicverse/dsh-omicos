@@ -71,7 +71,8 @@
     "dsh-better-sidebar": "^0.28.0",
     "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.3",
     "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3"
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.3"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-attachment": {
@@ -93,6 +94,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-client-connection": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-mcp-client": {
       "optional": true
     }
   },
@@ -143,7 +147,9 @@
     "@deepseek-ai/cordis-plugin-loader": "1.0.6",
     "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.3",
     "playwright": "1.62.1",
-    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3"
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-mcp-client": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-mcp-resources": "0.2.1-rc.3"
   },
   "license": "GPL-3.0-only",
   "homepage": "https://github.com/omicverse/dsh-omicos",

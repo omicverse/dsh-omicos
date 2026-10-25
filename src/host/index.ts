@@ -2,6 +2,7 @@ import type {} from './oss-service.js'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { HarnessScienceChat } from './oss-chat.js'
+import { HarnessProjectMcp } from './oss-mcp.js'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { OssRuntime } from '../oss/runtime.js'
 import { createOssHandler } from '../oss/http.js'
@@ -32,6 +33,7 @@ export interface Config {
   python: string
   rscript: string
   workerEnvNames: string[]
+  mcpSecretEnvNames: string[]
   stateDir: string
   /** Explicit workspace override; empty = follow each dsh session's own workspace (`session.header.cwd`). */
   workspace: string
@@ -50,6 +52,7 @@ export const Config = Schema.object({
   python: Schema.string().default('python3'),
   rscript: Schema.string().default('Rscript'),
   workerEnvNames: Schema.array(Schema.string()).default([]),
+  mcpSecretEnvNames: Schema.array(Schema.string()).default([]),
   stateDir: Schema.string().default(''),
   workspace: Schema.string().default(''),
   autoStart: Schema.boolean().default(true),
@@ -63,11 +66,14 @@ export function apply(ctx: Context, config: Config): void {
     try { await service.project(config.workspace || process.cwd()); return service }
     catch (error) { await service.dispose(); throw error }
   })
-  ctx.provide('omicosScience', { runtime, workspace: config.workspace })
+  const mcp = config.backend !== 'core' ? new HarnessProjectMcp(runtime, config.workspace, config.mcpSecretEnvNames || []) : undefined
+  if (mcp) void runtime.then(service => { service.mcpHost = mcp }).catch(() => {})
+  ctx.provide('omicosScience', { runtime, workspace: config.workspace, mcp })
   // Attach rejection handling immediately; lifecycle cleanup still awaits it.
   void runtime.catch(error => console.error('OmicOS OSS startup failed:', String(error)))
   ctx.effect(function* () {
     yield async () => { await (await runtime).dispose() }
+    if (mcp) yield async () => { await mcp.dispose(); const service = await runtime; if (service.mcpHost === mcp) service.mcpHost = undefined }
     if (config.backend !== 'core') for (const dispose of registerOssTools(ctx, runtime, config.workspace)) yield dispose
   }, 'omicos: OSS scientific service')
   ctx.inject(['webServer', 'connection'], sub => {

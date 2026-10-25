@@ -1,4 +1,7 @@
 import { ProjectDossier } from './dossier.js'
+import { ProjectMcpConnections } from './mcp.js'
+import { McpAuthorization } from './mcp-authorization.js'
+import type { McpHostBridge } from './mcp-types.js'
 import { DossierError } from './dossier-types.js'
 import { ScientificMethods } from './methods.js'
 import { DataUploads } from './uploads.js'
@@ -21,12 +24,15 @@ import { readJson, writeJson } from './storage.js'
 interface ProjectReference { id: string; workspace: string }
 const projectId = (path: string) => createHash('sha256').update(path).digest('hex').slice(0, 24)
 export class OssRuntime {
+  mcpHost?: McpHostBridge
   chat?: ScienceChat
   resolveSessionWorkspace?: (sessionId: string, signal: AbortSignal) => Promise<string>
   private closing = false
+  private disposing?:Promise<void>
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
   private dossierProjects = new Map<string, Promise<ProjectDossier>>()
+  private mcpProjects = new Map<string, Promise<ProjectMcpConnections>>()
   private methodProjects = new Map<string, Promise<ScientificMethods>>()
   private uploadProjects = new Map<string, Promise<DataUploads>>()
   private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
@@ -35,10 +41,10 @@ export class OssRuntime {
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
-  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string, private envNames: readonly string[]) {}
+  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string, private envNames: readonly string[], private mcpAuthority:McpAuthorization) {}
   static async open(options: { cloudBase?: string; stateDir?: string; python?: string; rscript?: string; workerEnvNames?: readonly string[] } = {}): Promise<OssRuntime> {
     const stateDir = resolve(options.stateDir || join(homedir(), '.omicos-oss'))
-    const runtime = new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(stateDir, 'cloud.json')), options.python || 'python3', options.rscript || 'Rscript', stateDir, options.workerEnvNames || [])
+    const runtime = new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(stateDir, 'cloud.json')), options.python || 'python3', options.rscript || 'Rscript', stateDir, options.workerEnvNames || [], await McpAuthorization.open(stateDir))
     const registry = await readJson<{ protocol: number; projects: ProjectReference[] }>(join(stateDir, 'projects.json'), { protocol: 1, projects: [] })
     if (registry.protocol !== 1 || !Array.isArray(registry.projects)) throw new Error('Unsupported project registry; preserve the file and use a compatible runtime')
     for (const entry of registry.projects) {
@@ -48,7 +54,7 @@ export class OssRuntime {
     return runtime
   }
   get stateDirectory(): string { return this.stateDir }
-  get sensitiveFiles(): readonly string[] { return [...this.cloud.sensitiveFiles, join(this.stateDir, 'http-owner.json'), join(this.stateDir, 'projects.json')] }
+  get sensitiveFiles(): readonly string[] { return [...this.cloud.sensitiveFiles, join(this.stateDir, 'http-owner.json'), join(this.stateDir, 'projects.json'), join(this.stateDir,'mcp-authorization.sqlite'), join(this.stateDir,'mcp-authorization.sqlite-wal'), join(this.stateDir,'mcp-authorization.sqlite-shm')] }
   private saveRegistry(): Promise<void> {
     const snapshot = { protocol: 1, projects: [...this.known.values()] }
     const write = this.registryWrites.then(() => writeJson(join(this.stateDir, 'projects.json'), snapshot))
@@ -134,6 +140,17 @@ export class OssRuntime {
     }
     return service
   }
+  async mcpConnections(workspace: string): Promise<ProjectMcpConnections> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.mcpProjects.get(parent.workspace)
+    if (!service) {
+      service = ProjectMcpConnections.open(parent.workspace,this.mcpAuthority)
+      this.mcpProjects.set(parent.workspace, service)
+      service.catch(() => { if (this.mcpProjects.get(parent.workspace) === service) this.mcpProjects.delete(parent.workspace) })
+    }
+    return service
+  }
   async methods(workspace: string): Promise<ScientificMethods> {
     const parent = await this.project(workspace)
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
@@ -200,8 +217,17 @@ export class OssRuntime {
     if (projectId(actual) !== id) throw new Error('Project location changed; reopen it explicitly from the Host')
     return this.project(actual)
   }
-  async dispose(): Promise<void> {
+  dispose(): Promise<void> {
+    if(this.disposing)return this.disposing
     this.closing = true
+    return this.disposing=this.shutdown()
+  }
+  private async shutdown():Promise<void>{
+    await this.mcpHost?.dispose()
+    this.mcpHost=undefined
+    await Promise.allSettled([...this.mcpProjects.values()].map(async service => (await service).dispose()))
+    this.mcpProjects.clear()
+    this.mcpAuthority.dispose()
     await Promise.allSettled([...this.dossierProjects.values()].map(async service => (await service).dispose()))
     this.dossierProjects.clear()
     await Promise.allSettled([...this.uploadProjects.values()].map(async service => (await service).dispose()))

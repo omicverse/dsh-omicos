@@ -1,4 +1,5 @@
 import { DossierError } from './dossier-types.js'
+import { McpConnectionError } from './mcp-types.js'
 import { builtinMethodPack } from './methods.js'
 import { MethodError } from './method-types.js'
 import { UploadError, UPLOAD_CHUNK_BYTES } from './upload-types.js'
@@ -166,6 +167,20 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') { if (language === 'python' && project.executionUnavailable) throw new EnvironmentError(409, project.executionUnavailable); result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python, project.usesIsolatedPython) }
+        else if (action?.startsWith('mcp-')) {
+          const connections = await runtime.mcpConnections(parent.workspace); const id = url.searchParams.get('id') || ''
+          const revision = url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined
+          const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined
+          if (action === 'mcp-state' && method === 'GET') result = { connections:connections.list().connections.map(record=>({...record,authorized:connections.authorized(record)})), host: runtime.mcpHost ? await runtime.mcpHost.snapshot(parent.workspace) : { available:false,credentialEnvironmentNames:[],agents:[],scope:'Optional Harness project MCP adapter required; storing configurations never starts a server.' } }
+          else if (action === 'mcp-document' && method === 'GET') result = connections.get(id,revision)
+          else if (action === 'mcp-history' && method === 'GET') result = connections.history(id,before)
+          else if (action === 'mcp-export' && method === 'GET') result = connections.export(id,revision)
+          else if (['mcp-save','mcp-enabled','mcp-reconnect'].includes(action) && method === 'POST') {
+            if (data.confirmed !== true) throw new McpConnectionError(400,'Explicit human MCP configuration/access decision required')
+            result = action === 'mcp-save' ? await connections.save(data.connection) : action === 'mcp-enabled' ? await connections.setEnabled(data.decision) : await connections.reconnect(data.decision)
+            await runtime.mcpHost?.reconcile(parent.workspace)
+          } else throw new CloudError(405,'Method not allowed')
+        }
         else if (action?.startsWith('dossier-')) {
           const dossier = await runtime.dossier(parent.workspace); const id = url.searchParams.get('id') || ''
           const revision = url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined
@@ -318,7 +333,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

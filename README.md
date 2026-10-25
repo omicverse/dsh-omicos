@@ -71,6 +71,25 @@ plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actu
 outputs. Vector files are downloads, not executable inline documents. See
 [Figure Studio architecture](docs/adr/0005-figure-studio.md).
 
+Project MCP connections reuse the optional published Harness
+`@deepseek-ai/dsh-mcp-client@0.2.1-rc.3` peer. Install that exact package in the
+Harness profile/package environment with its package manager, then use **科研 MCP
+扩展连接** in the workbench. Do not add a second global client entry for a managed
+connection. `mcpResources` is needed for resource tools and is included in shipped
+Harness profiles. Standalone mode can save configurations but does not run servers.
+
+Connections default to disabled; edits revoke activation. Human enablement/reconnect
+and individual tool/resource approvals are separate. Servers mount only inside
+concrete Scientist agents for the project. Current grants are stored separately in
+the Host, so copying/restoring project files does not transfer or restore access.
+Credential objects use environment references, e.g.
+`{"environment":"RESEARCH_TOKEN","prefix":"Bearer "}`; allow the variable name in
+the OmicOS Host plugin's `mcpSecretEnvNames` configuration. Values never enter the
+project config/export; do not put secrets in command arguments or URLs. Local
+servers run with normal Host-user permissions under Harness subprocess behavior.
+No server packages are automatically installed. See the
+[MCP architecture and verification scope](docs/adr/0016-project-mcp-connections.md).
+
 Project research dossiers retain authored findings, limitations and explicit source
 snapshots from execution/import receipts, methods, figures, Notebooks and plans.
 Snapshots and revisions are hashed; current-source checks are separate from historical

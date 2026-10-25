@@ -30,6 +30,7 @@ export function registerOssTools(ctx: Context, runtime: Promise<OssRuntime>, wor
   const output = { schema: { type: 'object' as const, additionalProperties: false, properties: { result: { type: 'string' as const, required: true as const } } }, render }
   const response = (value: unknown) => ({ result: JSON.stringify(value) })
   return [
+    ctx.tools.register(defineTool({name:'omicos_mcp_state',description:'Read project-managed MCP connection identities and scoped Scientist diagnostics. Does not enable, reconnect, install, reveal credential values or invoke external servers. Registered plugin state is not proof of live transport health; use the workbench for human connection decisions.',parameters:{},output,isConcurrencySafe:()=>true,async execute(_args,exec){const service=await runtime;const current=await project(exec);const registry=await service.mcpConnections(current.workspace);return response({connections:registry.list().connections.map(record=>({id:record.id,revision:record.revision,title:record.title,enabled:record.enabled,authorized:registry.authorized(record),transport:record.config.transport,serverName:record.config.serverName})),host:service.mcpHost?await service.mcpHost.snapshot(current.workspace):{available:false,scope:'Optional Harness MCP adapter required'}})}})),
     ctx.on('tools/pre-execute', async (exec, next) => {
       const decision = await next()
       if (decision.kind !== 'allow') return decision

@@ -1,4 +1,5 @@
 import { DossierPane } from './DossierPane.js'
+import { McpConnectionsPane } from './McpConnectionsPane.js'
 import { MethodLibraryPane } from './MethodLibraryPane.js'
 import { ManagedEnvironmentPane } from './ManagedEnvironmentPane.js'
 import { ResearchPlanPane } from './ResearchPlanPane.js'
@@ -174,6 +175,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />
     <article className="oss-card"><ManagedEnvironmentPane key={`environment:${project.id}`} projectId={project.id} visible={visible} /></article>
     <ResearchPlanPane key={`plan:${project.id}`} projectId={project.id} visible={visible} executions={snapshot?.executions || []} />
+    <McpConnectionsPane key={`mcp:${project.id}`} projectId={project.id} visible={visible} />
     <DossierPane key={`dossier:${project.id}`} projectId={project.id} visible={visible} />
     <MethodLibraryPane key={`methods:${project.id}`} projectId={project.id} visible={visible} />
     <PipelinePane projectId={project.id} visible={visible} />

@@ -28,19 +28,20 @@ function run(arguments_, env, cwd) {
   for (const key of ['PATH', 'HOME', 'USER', 'TMPDIR', 'LANG', 'SHELL', 'SystemRoot', 'COMSPEC']) if (process.env[key]) env[key] = process.env[key];
   env.DSH_HOME = path.join(directory, 'dsh'); env.DSH_AGENTS_HOME = path.join(directory, 'agents');
   env.DEEPSEEK_API_KEY = 'synthetic-local-model-key';
-  let child, browser, issuedTool = false; const requests = []; const errors = [];
+  let child, browser, issuedTool = false, issuedMcp = false; const requests = []; const errors = [];
   const model = createServer(async (request, response) => {
     try {
       let text = ''; for await (const chunk of request) text += chunk;
       const body = JSON.parse(text || '{}'); requests.push(body);
       const scientific = body.tools?.some(tool => tool.name === 'omicos_run_python');
       const tool = scientific && !issuedTool; if (tool) issuedTool = true;
+      const mcpTool = !tool && scientific && !issuedMcp && body.tools?.some(tool => tool.name === 'mcp__research__echo'); if (mcpTool) issuedMcp = true;
       const events = [
         { type: 'message_start', message: { id: `mock_${requests.length}`, model: body.model, usage: { input_tokens: 3, output_tokens: 0 } } },
-        { type: 'content_block_start', index: 0, content_block: tool ? { type: 'tool_use', id: 'call_scientific', name: 'omicos_run_python', input: { code: 'from pathlib import Path\nPath("approved-by-ui.txt").write_text("42")\nprint(42)', operation_id: 'harness-browser-scientific' } } : { type: 'text', text: '' } },
-        ...tool ? [] : [{ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'OmicOS mock Scientist connected.' } }],
+        { type: 'content_block_start', index: 0, content_block: tool ? { type: 'tool_use', id: 'call_scientific', name: 'omicos_run_python', input: { code: 'from pathlib import Path\nPath("approved-by-ui.txt").write_text("42")\nprint(42)', operation_id: 'harness-browser-scientific' } } : mcpTool ? { type: 'tool_use', id: 'call_mcp', name: 'mcp__research__echo', input: { text: 'Browser MCP approved' } } : { type: 'text', text: '' } },
+        ...(tool || mcpTool) ? [] : [{ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'OmicOS mock Scientist connected.' } }],
         { type: 'content_block_stop', index: 0 },
-        { type: 'message_delta', delta: { stop_reason: tool ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 1 } },
+        { type: 'message_delta', delta: { stop_reason: (tool || mcpTool) ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 1 } },
         { type: 'message_stop' },
       ];
       response.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -72,6 +73,17 @@ function run(arguments_, env, cwd) {
     const context = await browser.newContext({ reducedMotion: 'reduce' });
     const page = await context.newPage(); page.on('pageerror', error => errors.push(String(error)));
     await page.goto(launch); await page.goto(origin + '/omicos/oss');
+    const mcp = page.locator('article').filter({ has: page.getByText('科研 MCP 扩展连接', { exact: true }) });
+    await mcp.getByText('科研 MCP 扩展连接', { exact: true }).click();
+    await mcp.getByLabel('MCP 连接名称', { exact: true }).fill('Browser research fixture');
+    await mcp.getByLabel('MCP 连接配置 JSON', { exact: true }).fill(JSON.stringify({ transport:'stdio', serverName:'research', command:process.execPath, args:[path.join(root,'test','fixtures','mcp-server.mjs'),path.join(workspace,'mcp-events.jsonl')], env:{}, toolCallTimeoutMs:5000 }));
+    await mcp.getByLabel('MCP 决策说明', { exact: true }).fill('Only the local synthetic fixture is authorized.'); await mcp.getByLabel('确认 MCP 访问范围', { exact: true }).check();
+    await mcp.getByRole('button', { name:'保存 MCP 配置并停用', exact:true }).click(); await mcp.locator('[data-mcp-enabled]').filter({ hasText:/^disabled$/ }).waitFor();
+    const mcpId = (await mcp.locator('[data-mcp-id]').textContent()).trim();
+    await mcp.getByLabel('MCP 决策说明', { exact: true }).fill('Enable this project Scientist fixture; each call needs UI approval.'); await mcp.getByLabel('确认 MCP 访问范围', { exact: true }).check();
+    await mcp.getByRole('button', { name:'启用此 MCP 连接', exact:true }).click(); await mcp.locator('[data-mcp-enabled]').filter({ hasText:/^enabled$/ }).waitFor();
+    await assert.rejects(fs.access(path.join(workspace,'mcp-events.jsonl')), { code:'ENOENT' });
+    await mcp.getByText('科研 MCP 扩展连接', { exact: true }).click();
     const importer = page.getByLabel('导入项目数据', { exact: true }); await importer.getByText('导入文件与断点续传', { exact: true }).click();
     const importBytes = Buffer.from('sample,value\nharness,42\n'); const importSha = createHash('sha256').update(importBytes).digest('hex');
     await importer.getByLabel('本机导入文件', { exact: true }).setInputFiles({ name: 'harness-import.csv', mimeType: 'text/csv', buffer: importBytes });
@@ -102,9 +114,20 @@ function run(arguments_, env, cwd) {
     await main.locator(`[data-row-key="session:${binding.sessionId}"]`).click();
     const approve = main.getByRole('button', { name: /^(Allow once|允许一次)$/ }); await approve.waitFor({ timeout: 15000 });
     await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+    await page.waitForFunction(async () => { const session=await (await fetch('/omicos/oss/api/session')).json(); const state=await (await fetch(`/omicos/oss/api/project/${session.projects[0].id}/mcp-state`)).json(); return state.host.agents.some(agent=>agent.connections.some(connection=>connection.phase==='registered'&&connection.tools.includes('mcp__research__echo'))) });
+    await approve.click();
+    await approve.waitFor({ timeout:15000 });
+    assert(!(await fs.readFile(path.join(workspace,'mcp-events.jsonl'),'utf8')).includes('invoked'));
     await approve.click();
     await page.locator('.oss-chat-message').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor({ timeout: 25000 });
     assert.equal(await fs.readFile(marker, 'utf8'), '42');
+    assert(issuedMcp); assert((await fs.readFile(path.join(workspace,'mcp-events.jsonl'),'utf8')).includes('Browser MCP approved'));
+    assert(requests.some(body=>body.messages?.some(message=>message.content?.some(block=>block.type==='tool_result'&&JSON.stringify(block).includes('Browser MCP approved; credential=false')))));
+    await mcp.getByText('科研 MCP 扩展连接', { exact:true }).click(); await mcp.getByRole('button', { name:'Browser research fixture', exact:true }).click();
+    await mcp.getByLabel('MCP 决策说明', { exact:true }).fill('Stop the real scoped fixture'); await mcp.getByLabel('确认 MCP 访问范围', { exact:true }).check(); await mcp.getByRole('button', { name:'停用此 MCP 连接', exact:true }).click(); await mcp.locator('[data-mcp-enabled]').filter({hasText:/^disabled$/}).waitFor();
+    await page.waitForFunction(async () => { const session=await (await fetch('/omicos/oss/api/session')).json(); const state=await (await fetch(`/omicos/oss/api/project/${session.projects[0].id}/mcp-state`)).json(); return state.host.agents.every(agent=>agent.connections.length===0) });
+    await mcp.getByRole('button', { name:'读取 MCP 修订历史', exact:true }).click(); await mcp.getByRole('button', { name:'查看 MCP r2', exact:true }).click(); await mcp.getByText('历史 MCP 配置 r2（只读）', { exact:true }).waitFor();
+    await mcp.getByText('科研 MCP 扩展连接', { exact:true }).click();
     assert(requests.some(body => JSON.stringify(body.system).includes('bioinformatics research agent')));
     assert(requests.some(body => body.tools?.some(tool => tool.name === 'omicos_notebook_run')));
     const scientistRequests = requests.filter(body => body.tools?.some(tool => tool.name === 'omicos_run_python'));
@@ -139,7 +162,7 @@ function run(arguments_, env, cwd) {
     await main.getByText('尚未连接 Core 内核。', { exact: false }).waitFor()
     await main.screenshot({ path: path.join(output, 'core-compat-entry.png'), fullPage: true })
     assert.deepEqual(errors, [])
-    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
+    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', mcp: 'real Scientist-scoped stdio plugin, UI enable/disable, actual separate call approval and immutable history', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
   } finally {
     await browser?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }
