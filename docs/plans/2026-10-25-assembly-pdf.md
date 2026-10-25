@@ -11,3 +11,5 @@ Reuse assembly source verification and pixel/byte limits. Render in a trusted No
 Verify real PDF parser/page geometry, embedded fonts, missing-glyph rejection, exact original file attachment hashes, current/frozen provenance, checksum/path/font policy, cancellation/worker cleanup, Chinese text extraction/raster rendering with a real public CJK font, actual Python figures and browser download plus existing regressions. Broader final publication/journal claims remain unproven until those formats/policies are implemented and tested.
 
 Follow-up implemented: direct exact 16-bit grayscale/RGB/alpha PDF image streams, bounded independent PNG decoding with all filters/Adam7, literal PDF sample tests. Color management remains pending; original starting scope above describes the initial checkpoint.
+
+Color follow-up implemented in ADR 0019: ICC/sRGB/gAMA/cHRM PDF spaces, independent all-depth PNG decoding, declared missing-primary assumptions and output-level sample/profile tests. HDR, animation, broader proofing and journal profiles remain pending.

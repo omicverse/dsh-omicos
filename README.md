@@ -80,10 +80,14 @@ integrity checks. Missing/changed original bytes block image export. Captions an
 execution metadata are preserved without automatic redaction. Owner-confirmed PDF also embeds a checked label font, maps physical size explicitly,
 and attaches original PNGs plus provenance. Select the bundled OFL font or a
 checksum-pinned static project TTF/OTF with an embedding-license declaration.
-CFF/no-subsetting fonts embed in full; missing glyphs reject. Unsupported
-16-bit grayscale/RGB PNGs (including alpha and Adam7) retain exact samples in the PDF; decoded samples are bounded to 96 MB per image. Animated/profile-dependent PNG conversion rejects instead of silently
-changing scientific precision/color. Vector/JPEG composition, color-managed
-PDF and journal-specific exports remain pending; see the
+CFF/no-subsetting fonts embed in full; missing glyphs reject. PNG samples
+(including 16-bit, alpha and Adam7) retain their represented precision, with a
+96 MB per-image decoded sample bound. Embedded ICC, sRGB and supported gAMA/cHRM
+map to PDF color spaces; missing gAMA primaries explicitly assume sRGB/D65 in
+the confirmation UI and provenance. Undeclared color stays unmanaged. Animated,
+HDR, unsupported color declarations or nonidentity EXIF orientation reject;
+identity/absent EXIF and actual R PNGs are supported. Vector/JPEG composition,
+broader proofing and journal-specific exports remain pending; see the
 [assembly design and limits](docs/adr/0017-source-pinned-figure-assemblies.md).
 
 PDF rendering uses bounded, cancellable local Node workers, not a scientific
@@ -91,7 +95,8 @@ kernel or a second model. The output retains original image/record attachments
 without automatic redaction; current font/physical-size export choices do not
 inherit prior assembly approval. The bundled original Source Sans 3 font remains
 separately licensed under OFL with its notice and source/checksum manifest in
-`runtime/fonts`. See [PDF rendering/font scope](docs/adr/0018-font-aware-assembly-pdf.md).
+`runtime/fonts`. See [PDF rendering/font scope](docs/adr/0018-font-aware-assembly-pdf.md) and
+[PNG color interpretation and bounds](docs/adr/0019-png-color-managed-publication.md).
 
 Project MCP connections reuse the optional published Harness
 `@deepseek-ai/dsh-mcp-client@0.2.1-rc.3` peer. Install that exact package in the
