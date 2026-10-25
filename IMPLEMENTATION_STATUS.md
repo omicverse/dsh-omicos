@@ -18,12 +18,13 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
 - Python interpreter/package metadata diagnostic endpoint/tool.
+- Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
 - Scoped OmicOS Scientist preset and four original public scientific checklists; real Loader/preset mounting tested.
 
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed.
-- 104 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 108 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Browser screenshots: workspace-level `outputs/omicos-oss/`. No real payments were made.
@@ -34,7 +35,7 @@ Verification at this checkpoint:
 
 - Recheck packed artifact on a clean install without private packages; synchronize final lockfile.
 - Full DSH web-profile/browser mounting and hot reload, beyond actual Host service cold-load tests.
-- Integrated Agent chat in the standalone workspace and full scientific Skill migration beyond the four bundled checklists.
+- Actual DSH chat/provider/approval browser integration validation; full scientific Skill migration beyond the four bundled checklists.
 - Durable payment/order listing beyond the current account-scoped recent-order pointer; verify upstream listing APIs.
 - Real staging account / payment sandbox / actual merchant callbacks and entitlement refresh contract.
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.

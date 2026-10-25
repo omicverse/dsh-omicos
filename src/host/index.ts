@@ -1,3 +1,5 @@
+import type {} from '@deepseek-ai/dsh-api-session-controller'
+import { HarnessScienceChat } from './oss-chat.js'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { OssRuntime } from '../oss/runtime.js'
 import { createOssHandler } from '../oss/http.js'
@@ -80,6 +82,14 @@ export function apply(ctx: Context, config: Config): void {
       handler ??= createOssHandler(await runtime)
       await handler(req, res)
     } }))
+  })
+  ctx.inject(['sessionController'], sub => {
+    sub.effect(async function* () {
+      const service = await runtime
+      const chat = new HarnessScienceChat(sub.sessionController)
+      service.chat = chat
+      yield () => { if (service.chat === chat) service.chat = undefined }
+    }, 'omicos: Harness conversation bridge')
   })
   if (config.backend !== 'core') {
     ctx.inject(['agentPresets'], sub => {

@@ -1,3 +1,4 @@
+import type { ScienceChat } from './chat.js'
 import { createHash } from 'node:crypto'
 import { mkdir, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -6,6 +7,7 @@ import { CloudService } from './cloud.js'
 import { ScienceService } from './science.js'
 
 export class OssRuntime {
+  chat?: ScienceChat
   private closing = false
   private projects = new Map<string, Promise<ScienceService>>()
   private constructor(readonly cloud: CloudService, readonly python: string) {}

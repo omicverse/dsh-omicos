@@ -16,7 +16,10 @@ async function body(request: IncomingMessage): Promise<any> {
   if (!request.headers['content-type']?.startsWith('application/json')) throw new CloudError(415, 'JSON content type required')
   let size = 0; const chunks: Buffer[] = []
   for await (const chunk of request) { size += chunk.length; if (size > 300_000) throw new CloudError(413, 'Request too large'); chunks.push(Buffer.from(chunk)) }
-  try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') } catch { throw new CloudError(400, 'Invalid JSON') }
+  let parsed: unknown
+  try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') } catch { throw new CloudError(400, 'Invalid JSON') }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new CloudError(400, 'JSON object required')
+  return parsed
 }
 /** Loopback + Host + same-origin + per-process CSRF nonce. No permissive CORS. */
 export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -68,7 +71,18 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
         const parts = path.slice('/omicos/oss/api/project/'.length).split('/')
         const project = await runtime.byId(parts[0] || '')
         const action = parts[1]
-        if (action === 'environment' && method === 'GET') result = await inspectEnvironment(project.python)
+        if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
+          if (!runtime.chat) {
+            if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
+            throw new CloudError(503, '此工作台未连接 Harness 对话服务。请从 DSH 的 OmicOS 入口打开工作台；本地 Python 不受影响。')
+          }
+          const signal = AbortSignal.timeout(30000)
+          if (action === 'chat' && method === 'GET') result = await runtime.chat.read(project.workspace, signal)
+          else if (action === 'chat-send' && method === 'POST') result = await runtime.chat.send(project.workspace, String(data.text || ''), String(data.requestId || ''), signal)
+          else if (action === 'chat-cancel' && method === 'POST') { await runtime.chat.cancel(project.workspace); result = { ok: true } }
+          else throw new CloudError(405, 'Method not allowed')
+        }
+        else if (action === 'environment' && method === 'GET') result = await inspectEnvironment(project.python)
         else if (action === 'snapshot' && method === 'GET') result = project.snapshot()
         else if (action === 'execute' && method === 'POST') {
           if (data.confirmed !== true || typeof data.code !== 'string') throw new CloudError(400, 'Explicit execution approval required')

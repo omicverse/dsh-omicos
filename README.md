@@ -29,8 +29,12 @@ Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
 `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
 The service binds only to loopback; exposing it as a public server is unsupported.
 
-The standalone workspace runs explicit Python cells. Agent chat continues to run
-through Harness; a standalone chat client is not implemented yet.
+The standalone CLI runs explicit Python cells without Harness. When this same
+workspace is opened from the DSH OmicOS entry, it also provides Agent chat through
+the existing Harness session controller. Each project keeps one fixed Scientist
+session; no second LLM loop is started. Without a Harness connection, the chat
+panel explains how to connect and local Python remains available. Tool approval
+is currently completed in the Harness main window.
 
 ## Install in Harness
 
