@@ -12,7 +12,7 @@ required by the OSS backend; the old Core adapter remains opt-in.
 
 ## Run the standalone workspace
 
-Requirements: Node.js 22+, pnpm, and Python 3 available as `python3`. Optional R cells require Rscript and jsonlite.
+Requirements: Node.js 22.13+ or Node.js 24+, pnpm, and Python 3 available as `python3`. Optional R cells require Rscript and jsonlite.
 Scientific packages are optional and must be installed in your chosen environment.
 The runtime does **not** silently install dependencies, upload data or replay cells.
 
@@ -89,16 +89,16 @@ Each project has a single execution queue. Different projects use separate
 workers. A project lock prevents competing runtime processes from corrupting its
 metadata; close the original runtime before opening the same project elsewhere.
 
-- `.omicos-oss/executions.json`: atomic execution metadata and bounded stdout.
+- `.omicos-oss/project.sqlite`: transactional executions, bounded stdout, sourced memory and sequenced scientific receipts (SQLite WAL).
 - `.omicos-oss/artifacts/`: generated figures, recorded with SHA-256 and byte size.
-- `.omicos-oss/memories.json`: project facts with explicit sources.
+- Existing `executions.json` / `memories.json`: retained as migration backups; imported once and never used to overwrite newer database records.
 - `.omicos-oss/runtime.lock/`: process ownership and heartbeat, not project data.
 
 Use stable operation IDs when retrying a request. Reusing an ID with different
 code/session is rejected. Host restarts preserve history, artifacts and memory,
 **not live Python objects**. Unfinished executions become `interrupted`, never
 silently rerun. A failed/canceled cell can leave partial variable or file changes.
-R history and variables are separate from Python; its execution metadata lives under `.omicos-oss/r/`. The interface makes this distinction explicit. Notebook export preserves source,
+R history and variables are separate from Python; both languages use the project ledger. The interface makes this distinction explicit. Notebook export preserves source,
 outputs, execution identity, kernel generation and artifact references.
 
 Figures created with matplotlib are saved after successful cells; R graphics are captured as PDF with a PNG preview when supported. Figures are displayed
@@ -109,6 +109,20 @@ The data browser previews bounded text and prepares CSV/TSV/H5AD/RDS loading cod
 for review; it does not execute or deserialize a dataset just because it is selected.
 AnnData inspection reports layers, raw/embedding metadata and uniqueness, leaving
 normalization/log state explicitly unknown unless supported by separate evidence.
+
+Project references persist in the Host state directory and reopen lazily after a restart.
+Deleted/moved projects are not recreated by addressing an old project ID.
+The workspace follows durable scientific events over SSE and resumes after the last
+committed event ID, with polling as a recovery path. Host restart refreshes the
+CSRF nonce only after an explicit pre-dispatch rejection; unknown execution or
+checkout outcomes are never automatically retried.
+
+Each execution also records its actual interpreter/package versions and a kernel
+environment fingerprint; it does not dump process environment variables or keys.
+
+The ledger uses the [Node SQLite API](https://nodejs.org/api/sqlite.html). Its
+receipts establish execution/code/artifact identity, not full I/O provenance or
+scientific validity.
 
 ## Official cloud store
 
@@ -149,10 +163,20 @@ surface. This compatibility backend is not the standalone open-source path.
 
 ## Verify
 
+Browser and package checks are reproducible from this repository. For browser checks,
+install a Playwright Chromium build (`pnpm exec playwright install chromium`) or
+set `OMICOS_BROWSER_EXECUTABLE` to an existing compatible Chrome executable.
+`OMICOS_SCIENCE_TEST_PYTHON` selects an environment with AnnData/pandas for the
+optional full scientific checks. R checks run when Rscript/jsonlite are available.
+Screenshots contain synthetic test data and go to ignored `test-results/`.
+
+
 ```sh
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm test:browser
+pnpm test:package
 ```
 
 Tests include real Python processes, project isolation and ownership, cancellation,
@@ -162,7 +186,9 @@ export. A green test suite is not evidence that every Core capability has migrat
 
 ## License
 
-GPL-3.0-only, retained from this plugin. New OSS runtime code does not copy private
+GPL-3.0-only, retained from this plugin. Build-generated `lib/third-party-*.txt`
+files include the exact license notices for inlined npm dependencies; build/test
+scripts and source are included in the package. New OSS runtime code does not copy private
 Core implementation files. Official cloud service availability, paid resources,
 third-party data and models have their own terms; they are not included by the
 plugin license. Review each proposed Core extraction before public distribution.

@@ -17,7 +17,10 @@ variables <- function() {
     list(name = name, type = paste(class(value), collapse = '/'), shape = if (is.null(shape)) NULL else paste(shape, collapse = ' x '), preview = substr(preview, 1, 200))
   }))
 }
-emit(list(type = 'ready', r = R.version.string))
+installed <- utils::installed.packages()
+package_names <- c('jsonlite', 'Seurat', 'SingleCellExperiment', 'DESeq2', 'edgeR', 'ggplot2')
+package_versions <- setNames(lapply(package_names, function(name) if (name %in% rownames(installed)) unname(installed[name, 'Version']) else NULL), package_names)
+emit(list(type = 'ready', environment = list(language = 'r', version = R.version.string, executable = file.path(R.home('bin'), 'Rscript'), platform = R.version$platform, packages = package_versions)))
 repeat {
   line <- readLines(input, n = 1, warn = FALSE)
   if (length(line) == 0) break
@@ -52,7 +55,7 @@ repeat {
     artifacts[[length(artifacts) + 1]] <- list(id = paste0(command$id, '-pdf'), path = file.path(relative, 'figure.pdf'), mime = 'application/pdf')
     pngpath <- file.path(directory, 'figure.png')
     tryCatch({
-      grDevices::png(pngpath, width = 1400, height = 1000, res = 150)
+      grDevices::png(pngpath, width = 1400, height = 1000, res = 150, type = if (capabilities('cairo')) 'cairo' else getOption('bitmapType'))
       previewdevice <- grDevices::dev.cur()
       grDevices::replayPlot(plotted)
       invisible(grDevices::dev.off(previewdevice))

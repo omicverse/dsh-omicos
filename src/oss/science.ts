@@ -6,17 +6,19 @@ import { fileURLToPath } from 'node:url'
 import { join, sep } from 'node:path'
 import { mkdir, realpath, readFile, stat } from 'node:fs/promises'
 import lockfile from 'proper-lockfile'
-import { readJson, writeJson } from './storage.js'
-import { PROTOCOL_VERSION, type Execution, type Memory, type ScienceSnapshot, type Variable } from './types.js'
+import { ScienceLedger } from './ledger.js'
+import { PROTOCOL_VERSION, type Execution, type KernelEnvironment, type ScienceSnapshot, type Variable } from './types.js'
 
 const workerPaths = { python: fileURLToPath(new URL('../../runtime/python_worker.py', import.meta.url)), r: fileURLToPath(new URL('../../runtime/r_worker.R', import.meta.url)) }
 const terminal = new Set(['succeeded', 'failed', 'canceled', 'interrupted'])
 export class ScienceService extends EventEmitter {
   private child?: ChildProcess
   private generation?: string
+  private environment?: KernelEnvironment
   private executions: Execution[] = []
   private variables: Variable[] = []
-  private memories: Memory[] = []
+  private ledger!: ScienceLedger
+  private lastOutputPersist = 0
   private active?: Execution
   private finishing?: Execution
   private queue: Execution[] = []
@@ -36,28 +38,28 @@ export class ScienceService extends EventEmitter {
       service.closing = true; service.child?.kill('SIGKILL'); service.emit('diagnostic', service.lockFailure)
     } })
     try {
-    service.executions = await readJson<Execution[]>(join(service.directory, 'executions.json'), [])
-    service.memories = await readJson<Memory[]>(join(service.directory, 'memories.json'), [])
+    service.ledger = await ScienceLedger.open(service.workspace)
+    service.executions = service.ledger.executions(service.language)
     for (const job of service.executions) if (!terminal.has(job.state)) {
       job.state = 'interrupted'; job.endedAt = new Date().toISOString(); job.error = 'Host stopped; execution outcome is unknown. Inspect data before rerunning.'
     }
     await service.persist()
     return service
-    } catch (error) { await service.releaseLock(); throw error }
+    } catch (error) { service.ledger?.close(); await service.releaseLock(); throw error }
   }
   get python(): string { return this.interpreter }
   private get directory(): string { return this.language === 'python' ? join(this.workspace, '.omicos-oss') : join(this.workspace, '.omicos-oss', 'r') }
-  private persist(): Promise<void> {
+  private persist(records: readonly Execution[] = this.executions): Promise<void> {
     if (this.lockFailure) return Promise.reject(new Error(this.lockFailure))
-    const snapshot = JSON.parse(JSON.stringify(this.executions)) as Execution[]
-    const next = this.saving.then(() => writeJson(join(this.directory, 'executions.json'), snapshot))
+    const snapshot = JSON.parse(JSON.stringify(records)) as Execution[]
+    const next = this.saving.then(() => { this.ledger.saveExecutions(this.language, snapshot) })
     this.saving = next.catch(() => {})
     return next
   }
   snapshot(): ScienceSnapshot {
-    return structuredClone({ protocol: PROTOCOL_VERSION, project: this.workspace,
-      kernel: { state: this.active ? 'busy' : this.child ? 'ready' : 'cold', generation: this.generation },
-      executions: this.executions, variables: this.variables, memories: this.memories })
+    return structuredClone({ protocol: PROTOCOL_VERSION, project: this.workspace, eventCursor: this.eventCursor,
+      kernel: { state: this.active ? 'busy' : this.child ? 'ready' : 'cold', generation: this.generation, environment: this.environment },
+      executions: this.executions, variables: this.variables, memories: this.ledger.memories() })
   }
   get(id: string): Execution | undefined { return structuredClone(this.executions.find(job => job.id === id)) }
   async submit(code: string, operationId: string, sessionId: string): Promise<Execution> {
@@ -72,7 +74,7 @@ export class ScienceService extends EventEmitter {
     const job: Execution = { id: randomUUID(), operationId, sessionId, code, language: this.language, state: 'queued', createdAt: new Date().toISOString(), output: '', artifacts: [] }
     // Register before awaiting disk: concurrent retries see the same operation.
     this.executions.push(job)
-    try { await this.persist() } catch (error) { this.executions.splice(this.executions.indexOf(job), 1); throw error }
+    try { await this.persist([job]) } catch (error) { this.executions.splice(this.executions.indexOf(job), 1); throw error }
     this.queue.push(job)
     this.emit('change')
     void this.pump().catch(error => this.failWorker(String(error)))
@@ -89,7 +91,7 @@ export class ScienceService extends EventEmitter {
     child.stdout?.on('data', chunk => { if (this.active) void this.consume({ id: this.active.id, type: 'output', text: String(chunk) }) })
     child.on('exit', () => {
       if (this.child !== child) return
-      this.child = undefined; this.variables = []; this.generation = undefined
+      this.child = undefined; this.variables = []; this.generation = undefined; this.environment = undefined
       if (this.active && this.finishing !== this.active && !terminal.has(this.active.state)) this.failWorker(startupError || 'Scientific worker exited; namespace lost, inspect partial side effects before retrying')
     })
     await new Promise<void>((ok, fail) => {
@@ -99,8 +101,15 @@ export class ScienceService extends EventEmitter {
       lines.on('line', line => {
         try {
           const message = JSON.parse(line)
-          if (message.type === 'ready') { clearTimeout(timer); ok(); return }
-          void this.consume(message).catch(error => { this.failWorker(`Worker completion failed: ${String(error)}`); child.kill('SIGKILL') })
+          if (message.type === 'ready') {
+            const reported = message.environment || {}
+            const metadata = { language: this.language, version: typeof reported.version === 'string' ? reported.version : 'unknown', executable: typeof reported.executable === 'string' ? reported.executable : this.interpreter,
+              platform: typeof reported.platform === 'string' ? reported.platform : undefined,
+              packages: Object.fromEntries(Object.entries(reported.packages || {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, version]) => [name, typeof version === 'string' ? version : null])) }
+            this.environment = { ...metadata, fingerprint: createHash('sha256').update(JSON.stringify(metadata)).digest('hex') }
+            clearTimeout(timer); ok(); return
+          }
+          void this.consume(message).catch(error => { this.failWorker(`Worker completion failed: ${String(error)}`, true); child.kill('SIGKILL') })
         } catch (error) { this.failWorker(`Invalid worker message: ${String(error)}`); child.kill('SIGKILL') }
       })
     })
@@ -112,14 +121,18 @@ export class ScienceService extends EventEmitter {
     this.active = next
     await this.start()
     if (next.state === 'canceled') { this.active = undefined; void this.pump(); return }
-    next.state = 'running'; next.startedAt = new Date().toISOString(); next.kernelGeneration = this.generation
-    await this.persist(); this.emit('change')
+    next.state = 'running'; next.startedAt = new Date().toISOString(); next.kernelGeneration = this.generation; next.environment = structuredClone(this.environment)
+    await this.persist([next]); this.emit('change')
     this.child!.stdin!.write(JSON.stringify({ id: next.id, code: next.code }) + '\n')
   }
   private async consume(message: { id: string; type: string; text?: string; error?: string; canceled?: boolean; variables?: Variable[]; artifacts?: Execution['artifacts'] }): Promise<void> {
     const job = this.active
     if (!job || job.id !== message.id) return
-    if (message.type === 'output') { job.output = (job.output + (message.text ?? '')).slice(-128_000); this.emit('change'); return }
+    if (message.type === 'output') {
+      job.output = (job.output + (message.text ?? '')).slice(-128_000)
+      if (Date.now() - this.lastOutputPersist > 500) { this.lastOutputPersist = Date.now(); void this.persist([job]).catch(error => this.emit('diagnostic', String(error))) }
+      this.emit('change'); return
+    }
     if (message.type !== 'done' || this.finishing === job) return
     this.finishing = job
     const generation = this.generation
@@ -137,17 +150,22 @@ export class ScienceService extends EventEmitter {
     if (this.active !== job || this.closing) return
     job.state = outcome
     this.variables = this.generation === generation ? message.variables ?? [] : []
-    await this.persist()
+    await this.persist([job])
     this.active = undefined; this.finishing = undefined
     this.emit('change'); await this.pump()
   }
-  private failWorker(error: string): void {
+  private failWorker(error: string, forceUnknown = false): void {
     this.finishing = undefined
     clearTimeout(this.cancelTimer)
-    if (this.active) { this.active.state = 'interrupted'; this.active.error = error; this.active.endedAt = new Date().toISOString(); this.active = undefined }
-    for (const job of this.queue) { job.state = 'interrupted'; job.error = 'Worker unavailable; submit a new operation after inspecting the environment'; job.endedAt = new Date().toISOString() }
+    const changed: Execution[] = []
+    if (this.active && (forceUnknown || !terminal.has(this.active.state))) {
+      this.active.state = 'interrupted'; this.active.error = error; this.active.endedAt = new Date().toISOString(); changed.push(this.active)
+    }
+    this.active = undefined
+    for (const job of this.queue) { job.state = 'interrupted'; job.error = 'Worker unavailable; submit a new operation after inspecting the environment'; job.endedAt = new Date().toISOString(); changed.push(job) }
     this.queue = []
-    void this.persist().then(() => this.emit('change')).catch(error => this.emit('diagnostic', String(error)))
+    // Waiters must settle even when the ledger itself is unavailable; never claim durable success.
+    void this.persist(changed).catch(error => this.emit('diagnostic', String(error))).finally(() => this.emit('change'))
   }
   async cancel(id: string): Promise<void> {
     const job = this.executions.find(item => item.id === id)
@@ -155,7 +173,7 @@ export class ScienceService extends EventEmitter {
     if (terminal.has(job.state) || this.finishing === job) return
     if (job !== this.active || job.state === 'queued') {
       job.state = 'canceled'; job.endedAt = new Date().toISOString(); this.queue = this.queue.filter(item => item !== job)
-      await this.persist(); this.emit('change'); return
+      await this.persist([job]); this.emit('change'); return
     }
     this.child?.kill('SIGINT')
     const child = this.child
@@ -166,20 +184,23 @@ export class ScienceService extends EventEmitter {
   async remember(id: string, text: string, source: string): Promise<void> {
     if (this.closing) throw new Error('Project is shutting down or its runtime lock was lost')
     if (!id || id.length > 200 || text.length > 20000 || !source || source.length > 2000) throw new Error('Memory requires bounded id, text and source')
-    const next = this.memories.filter(memory => memory.id !== id)
-    if (text) next.push({ id, text, source, updatedAt: new Date().toISOString() })
-    await writeJson(join(this.directory, 'memories.json'), next)
-    this.memories = next; this.emit('change')
+    this.ledger.remember(id, text, source)
+    this.emit('change')
   }
+  events(after = 0, limit = 200) { return this.ledger.events(after, limit) }
+  get eventCursor(): number { return this.ledger.cursor }
+
   notebook(): unknown {
     return { nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { display_name: this.language === 'r' ? 'R' : 'Python 3', language: this.language, name: this.language === 'r' ? 'ir' : 'python3' } }, cells: this.executions.map((job, index) => ({
       id: job.id, cell_type: 'code', execution_count: job.startedAt ? index + 1 : null, source: job.code,
-      metadata: { omicos: { state: job.state, invocation_id: job.id, kernel_generation: job.kernelGeneration, artifacts: job.artifacts } },
+      metadata: { omicos: { state: job.state, invocation_id: job.id, kernel_generation: job.kernelGeneration, environment: job.environment, artifacts: job.artifacts } },
       outputs: [...(job.output ? [{ output_type: 'stream', name: 'stdout', text: job.output }] : []), ...(job.error ? [{ output_type: 'error', ename: job.state, evalue: job.error, traceback: job.error.split('\n') }] : [])],
     })) }
   }
   async dispose(): Promise<void> {
+    if (this.closing && !this.releaseLock) return
     this.closing = true
+    this.emit('shutdown')
     clearTimeout(this.cancelTimer)
     this.failWorker('Host shutting down; execution outcome unknown')
     const child = this.child; this.child = undefined
@@ -188,6 +209,7 @@ export class ScienceService extends EventEmitter {
       child.once('exit', () => { clearTimeout(timer); resolve() }); child.once('error', () => { clearTimeout(timer); resolve() }); child.kill('SIGTERM')
     })
     await this.saving
+    this.ledger.close()
     const release = this.releaseLock; this.releaseLock = undefined
     if (release && !this.lockFailure) await release()
     this.removeAllListeners()

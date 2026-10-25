@@ -1,3 +1,4 @@
+import { useScienceSnapshot } from './useScienceSnapshot.js'
 import { DataBrowser } from './DataBrowser.js'
 import { CloudManagement } from './CloudManagement.js'
 import { EnvironmentPane } from './EnvironmentPane.js'
@@ -6,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import type { LabPricing } from '../oss/commerce-types.js'
 import type { ScienceSnapshot } from '../oss/types.js'
-import { api, type Session, type CloudAccount } from './oss-api.js'
+import { api, HOST_REFRESH_EVENT, type Session, type CloudAccount } from './oss-api.js'
 import './oss.css'
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error)
@@ -15,7 +16,7 @@ interface Plan { code: string; name: string; display_name?: string; tagline?: st
 interface Checkout { order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
 interface Quote { confirmation: string; plan: string; catalog_amount_rmb: number | null; notice: string; checkout: { period: string; provider: string; seats?: number } }
 
-function Store({ account, refresh }: { account: CloudAccount; refresh: () => Promise<void> }): JSX.Element {
+function Store({ account, refresh, visible }: { account: CloudAccount; refresh: () => Promise<void>; visible: boolean }): JSX.Element {
   const [plans, setPlans] = useState<Plan[]>([])
   const [period, setPeriod] = useState('monthly')
   const [provider, setProvider] = useState('wechat')
@@ -54,7 +55,7 @@ function Store({ account, refresh }: { account: CloudAccount; refresh: () => Pro
     return () => { alive = false }
   }, [order])
   useEffect(() => {
-    if (!order || status === 'paid' || status === 'expired' || status === 'canceled') return
+    if (!visible || !order || status === 'paid' || status === 'expired' || status === 'canceled') return
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>
     const original = account.generation
     const poll = async () => {
@@ -69,7 +70,7 @@ function Store({ account, refresh }: { account: CloudAccount; refresh: () => Pro
     }
     void poll()
     return () => { controller.abort(); clearTimeout(timer) }
-  }, [order, status, account.generation, refresh, subscriptionRefresh])
+  }, [order, status, account.generation, refresh, subscriptionRefresh, visible])
   const run = async (action: () => Promise<void>) => {
     if (busy) return; setBusy(true); setError('')
     try { await action() } catch (error) { setError(message(error)) } finally { setBusy(false) }
@@ -119,43 +120,48 @@ function Store({ account, refresh }: { account: CloudAccount; refresh: () => Pro
 }
 
 function Laboratory({ project }: { project: Session['projects'][number] }): JSX.Element {
-  const [snapshot, setSnapshot] = useState<ScienceSnapshot>()
   const [language, setLanguage] = useState<'python' | 'r'>('python')
+  const { snapshot, error: streamError, connection, refresh: reload } = useScienceSnapshot(project.id, language)
   const [code, setCode] = useState("# 导入数据前，先查看环境与工作目录\nimport sys, os\nprint(sys.version)\nprint(os.getcwd())")
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [memory, setMemory] = useState('')
+  const pendingExecution = useRef<{ operationId: string; code: string; language: 'python' | 'r' }>()
   const prefix = `project/${project.id}/`
-  const reload = useCallback(async () => { setSnapshot(await api<ScienceSnapshot>(`${prefix}snapshot?language=${language}`)) }, [prefix, language])
-  useEffect(() => {
-    let alive = true
-    const load = async () => { try { const result = await api<ScienceSnapshot>(`${prefix}snapshot?language=${language}`); if (alive) { setSnapshot(result); setError('') } } catch (error) { if (alive) setError(message(error)) } }
-    void load(); const timer = setInterval(() => { if (!document.hidden) void load() }, 2000)
-    return () => { alive = false; clearInterval(timer) }
-  }, [prefix, language])
   const execute = async () => {
     if (busy) return
     setBusy(true); setError('')
-    try { await api(`${prefix}execute`, { code, operationId: crypto.randomUUID(), sessionId: 'workbench', confirmed: true, language }); await reload() }
+    const operation = pendingExecution.current?.code === code && pendingExecution.current.language === language ? pendingExecution.current : { operationId: crypto.randomUUID(), code, language }
+    pendingExecution.current = operation
+    try {
+      await api(`${prefix}execute`, { ...operation, sessionId: 'workbench', confirmed: true })
+      pendingExecution.current = undefined
+      try { await reload() } catch { setError('任务已接收，状态同步暂时失败；请等待重新连接，避免重复执行。') }
+    }
     catch (error) { setError(message(error)) } finally { setBusy(false) }
   }
-  return <section><header className="oss-section-head"><div><small>RESEARCH WORKSPACE</small><h1>{short(project.workspace)}</h1><p>{project.workspace}</p></div><span className="oss-chip">Kernel · {snapshot?.kernel.state || '加载中'}</span></header>
-    {error && <p role="alert" className="oss-error">{error}</p>}
+  return <section><header className="oss-section-head"><div><small>RESEARCH WORKSPACE</small><h1>{short(project.workspace)}</h1><p>{project.workspace}</p></div><span className="oss-chip">Kernel · {snapshot?.kernel.state || '加载中'} · {connection === 'live' ? '实时同步' : connection === 'reconnecting' ? '重连中' : '连接中'}</span></header>
+    {(error || streamError) && <p role="alert" className="oss-error">{error || streamError}</p>}
     <ScienceChat projectId={project.id} />
     <DataBrowser projectId={project.id} prepare={(nextLanguage, source) => { setLanguage(nextLanguage); setCode(source) }} />
     <div className="oss-two oss-lab-grid"><div><article className="oss-card"><div className="oss-row"><h2>{language === 'r' ? 'R' : 'Python'} 工作单元</h2><a href={`/omicos/oss/api/${prefix}notebook?language=${language}`} download>导出 Notebook ↗</a></div><p>代码将在当前项目的持久进程中执行，拥有当前用户的系统权限。同语言的多次执行共享变量，Python 与 R 分别维护对象。</p><label>语言<select aria-label="语言" value={language} onChange={event => { const next = event.target.value as 'python' | 'r'; setLanguage(next); setCode(next === 'r' ? 'values <- c(1, 2, 3, 4)\nmean(values)' : 'import sys, os\nprint(sys.version)\nprint(os.getcwd())') }}><option value="python">Python</option><option value="r">R</option></select></label><label className="oss-sr" htmlFor="oss-code">代码</label><textarea id="oss-code" className="oss-code" spellCheck={false} value={code} onChange={event => setCode(event.target.value)} /><div className="oss-row"><small>重启进程后保留执行记录，内存对象需要重新加载。</small><button className="oss-primary" disabled={busy || !code.trim()} onClick={() => void execute()}>{busy ? '提交中…' : `批准并运行 ${language === 'r' ? 'R' : 'Python'}`}</button></div></article>
-    <h2 className="oss-list-title">执行记录</h2>{snapshot?.executions.slice().reverse().map(job => <article className="oss-card" key={job.id}><div className="oss-row"><span className="oss-chip">{job.state}</span><small>{new Date(job.createdAt).toLocaleString()}</small>{['queued', 'running'].includes(job.state) && <button onClick={() => void api(`${prefix}cancel`, { id: job.id, language }).then(reload).catch(error => setError(message(error)))}>取消</button>}</div><details><summary>查看代码与执行标识</summary><code>{job.id}</code><pre>{job.code}</pre></details>{job.output && <pre className="oss-output">{job.output}</pre>}{job.error && <pre className="oss-error">{job.error}</pre>}{job.artifacts.map(artifact => <figure key={artifact.id}><a href={`/omicos/oss/api/${prefix}artifact?id=${encodeURIComponent(artifact.id)}&language=${language}`} target="_blank" rel="noreferrer">{artifact.mime.startsWith('image/') ? <img src={`/omicos/oss/api/${prefix}artifact?id=${encodeURIComponent(artifact.id)}&language=${language}`} alt={artifact.path} /> : <span>下载 {artifact.mime} 文件 ↗</span>}</a><figcaption>{artifact.path}<br /><code>sha256: {artifact.sha256}</code></figcaption></figure>)}</article>)}</div>
+    <h2 className="oss-list-title">执行记录</h2>{snapshot?.executions.slice().reverse().map(job => <article className="oss-card" key={job.id}><div className="oss-row"><span className="oss-chip">{job.state}</span><small>{new Date(job.createdAt).toLocaleString()}</small>{['queued', 'running'].includes(job.state) && <button onClick={() => void api(`${prefix}cancel`, { id: job.id, language }).then(reload).catch(error => setError(message(error)))}>取消</button>}</div><details><summary>查看代码与执行标识</summary><code>{job.id}</code>{job.environment && <p>运行环境：{job.environment.version}<br /><code>{job.environment.fingerprint}</code></p>}<pre>{job.code}</pre></details>{job.output && <pre className="oss-output">{job.output}</pre>}{job.error && <pre className="oss-error">{job.error}</pre>}{job.artifacts.map(artifact => <figure key={artifact.id}><a href={`/omicos/oss/api/${prefix}artifact?id=${encodeURIComponent(artifact.id)}&language=${language}`} target="_blank" rel="noreferrer">{artifact.mime.startsWith('image/') ? <img src={`/omicos/oss/api/${prefix}artifact?id=${encodeURIComponent(artifact.id)}&language=${language}`} alt={artifact.path} /> : <span>下载 {artifact.mime} 文件 ↗</span>}</a><figcaption>{artifact.path}<br /><code>sha256: {artifact.sha256}</code></figcaption></figure>)}</article>)}</div>
     <aside><EnvironmentPane key={language} projectId={project.id} language={language} /><article className="oss-card"><h2>内核变量</h2>{snapshot?.variables.length ? snapshot.variables.map(variable => <div className="oss-variable" key={variable.name}><b>{variable.name}</b><small>{variable.type} {variable.shape}</small><code>{variable.preview}</code>{language === 'python' && variable.type === 'AnnData' && <button onClick={() => void api(`${prefix}anndata`, { variable: variable.name, confirmed: true, operationId: crypto.randomUUID() }).then(reload).catch(error => setError(message(error)))}>批准并检查 AnnData 状态</button>}</div>) : <p>执行后在这里查看数据对象。</p>}</article><article className="oss-card"><h2>项目记忆</h2><p>记录已确认的项目事实。每条记忆保留来源，模型推断不能冒充证据。</p>{snapshot?.memories.map(item => <div className="oss-variable" key={item.id}><p>{item.text}</p><small>{item.source}</small><button onClick={() => void api(`${prefix}memory`, { id: item.id, text: '', source: 'user:workbench' }).then(reload).catch(error => setError(message(error)))}>删除</button></div>)}<textarea aria-label="项目记忆" placeholder="例如：本项目使用人类 GRCh38 参考基因组" value={memory} onChange={event => setMemory(event.target.value)} maxLength={20000} /><button disabled={!memory.trim()} onClick={() => void api(`${prefix}memory`, { id: crypto.randomUUID(), text: memory, source: 'user:workbench' }).then(() => { setMemory(''); return reload() }).catch(error => setError(message(error)))}>保存已确认事实</button></article></aside></div>
   </section>
 }
 
 export function OssWorkbench(): JSX.Element {
   const [session, setSession] = useState<Session>()
-  const [page, setPage] = useState(location.pathname.endsWith('/store') ? 'store' : 'lab')
+  const [page, setPage] = useState(location.pathname.replace(/\/+$/, '').endsWith('/store') ? 'store' : 'lab')
+  const [storeVisited, setStoreVisited] = useState(location.pathname.replace(/\/+$/, '').endsWith('/store'))
   const [projectId, setProjectId] = useState(new URLSearchParams(location.search).get('project') || '')
   const [error, setError] = useState('')
-  const refresh = useCallback(async () => { const result = await api<Session>('session'); setSession(result) }, [])
-  useEffect(() => { void refresh().catch(error => setError(message(error))) }, [refresh])
+  const refresh = useCallback(async () => { const result = await api<Session>('session'); setSession(result); setError('') }, [])
+  useEffect(() => {
+    const load = () => { void refresh().catch(error => setError(message(error))) }
+    load(); const timer = setInterval(load, 20000); window.addEventListener('focus', load); window.addEventListener(HOST_REFRESH_EVENT, load)
+    return () => { clearInterval(timer); window.removeEventListener('focus', load); window.removeEventListener(HOST_REFRESH_EVENT, load) }
+  }, [refresh])
   useEffect(() => {
     if (!session?.account.login) return
     let alive = true
@@ -163,8 +169,8 @@ export function OssWorkbench(): JSX.Element {
     return () => { alive = false; clearInterval(timer) }
   }, [session?.account.login?.user_code, refresh])
   const project = session?.projects.find(item => item.id === projectId) || session?.projects[0]
-  return <div className="oss"><header className="oss-top"><a className="oss-brand" href="/omicos/oss">OmicOS <span>OSS</span></a><nav aria-label="工作台导航"><button aria-current={page === 'lab' ? 'page' : undefined} onClick={() => setPage('lab')}>科研工作台</button><button aria-current={page === 'store' ? 'page' : undefined} onClick={() => setPage('store')}>云服务商城</button></nav><div className="oss-account">{session?.account.logged_in ? <><span>{session.account.user?.email || session.account.user?.phone || session.account.user?.id}</span><button onClick={() => void api('logout', {}).then(refresh).catch(error => setError(message(error)))}>退出</button></> : <button onClick={() => void api('login', {}).then(refresh).catch(error => setError(message(error)))}>登录 OmicOS 云</button>}</div></header>
+  return <div className="oss"><header className="oss-top"><a className="oss-brand" href="/omicos/oss">OmicOS <span>OSS</span></a><nav aria-label="工作台导航"><button aria-current={page === 'lab' ? 'page' : undefined} onClick={() => setPage('lab')}>科研工作台</button><button aria-current={page === 'store' ? 'page' : undefined} onClick={() => { setStoreVisited(true); setPage('store') }}>云服务商城</button></nav><div className="oss-account">{session?.account.logged_in ? <><span>{session.account.user?.email || session.account.user?.phone || session.account.user?.id}</span><button onClick={() => void api('logout', {}).then(refresh).catch(error => setError(message(error)))}>退出</button></> : <button onClick={() => void api('login', {}).then(refresh).catch(error => setError(message(error)))}>登录 OmicOS 云</button>}</div></header>
     <main>{error && <p role="alert" className="oss-error">{error} <button onClick={() => setError('')}>关闭提示</button></p>}{session?.account.login && <section className="oss-confirm"><h2>批准云账号登录</h2><p>在浏览器打开 <a href={session.account.login.verification_uri} target="_blank" rel="noreferrer">官方配对页面 ↗</a>，登录后输入配对码：</p><strong className="oss-pair-code">{session.account.login.user_code}</strong><p>本窗口会自动查询批准结果。插件不经手你的密码或验证码。</p></section>}
-    {!session ? <p>正在连接 OmicOS OSS…</p> : page === 'store' ? <Store key={session.account.generation} account={session.account} refresh={refresh} /> : <>{session.projects.length > 1 && <label>当前项目<select value={project?.id} onChange={event => setProjectId(event.target.value)}>{session.projects.map(item => <option key={item.id} value={item.id}>{item.workspace}</option>)}</select></label>}{project ? <Laboratory key={project.id} project={project} /> : <p>请先从 Harness 项目会话运行 OmicOS 工具，或使用独立启动命令指定工作区。</p>}</>}
+    {!session ? <p>正在连接 OmicOS OSS…</p> : <>{storeVisited && <div hidden={page !== 'store'}><Store key={`${session.csrf}:${session.account.generation}:${session.account.user?.id || 'anonymous'}`} account={session.account} refresh={refresh} visible={page === 'store'} /></div>}<div hidden={page !== 'lab'}>{session.projects.length > 1 && <label>当前项目<select value={project?.id} onChange={event => setProjectId(event.target.value)}>{session.projects.map(item => <option key={item.id} value={item.id}>{item.workspace}</option>)}</select></label>}{project ? <Laboratory key={project.id} project={project} /> : <p>请先从 Harness 项目会话运行 OmicOS 工具，或使用独立启动命令指定工作区。</p>}</div></>}
     <footer>OmicOS OSS · 本地运行与云服务独立 · 科研数据由你掌握</footer></main></div>
 }

@@ -40,7 +40,7 @@ export class CloudService {
   }
   get sensitiveFiles(): readonly string[] { return [this.credentialFile] }
   snapshot(): unknown {
-    return { logged_in: Boolean(this.credentials), user: this.credentials?.user, generation: this.generation,
+    return { server: this.base, logged_in: Boolean(this.credentials), user: this.credentials?.user, generation: this.generation,
       login: this.login ? { user_code: this.login.code, verification_uri: this.login.uri, expires_at: this.login.expires } : undefined }
   }
   async beginLogin(): Promise<unknown> {

@@ -24,7 +24,13 @@
     "runtime",
     "OMICOS_OSS_DESIGN.md",
     "locale",
-    "icon.svg"
+    "icon.svg",
+    "esbuild.*.mjs",
+    "scripts",
+    "test",
+    "tsconfig*.json",
+    "LEGACY_CORE.md",
+    "IMPLEMENTATION_STATUS.md"
   ],
   "dsh": {
     "bundle": {
@@ -42,7 +48,9 @@
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
     "test": "vitest run",
-    "start:oss": "node lib/oss/cli.js"
+    "start:oss": "node lib/oss/cli.js",
+    "test:browser": "pnpm build && node scripts/browser-smoke.cjs",
+    "test:package": "pnpm build && node scripts/clean-install-smoke.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.5",
@@ -125,7 +133,8 @@
     "@deepseek-ai/dsh-session-projection": "0.2.1-rc.3",
     "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.3",
     "@deepseek-ai/cordis-plugin-loader": "1.0.6",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.3"
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.3",
+    "playwright": "1.62.1"
   },
   "license": "GPL-3.0-only",
   "homepage": "https://github.com/omicverse/dsh-omicos",
@@ -214,7 +223,7 @@
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.13.0 || >=24.0.0"
   },
   "bin": {
     "omicos-oss": "./lib/oss/cli.js"

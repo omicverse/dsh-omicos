@@ -5,6 +5,7 @@ No automatic dependency installation, data upload or object unpickling.
 import ast
 import contextlib
 import hashlib
+import importlib.metadata as package_metadata
 import json
 import os
 from pathlib import Path
@@ -46,7 +47,15 @@ def variables():
             result.append({'name': name, 'type': type(value).__name__, 'preview': '<unavailable>'})
     return result[:500]
 
-emit({'type': 'ready', 'python': sys.version.split()[0]})
+packages = {}
+for name in ['numpy', 'pandas', 'scipy', 'anndata', 'scanpy', 'omicverse', 'matplotlib']:
+    try:
+        packages[name] = package_metadata.version(name)
+    except package_metadata.PackageNotFoundError:
+        packages[name] = None
+    except Exception:
+        packages[name] = 'unavailable'
+emit({'type': 'ready', 'environment': {'language': 'python', 'version': sys.version.split()[0], 'executable': sys.executable, 'platform': sys.platform, 'packages': packages}})
 for line in sys.stdin:
     command = json.loads(line)
     current = command['id']

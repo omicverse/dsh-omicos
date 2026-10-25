@@ -124,6 +124,34 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await post('invoice/withdraw', { id: 'inv_1', confirmed: true })).status).toBe(200)
     expect((await post('invoice/withdraw', { id: '../inv_1', confirmed: true })).status).toBe(400)
   })
+  it('streams committed scientific receipts and resumes strictly after Last-Event-ID', async () => {
+    const id = (await runtime.list())[0].id
+    const service = await runtime.byId(id)
+    const initial = service.eventCursor
+    const abort = new AbortController()
+    const response = await fetch(`${base}/omicos/oss/api/project/${id}/events?after=${initial}`, { signal: abort.signal })
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const reader = response.body!.getReader(); let text = ''
+    const readUntil = async (predicate: (text: string) => boolean) => {
+      while (!predicate(text)) { const chunk = await reader.read(); if (chunk.done) throw new Error('Stream ended early'); text += new TextDecoder().decode(chunk.value) }
+    }
+    await readUntil(text => text.includes('event: hello'))
+    await post(`project/${id}/execute`, { code: 'print(42)', operationId: 'streamed', confirmed: true })
+    await readUntil(text => text.includes('execution/succeeded'))
+    const receipts = text.split('\n').filter(line => line.startsWith('data: ')).map(line => JSON.parse(line.slice(6))).filter(event => typeof event.seq === 'number')
+    expect(receipts.some(event => event.type === 'execution/queued')).toBe(true)
+    expect(receipts.every(event => event.seq > initial)).toBe(true)
+    const cursor = receipts[receipts.length - 1].seq
+    abort.abort()
+    const reconnectAbort = new AbortController()
+    const resumed = await fetch(`${base}/omicos/oss/api/project/${id}/events?after=0`, { signal: reconnectAbort.signal, headers: { 'last-event-id': String(cursor) } })
+    const resumedReader = resumed.body!.getReader(); let resumedText = ''
+    await service.remember('stream-fact', 'GRCh38', 'user confirmed')
+    while (!resumedText.includes('memory/saved')) { const chunk = await resumedReader.read(); if (chunk.done) throw new Error('Reconnect stream ended'); resumedText += new TextDecoder().decode(chunk.value) }
+    expect(resumedText).not.toContain('execution/queued')
+    expect(resumedText).toContain('stream-fact')
+    reconnectAbort.abort()
+  }, 15000)
   it('executes only registered workspaces and exports a real notebook', async () => {
     const id = (await runtime.list())[0].id
     expect((await post('project/not-registered/execute', { code: '1', confirmed: true })).status).not.toBe(200)

@@ -4,6 +4,7 @@
  * Core is optional at runtime and is never bundled or installed by default.
  */
 import { build } from 'esbuild'
+import { writeBundleNotices } from './scripts/notices.mjs'
 
 const result = await build({
   entryPoints: ['src/host/index.ts'],
@@ -23,11 +24,14 @@ const result = await build({
   metafile: true,
 })
 
+await writeBundleNotices('host', result.metafile)
+
 const bundled = Object.keys(result.metafile.inputs).filter((f) => f.includes('node_modules/@omicverse'))
 console.log(`host bundle written: lib/host/index.js (inlined ${bundled.length} SDK modules)`)
 
-await build({ entryPoints: ['src/oss/cli.ts'], outfile: 'lib/oss/cli.js', bundle: true,
+const standalone = await build({ entryPoints: ['src/oss/cli.ts'], outfile: 'lib/oss/cli.js', bundle: true,
   banner: { js: "import { createRequire as __omicosRequireFactory } from 'node:module'; const require = __omicosRequireFactory(import.meta.url);" },
-  platform: 'node', format: 'esm', target: 'node22', sourcemap: true, logLevel: 'warning' })
+  platform: 'node', format: 'esm', target: 'node22', sourcemap: true, logLevel: 'warning', metafile: true })
+await writeBundleNotices('standalone', standalone.metafile)
 
 await build({ entryPoints: ['src/host/scientist.ts'], outfile: 'lib/host/scientist.js', bundle: true, platform: 'node', format: 'esm', target: 'node22', external: ['@deepseek-ai/*'], logLevel: 'warning' })

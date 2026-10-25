@@ -1,3 +1,4 @@
+import { streamScientificEvents } from './events.js'
 import { listWorkspace, previewWorkspaceFile } from './files.js'
 import { inspectAnnDataCode } from './anndata.js'
 import { inspectEnvironment, inspectREnvironment } from './environment.js'
@@ -29,7 +30,8 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
   return async (request, response) => {
     try {
       const host = request.headers.host || ''
-      const url = new URL(request.url || '/', `http://${host}`)
+      const scheme = 'encrypted' in request.socket && request.socket.encrypted === true ? 'https' : 'http'
+      const url = new URL(request.url || '/', `${scheme}://${host}`)
       if (!LOOPBACK.has(request.socket.remoteAddress || '') || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || host !== url.host) throw new CloudError(403, 'Local Host only')
       if (request.headers.origin && request.headers.origin !== url.origin) throw new CloudError(403, 'Cross-origin access denied')
       if (request.headers['sec-fetch-site'] === 'cross-site') throw new CloudError(403, 'Cross-site access denied')
@@ -96,7 +98,14 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
         const language = data?.language ?? url.searchParams.get('language') ?? 'python'
         if (!['python', 'r'].includes(language)) throw new CloudError(400, 'Unsupported scientific language')
         const project = language === 'r' && ['snapshot', 'execute', 'cancel', 'notebook', 'artifact'].includes(action || '') ? await runtime.rProject(parent.workspace) : parent
-        if (action === 'files' && method === 'GET') result = await listWorkspace(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
+        if (action === 'events' && method === 'GET') {
+          const last = request.headers['last-event-id']
+          const after = Number(typeof last === 'string' && last !== '' ? last : url.searchParams.get('after') || '0')
+          if (!Number.isSafeInteger(after) || after < 0) throw new CloudError(400, 'Invalid event cursor')
+          streamScientificEvents(request, response, parent, after); return
+        }
+        else if (action === 'event-log' && method === 'GET') result = { cursor: parent.eventCursor, events: parent.events(Number(url.searchParams.get('after') || 0)) }
+        else if (action === 'files' && method === 'GET') result = await listWorkspace(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
         else if (action === 'file-preview' && method === 'GET') result = await previewWorkspaceFile(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
         else if (action === 'anndata' && method === 'POST') {
           if (data.confirmed !== true) throw new CloudError(400, 'Explicit inspection approval required')

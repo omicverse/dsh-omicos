@@ -6,3 +6,5 @@ body:has(.oss){margin:0}
 .oss-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}.oss-table-wrap{overflow-x:auto;max-width:100%;margin:20px 0}.oss table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}.oss th,.oss td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top}.oss caption{text-align:left;color:var(--muted);padding-bottom:12px}.oss h3{font-size:16px;margin-top:25px}.oss-management{margin-top:24px}
 
 .oss-data-files{max-height:320px;overflow:auto;margin:14px 0}.oss-data-file{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:8px 0}.oss-data-file .oss-file-name{flex:1;text-align:left;background:transparent;border-color:transparent;overflow-wrap:anywhere;min-width:100px}.oss-data-file small{min-width:65px}
+
+.oss-section-head{flex-wrap:wrap}.oss-section-head>div{min-width:0;overflow-wrap:anywhere}.oss code{overflow-wrap:anywhere}.oss-account{min-width:0;max-width:100%;flex-wrap:wrap}.oss-account span{min-width:0;overflow-wrap:anywhere}

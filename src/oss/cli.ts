@@ -12,12 +12,13 @@ for (let index = 2; index < process.argv.length; index += 2) {
 const port = Number(options.get('--port') || '18620')
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid port')
 const runtime = await OssRuntime.open({ python: options.get('--python'), rscript: options.get('--rscript'), cloudBase: options.get('--cloud-base'), stateDir: options.get('--state-dir') })
-await runtime.project(options.get('--workspace') || process.cwd())
+const initial = await runtime.project(options.get('--workspace') || process.cwd())
+const initialId = (await runtime.list()).find(project => project.workspace === initial.workspace)!.id
 const server = createServer(createOssHandler(runtime))
 server.requestTimeout = 30_000; server.headersTimeout = 15_000
 server.listen(port, '127.0.0.1', () => {
   const address = server.address()
-  console.log(`OmicOS OSS: http://127.0.0.1:${typeof address === 'object' ? address?.port : port}/omicos/oss`)
+  console.log(`OmicOS OSS: http://127.0.0.1:${typeof address === 'object' ? address?.port : port}/omicos/oss?project=${initialId}`)
   console.log('Local Python executes trusted code with your OS permissions. Dependencies are never installed automatically.')
 })
 let closing = false

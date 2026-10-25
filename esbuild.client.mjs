@@ -9,6 +9,7 @@
  * from the loader's module table. Everything else is inlined.
  */
 import { build } from 'esbuild'
+import { writeBundleNotices } from './scripts/notices.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 
 const ID = '@omicverse/dsh-omicos'
@@ -60,6 +61,7 @@ await writeFile('lib/client.js', wrapped)
 console.log('client bundle written: lib/client.js')
 
 // Standalone workbench owns its React runtime; the DSH closure remains platform-external.
-await build({ entryPoints: ['src/client/oss-standalone.tsx'], bundle: true,
+const standalone = await build({ entryPoints: ['src/client/oss-standalone.tsx'], bundle: true,
   outfile: 'lib/workbench.js', platform: 'browser', format: 'iife', target: 'es2022',
-  jsx: 'automatic', minify: true, sourcemap: true })
+  jsx: 'automatic', minify: true, sourcemap: true, metafile: true })
+await writeBundleNotices('workbench', standalone.metafile)

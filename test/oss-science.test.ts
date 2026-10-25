@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { ScienceLedger } from '../src/oss/ledger.js'
 import { ScienceService } from '../src/oss/science.js'
 import type { Execution } from '../src/oss/types.js'
 
@@ -22,7 +23,10 @@ describe('public scientific runtime with real Python workers', () => {
   it('shares a namespace across cells, captures final expression, and exports notebook without private Core', async () => {
     const service = await open(path)
     const first = await service.submit('value = 40\nprint("loaded")', 'one', 'session')
-    expect((await settled(service, first.id)).state).toBe('succeeded')
+    const result = await settled(service, first.id)
+    expect(result.state).toBe('succeeded')
+    expect(result.environment?.fingerprint).toMatch(/^[a-f0-9]{64}$/)
+    expect(result.environment?.version).not.toBe('unknown')
     const second = await service.submit('value += 2\nvalue', 'two', 'session')
     expect((await settled(service, second.id)).output).toContain('42')
     expect(service.snapshot().variables.find(variable => variable.name === 'value')?.preview).toBe('42')
@@ -75,9 +79,9 @@ describe('public scientific runtime with real Python workers', () => {
     const service = await open(path)
     const job = await service.submit('print("once")', 'first', 'session')
     await settled(service, job.id); await service.dispose()
-    const file = join(path, '.omicos-oss', 'executions.json')
-    const records = JSON.parse(await readFile(file, 'utf8')); records[0].state = 'running'
-    await writeFile(file, JSON.stringify(records))
+    const ledger = await ScienceLedger.open(path)
+    const records = ledger.executions('python'); records[0].state = 'running'
+    ledger.saveExecutions('python', records); ledger.close()
     const reopened = await open(path)
     expect(reopened.snapshot().executions[0].state).toBe('interrupted')
     expect(reopened.snapshot().kernel.state).toBe('cold')
@@ -88,6 +92,22 @@ describe('public scientific runtime with real Python workers', () => {
     await service.dispose()
     const reopened = await open(path)
     expect(reopened.snapshot().kernel.state).toBe('cold')
+  })
+  it('settles interrupted when the terminal receipt cannot be committed, rather than hanging a tool waiter', async () => {
+    const service = await open(path)
+    const original = ScienceLedger.prototype.saveExecutions
+    let injected = false
+    const spy = vi.spyOn(ScienceLedger.prototype, 'saveExecutions').mockImplementation(function (language, records) {
+      if (!injected && records.some(record => record.state === 'succeeded')) { injected = true; throw new Error('Injected storage failure') }
+      return original.call(this, language, records)
+    })
+    try {
+      const job = await service.submit('print(42)', 'storage-failure', 'session')
+      const result = await settled(service, job.id)
+      expect(injected).toBe(true)
+      expect(result.state).toBe('interrupted')
+      expect(result.error).toContain('Injected storage failure')
+    } finally { spy.mockRestore() }
   })
   it('reports missing interpreters as interrupted without hanging queued work', async () => {
     const service = await open(path, join(path, 'no-python'))

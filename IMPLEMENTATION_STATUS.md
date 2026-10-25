@@ -9,7 +9,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Private Core removed from the default installation graph; compatibility mode retained explicitly.
 - Independent Node Host / public Python worker protocol with no model loop or private runtime dependency.
 - Persistent per-project Python and separate R namespaces, queue, stable invocation deduplication, cancellation and bounded output.
-- Atomic metadata, incomplete-job recovery, project-level heartbeat lock, distinct kernel generations.
+- SQLite WAL execution/memory ledger with transactional receipts, one-time JSON migration preserving originals, lazy durable project registry, incomplete-job recovery, project-level heartbeat lock, distinct kernel generations.
 - Figure capture/integrity checks, variable inspection, sourced memory CRUD and notebook export.
 - Standalone responsive React scientific workspace; separate store route/window; DSH entry links.
 - Host-only cloud device pairing and owner-only credential file; browser snapshots redact credentials.
@@ -20,6 +20,9 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Workspace data browser, bounded text previews, prepared CSV/TSV/H5AD/RDS loading cells and approved AnnData metadata inspection; real AnnData tests verify X remains unchanged.
 - DSH entry resolves the active session workspace through the formal Host controller instead of silently opening the Host process working directory.
 - Cloud credentials are bound to their origin; changing cloud bases never forwards previously saved tokens.
+- Durable SSE scientific events with Last-Event-ID replay, slow-reader backpressure and snapshot recovery; frontend retry is restricted to pre-dispatch CSRF rejection and preserves operation IDs.
+- Execution receipts and notebooks include actual interpreter/package versions and environment fingerprints without process environment variables or credentials.
+- License notices are generated from actual esbuild inputs for every inlined npm dependency and shipped with source/build/test scripts.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
 - Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
@@ -27,25 +30,27 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed.
-- 117 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; Node 22.13.1 and current local Node runtime exercised.
+- 129 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
-- Browser screenshots: workspace-level `outputs/omicos-oss/`. No real payments were made.
+- GitHub Actions workflow added for Node 22.13.1/24, scientific fixtures, clean package and browser smoke; remote CI execution is not yet claimed.
+- Reproducible browser/package scripts are checked in under `scripts/`; screenshots now default to ignored `test-results/oss-browser/`. No real payments were made.
 
 ## Still to implement / verify (not claimed complete)
 
 ### Finish and harden M1
 
-- Recheck packed artifact on a clean install without private packages; synchronize final lockfile.
+- Full profile browser coverage remains to be checked; the complete suite passed on actual Node 22.13.1, and a packed standalone installation passed without Harness/private Core.
 - Full DSH web-profile/browser mounting and hot reload, beyond actual Host service cold-load tests.
 - Actual DSH chat/provider/approval browser integration validation; full scientific Skill migration beyond the four bundled checklists.
 - Durable payment/order listing beyond the current account-scoped recent-order pointer; verify upstream listing APIs.
 - Real staging account / payment sandbox / actual merchant callbacks and entitlement refresh contract.
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.
 - Runtime installer/downloader and environment provisioning, with user-approved installation and rollback.
-- SQLite/event-ledger migration: current atomic JSON metadata is a single-owner interim implementation.
-- Stream replay/SSE; workspace currently polls bounded execution state.
+- Broader event-ledger provenance coverage, retention and large-history paging. SQLite migration and durable execution receipts are implemented.
+- Agent-token streaming and event-driven chat beyond the scientific SSE stream.
 - OS keychain integration; current credentials are restricted local files.
 
 ### M2–M4 capability migration
