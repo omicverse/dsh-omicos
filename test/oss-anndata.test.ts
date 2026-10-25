@@ -24,6 +24,12 @@ it('validates grouped dotplot bounds, exact identifiers, explicit matrix units a
  for(const change of [{features:[]},{features:['g1','g1']},{features:Array.from({length:21},(_,i)=>`g${i}`)},{groupBy:''},{threshold:Infinity},{threshold:'0'},{color:'obs'},{source:'layer'}])expect(()=>normalizeAnnDataPlot({...settings,...change})).toThrow()
  expect(normalizeAnnDataPlot({...settings,axes:[-1,-1]}).axes).toEqual([0,1])
 })
+it('validates grouped numeric distribution fields and grouping without inheriting unused embedding axes',()=>{
+ const base={variable:'adata',plot:'boxplot',color:'feature',field:'g1',groupBy:'batch'}
+ expect(normalizeAnnDataPlot({...base,axes:[-1,-1]})).toMatchObject({plot:'boxplot',axes:[0,1],groupBy:'batch'})
+ expect(normalizeAnnDataPlot({...base,plot:'violin',color:'obs',field:'qc'})).toMatchObject({plot:'violin',color:'obs',field:'qc'})
+ for(const change of [{groupBy:''},{color:'none'},{field:''},{source:'layer'},{maxPoints:10001}])expect(()=>normalizeAnnDataPlot({...base,...change})).toThrow()
+})
 describe.skipIf(!available)('real AnnData inspection preserves scientific state', () => {
   it('renders deterministic sparse-expression previews without mutating X, layers, obs, raw or embeddings', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'omicos-anndata-plot-')); const service = await ScienceService.open(workspace, python)
@@ -117,6 +123,46 @@ pd.testing.assert_frame_equal(adata.obs, original_obs)
 print('DOTPLOT_PRESERVED')`, 'dot-unchanged');expect(check.output).toContain('DOTPLOT_PRESERVED')
     }finally{await service.dispose();await rm(workspace,{recursive:true,force:true})}
   },60000)
+  it('renders audited grouped box/violin distributions with exact quartiles, outliers, ordered groups and explicit constant/missing cases',async()=>{
+    const workspace=await mkdtemp(join(tmpdir(),'omicos-grouped-distribution-')),service=await ScienceService.open(workspace,python)
+    const submit=async(code:string,operation:string)=>wait(service,(await service.submit(code,operation,'grouped')).id)
+    const audit=(output:string)=>JSON.parse(output.split('\n').find(line=>line.startsWith('OMICOS_ANNDATA_PLOT='))!.slice('OMICOS_ANNDATA_PLOT='.length))
+    try{
+      expect((await submit(`import anndata as ad
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+from scipy import sparse
+values = np.array([0.,10.,20.,100.,5.,5.,7.,np.nan,np.inf,np.nan,11.])
+adata = ad.AnnData(sparse.csr_matrix(values.reshape(-1,1)))
+adata.var_names = ['g1']
+adata.obs['group'] = pd.Categorical(['A']*4 + ['B']*2 + ['C']*3 + ['D',None], categories=['D','C','B','A'], ordered=True)
+adata.obs['qc'] = pd.array(values, dtype='Float64')
+adata.obs['complex_qc'] = values.astype(complex)
+adata.layers['counts'] = sparse.csr_matrix((values*2).reshape(-1,1))
+raw_copy = adata.copy()
+raw_copy.X = sparse.csr_matrix((values+10).reshape(-1,1))
+adata.raw = raw_copy
+original_obs = adata.obs.copy(deep=True)`, 'grouped-fixture')).state).toBe('succeeded')
+      const settings=normalizeAnnDataPlot({variable:'adata',plot:'boxplot',color:'feature',field:'g1',groupBy:'group',maxPoints:11,seed:5})
+      const box=await submit(plotAnnDataCode(settings),'grouped-box');expect(box.state,box.error).toBe('succeeded');expect(box.artifacts.map(item=>item.mime)).toEqual(['image/png','application/pdf','image/svg+xml'])
+      const data=audit(box.output);expect(data).toMatchObject({sampled_n:11,plotted_n:7,missing_group_n:1,value_source:{kind:'feature',field:'g1',source:'X'}});expect(data.groups.map((group:any)=>group.label)).toEqual(['D','C','B','A'])
+      expect(data.groups.find((group:any)=>group.label==='A')).toMatchObject({finite_n:4,nonfinite_n:0,min:0,q1:7.5,median:15,q3:40,max:100,mean:32.5,whiskerLow:0,whiskerHigh:40,outlier_n:1})
+      expect(data.groups[0]).toMatchObject({finite_n:0,mean:null,median:null,rendering:'no-finite-values'});expect(data.groups[1]).toMatchObject({finite_n:1,nonfinite_n:2,median:7})
+      const repeat=await submit(plotAnnDataCode(settings),'grouped-repeat');expect(audit(repeat.output).sample_sha256).toBe(data.sample_sha256)
+      const violin=await submit(plotAnnDataCode({...settings,plot:'violin'}),'grouped-violin');expect(violin.state,violin.error).toBe('succeeded');const distributions=audit(violin.output);expect(distributions.groups.map((group:any)=>group.rendering)).toEqual(['no-finite-values','constant-marker','constant-marker','violin'])
+      const obs=await submit(plotAnnDataCode({...settings,color:'obs',field:'qc'}),'grouped-obs');expect(obs.state,obs.error).toBe('succeeded');expect(audit(obs.output).value_source).toEqual({kind:'obs',field:'qc'});expect(audit(obs.output).groups.find((group:any)=>group.label==='A').q3).toBe(40)
+      for(const [source,mean] of [['layer',65],['raw',42.5]] as const){const result=await submit(plotAnnDataCode({...settings,source,layer:'counts'}),`grouped-${source}`);expect(result.state,result.error).toBe('succeeded');expect(audit(result.output).groups.find((group:any)=>group.label==='A').mean).toBeCloseTo(mean)}
+      const nonnumeric=await submit(plotAnnDataCode({...settings,color:'obs',field:'group'}),'grouped-nonnumeric');expect(nonnumeric.state).toBe('failed');expect(nonnumeric.artifacts).toHaveLength(0)
+      const complex=await submit(plotAnnDataCode({...settings,color:'obs',field:'complex_qc'}),'grouped-complex');expect(complex.state).toBe('failed');expect(complex.error).toContain('Complex-valued obs');expect(complex.artifacts).toHaveLength(0)
+      const check=await submit(`np.testing.assert_allclose(adata.X.toarray().ravel(), values, equal_nan=True)
+np.testing.assert_allclose(adata.layers['counts'].toarray().ravel(), values*2, equal_nan=True)
+np.testing.assert_allclose(adata.raw.X.toarray().ravel(), values+10, equal_nan=True)
+pd.testing.assert_frame_equal(adata.obs, original_obs)
+print('GROUPED_DISTRIBUTION_PRESERVED')`, 'grouped-preserved');expect(check.output).toContain('GROUPED_DISTRIBUTION_PRESERVED')
+    }finally{await service.dispose();await rm(workspace,{recursive:true,force:true})}
+  },60000)
   it('plots read-only backed sparse data and rejects too many categories without touching the file', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'omicos-anndata-backed-')); const service = await ScienceService.open(workspace, python)
     const submit = async (code: string, operation: string) => wait(service, (await service.submit(code, operation, 'research')).id)
@@ -138,6 +184,7 @@ backed = ad.read_h5ad('backed.h5ad', backed='r')
 original_file_hash = hashlib.sha256(Path('backed.h5ad').read_bytes()).hexdigest()`, 'backed-fixture')).state).toBe('succeeded')
       const settings = normalizeAnnDataPlot({ variable: 'backed', embedding: 'X_pca', color: 'feature', field: 'g1', maxPoints: 150 })
       const plotted = await submit(plotAnnDataCode(settings), 'backed-plot'); expect(plotted.state, plotted.error).toBe('succeeded')
+      const box=await submit(plotAnnDataCode(normalizeAnnDataPlot({variable:'backed',plot:'boxplot',color:'feature',field:'g1',groupBy:'group',maxPoints:150})),'backed-box');expect(box.state,box.error).toBe('succeeded')
       const dot=await submit(plotAnnDataCode(normalizeAnnDataPlot({variable:'backed',plot:'dotplot',features:['g1','g2'],groupBy:'group',maxPoints:150})),'backed-dot');expect(dot.state,dot.error).toBe('succeeded')
       const tooMany=await submit(plotAnnDataCode(normalizeAnnDataPlot({variable:'backed',plot:'dotplot',features:['g1'],groupBy:'many',maxPoints:30})),'dot-category-limit');expect(tooMany.state).toBe('failed');expect(tooMany.error).toContain('1–20 observed');expect(tooMany.artifacts).toHaveLength(0)
       const refused = await submit(plotAnnDataCode({ ...settings, color: 'obs', field: 'many', maxPoints: 30 }), 'category-limit')

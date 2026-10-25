@@ -35,15 +35,15 @@ del _omicos_object, _omicos_audit`
 }
 
 export class AnnDataError extends Error { constructor(readonly status: number, message: string) { super(message) } }
-export interface AnnDataPlot { variable: string; plot: 'embedding' | 'distribution' | 'dotplot';features?:string[];groupBy?:string;threshold?:number; embedding?: string; axes: [number, number]; color: 'none' | 'obs' | 'feature'; field?: string; source: 'X' | 'layer' | 'raw'; layer?: string; maxPoints: number; seed: number }
+export interface AnnDataPlot { variable: string; plot: 'embedding' | 'distribution' | 'dotplot' | 'boxplot' | 'violin';features?:string[];groupBy?:string;threshold?:number; embedding?: string; axes: [number, number]; color: 'none' | 'obs' | 'feature'; field?: string; source: 'X' | 'layer' | 'raw'; layer?: string; maxPoints: number; seed: number }
 export function normalizeAnnDataPlot(input: any): AnnDataPlot {
   if (!input || typeof input !== 'object' || !/^[a-zA-Z][a-zA-Z0-9_]{0,99}$/.test(input.variable)) throw new AnnDataError(400, 'AnnData variable must be a simple Python identifier')
   const name = (value: unknown, label: string) => { if (typeof value !== 'string' || !value.trim() || value.length > 200) throw new AnnDataError(400, `Invalid ${label}`); return value }
-  const plot = input.plot ?? 'embedding'; const color = input.color ?? (plot==='dotplot'?'feature':'none'); const source = input.source ?? 'X'; const axes = plot==='dotplot'?[0,1]:(input.axes ?? [0, 1]); const maxPoints = input.maxPoints ?? 5000; const seed = input.seed ?? 0
-  if (!['embedding', 'distribution','dotplot'].includes(plot) || !['none', 'obs', 'feature'].includes(color) || !['X', 'layer', 'raw'].includes(source)) throw new AnnDataError(400, 'Invalid AnnData plot/color/matrix source')
+  const plot = input.plot ?? 'embedding'; const color = input.color ?? (plot==='dotplot'?'feature':'none'); const source = input.source ?? 'X'; const axes = ['dotplot','boxplot','violin'].includes(plot)?[0,1]:(input.axes ?? [0, 1]); const maxPoints = input.maxPoints ?? 5000; const seed = input.seed ?? 0
+  if (!['embedding', 'distribution','dotplot','boxplot','violin'].includes(plot) || !['none', 'obs', 'feature'].includes(color) || !['X', 'layer', 'raw'].includes(source)) throw new AnnDataError(400, 'Invalid AnnData plot/color/matrix source')
   if (!Array.isArray(axes) || axes.length !== 2 || axes.some(value => !Number.isInteger(value) || value < 0 || value > 1023) || axes[0] === axes[1]) throw new AnnDataError(400, 'Choose two distinct zero-based embedding dimensions (0–1023)')
   if (!Number.isInteger(maxPoints) || maxPoints < 1 || maxPoints > 10000 || !Number.isInteger(seed) || seed < 0 || seed > 2147483647) throw new AnnDataError(400, 'Use 1–10000 observations and an integer seed (0–2147483647)')
-  if (plot === 'distribution' && color === 'none') throw new AnnDataError(400, 'A distribution needs an explicit obs field or feature')
+  if (['distribution','boxplot','violin'].includes(plot) && color === 'none') throw new AnnDataError(400, 'A distribution needs an explicit obs field or feature')
   let dot:Pick<AnnDataPlot,'features'|'groupBy'|'threshold'>={}
   if(plot==='dotplot'){
     if(color!=='feature'||!Array.isArray(input.features)||input.features.length<1||input.features.length>20)throw new AnnDataError(400,'A dotplot needs feature values and 1–20 explicit feature identifiers')
@@ -51,6 +51,7 @@ export function normalizeAnnDataPlot(input: any): AnnDataPlot {
     const threshold=input.threshold??0;if(typeof threshold!=='number'||!Number.isFinite(threshold))throw new AnnDataError(400,'Dotplot threshold must be finite and expressed in the selected matrix units')
     dot={features,groupBy:name(input.groupBy,'categorical obs grouping field'),threshold}
   }
+  if(['boxplot','violin'].includes(plot))dot={groupBy:name(input.groupBy,'categorical obs grouping field')}
   return { variable: input.variable, plot, ...(plot === 'embedding' ? { embedding: name(input.embedding, 'existing embedding key') } : {}), axes: [axes[0], axes[1]], color, ...dot, ...(color !== 'none' && plot!=='dotplot' ? { field: name(input.field, 'obs field/feature identifier') } : {}), source, ...(color === 'feature' && source === 'layer' ? { layer: name(input.layer, 'layer name') } : {}), maxPoints, seed }
 }
 /** Only selected embedding columns / bounded sampled expression columns are materialized. No AnnData write or preprocessing. */
@@ -105,15 +106,14 @@ export function plotAnnDataCode(input: AnnDataPlot): string {
         if result.size != indices.size:
             raise ValueError('Selected column is not aligned with observations')
         return result.copy()
-    if settings['plot'] == 'dotplot':
-        group_field = settings['groupBy']
+    def grouping(group_field):
         if group_field not in obj.obs:
             raise KeyError('Requested grouping obs field does not exist')
         series = obj.obs[group_field].iloc[indices]
         if isinstance(series, pd.DataFrame):
             raise ValueError('Grouping obs field is duplicated; use unique metadata column names')
         if pd.api.types.is_numeric_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype) and not isinstance(series.dtype, pd.CategoricalDtype):
-            raise ValueError('Dotplot grouping must be categorical, string or boolean; numeric measurements need explicit approved categorization first')
+            raise ValueError('Grouped plots require grouping to be categorical, string or boolean; numeric measurements need explicit approved categorization first')
         groups = []
         identities = {}
         for value in series.tolist():
@@ -137,7 +137,11 @@ export function plotAnnDataCode(input: AnnDataPlot): string {
         else:
             labels = sorted(identities)
         if not labels or len(labels) > 20:
-            raise ValueError('Dotplot needs 1–20 observed non-missing sample categories')
+            raise ValueError('Grouped plots need 1–20 observed non-missing sample categories')
+        masks = [np.asarray([value == label for value in groups], dtype=bool) for label in labels]
+        return groups, labels, masks, categorical
+    if settings['plot'] == 'dotplot':
+        groups, labels, masks, categorical = grouping(settings['groupBy'])
         selected = obj.raw if settings['source'] == 'raw' else obj
         if selected is None:
             raise ValueError('Requested raw matrix is absent')
@@ -154,7 +158,6 @@ export function plotAnnDataCode(input: AnnDataPlot): string {
             matrix = selected.X
         if matrix is None:
             raise ValueError('Selected expression matrix is absent')
-        masks = [np.asarray([value == label for value in groups], dtype=bool) for label in labels]
         names_hash = hashlib.sha256()
         for name in names:
             encoded = name.encode('utf-8'); names_hash.update(len(encoded).to_bytes(4, 'big')); names_hash.update(encoded)
@@ -193,7 +196,7 @@ export function plotAnnDataCode(input: AnnDataPlot): string {
         ax.set_xticks(range(len(settings['features'])), [display(value, i) for i, value in enumerate(settings['features'])], rotation=45, ha='right')
         ax.set_yticks(range(len(labels)), [display(value, i) for i, value in enumerate(labels)])
         ax.set_xlim(-0.6, len(settings['features']) - 0.4); ax.set_ylim(len(labels) - 0.4, -0.6)
-        ax.set_xlabel('Selected feature identifiers'); ax.set_ylabel('obs: ' + group_field)
+        ax.set_xlabel('Selected feature identifiers'); ax.set_ylabel('obs: ' + settings['groupBy'])
         missing_groups = sum(value is None for value in groups)
         ax.set_title(settings['variable'] + ' · dotplot · threshold > ' + str(settings['threshold']) + ' · ' + str(indices.size - missing_groups) + '/' + str(total) + ' observations')
         figure.tight_layout()
@@ -223,6 +226,8 @@ export function plotAnnDataCode(input: AnnDataPlot): string {
             raise ValueError('Requested obs field is duplicated; use unique metadata column names')
         numeric = pd.api.types.is_numeric_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype)
         if numeric:
+            if pd.api.types.is_complex_dtype(series.dtype):
+                raise TypeError('Complex-valued obs requires explicit real/imaginary handling before plotting')
             values = series.to_numpy(dtype=float, na_value=np.nan).copy()
         else:
             values = [None if pd.isna(value) else str(value) for value in series.tolist()]
@@ -249,6 +254,74 @@ export function plotAnnDataCode(input: AnnDataPlot): string {
         values = column(matrix, feature)
         numeric = True
         value_label = settings['field'] + ' [' + (('layer:' + settings['layer']) if settings['source'] == 'layer' else settings['source']) + ']'
+    if settings['plot'] in ('boxplot', 'violin'):
+        if not numeric:
+            raise TypeError('Grouped numeric distributions need a numeric obs field or expression feature')
+        from matplotlib.cbook import boxplot_stats, violin_stats
+        from matplotlib.mlab import GaussianKDE
+        groups, labels, masks, categorical = grouping(settings['groupBy'])
+        selected_values = np.asarray(values, dtype=float)
+        box_records = []
+        violin_records = []
+        box_positions = []
+        violin_positions = []
+        constants = []
+        summaries = []
+        def density(data, coordinates):
+            try:
+                result = GaussianKDE(data, bw_method='scott').evaluate(coordinates)
+            except Exception as error:
+                raise ValueError('Cannot compute a stable sample density; choose boxplot or explicit numeric handling') from error
+            if not np.isfinite(result).all() or float(np.max(result)) <= 0:
+                raise ValueError('Sample density is not finite; choose boxplot or explicit numeric handling')
+            return result
+        for position, (label, mask) in enumerate(zip(labels, masks), start=1):
+            group_values = selected_values[mask]
+            finite = group_values[np.isfinite(group_values)]
+            record = {'label': label, 'sampled_n': int(mask.sum()), 'finite_n': int(finite.size), 'nonfinite_n': int(group_values.size - finite.size)}
+            if not finite.size:
+                record.update({'min': None, 'q1': None, 'median': None, 'q3': None, 'max': None, 'mean': None, 'whiskerLow': None, 'whiskerHigh': None, 'outlier_n': 0, 'rendering': 'no-finite-values'})
+            else:
+                stats = boxplot_stats([finite], whis=1.5, bootstrap=None, autorange=False)[0]
+                numbers = [stats[key] for key in ['q1','med','q3','mean','whislo','whishi']]
+                if not np.isfinite(numbers).all():
+                    raise ValueError('Numeric summary overflowed; prepare explicit numeric handling')
+                record.update({'min': float(np.min(finite)), 'q1': float(stats['q1']), 'median': float(stats['med']), 'q3': float(stats['q3']), 'max': float(np.max(finite)), 'mean': float(stats['mean']), 'whiskerLow': float(stats['whislo']), 'whiskerHigh': float(stats['whishi']), 'outlier_n': int(stats['fliers'].size), 'rendering': 'boxplot'})
+                if settings['plot'] == 'boxplot':
+                    box_records.append(stats); box_positions.append(position)
+                elif finite.size == 1 or np.all(finite == finite[0]):
+                    constants.append((position, float(finite[0]))); record['rendering'] = 'constant-marker'
+                else:
+                    stats_violin = violin_stats([finite], density, points=100)[0]
+                    if not all(np.isfinite(stats_violin[key]).all() for key in ['coords','vals','mean','median','min','max']):
+                        raise ValueError('Sample density summary is not finite')
+                    violin_records.append(stats_violin); violin_positions.append(position); record['rendering'] = 'violin'
+            summaries.append(record)
+        plotted_n = sum(record['finite_n'] for record in summaries)
+        if not plotted_n:
+            raise ValueError('No finite values in the grouped sample')
+        figure, ax = plt.subplots(figsize=(max(7, len(labels) * 0.5 + 2), 5))
+        if box_records:
+            ax.bxp(box_records, positions=box_positions, widths=0.6, showfliers=True, patch_artist=True, boxprops={'facecolor':'#dfebe2'}, medianprops={'color':'#285c49'})
+        if violin_records:
+            ax.violin(violin_records, positions=violin_positions, widths=0.8, showmeans=False, showmedians=True, showextrema=True)
+        for position, value in constants:
+            ax.plot([position-0.2, position+0.2], [value,value], color='#285c49', linewidth=2)
+        for position, record in enumerate(summaries, start=1):
+            if not record['finite_n']:
+                ax.text(position, 0.5, 'No finite values', transform=ax.get_xaxis_transform(), rotation=90, ha='center', va='center', color='#888888')
+        display = lambda label, index: label if len(label) < 80 else label[:70] + '… [' + str(index+1) + ']'
+        ax.set_xticks(range(1,len(labels)+1), [display(record['label'], i) + ' (n=' + str(record['finite_n']) + ')' for i, record in enumerate(summaries)], rotation=45, ha='right')
+        ax.set_xlim(0.5,len(labels)+0.5)
+        ax.set_xlabel('obs: ' + settings['groupBy'] + ' (finite sampled observations, not biological replicates)')
+        ax.set_ylabel(value_label + ' · selected units; no transform')
+        ax.set_title(settings['variable'] + ' · ' + settings['plot'] + ' · ' + str(plotted_n) + '/' + str(total) + ' observations')
+        figure.tight_layout()
+        names_hash = hashlib.sha256()
+        for name in names:
+            encoded = name.encode('utf-8'); names_hash.update(len(encoded).to_bytes(4,'big')); names_hash.update(encoded)
+        payload = {'settings': settings, 'indices': indices.tolist(), 'groups': groups, 'group_order': labels, 'obs_names_sha256': names_hash.hexdigest(), 'values': [float(value) if np.isfinite(value) else None for value in selected_values]}
+        return {'schema':'omicos.anndata-plot/1', 'settings':settings, 'value_source':({'kind':'obs','field':settings['field']} if settings['color']=='obs' else {'kind':'feature','field':settings['field'],'source':settings['source'], **({'layer':settings['layer']} if settings['source']=='layer' else {})}), 'n_obs_total':total, 'sampled_n':int(indices.size), 'plotted_n':plotted_n, 'missing_group_n':sum(value is None for value in groups), 'group_order':'Observed categorical level order' if categorical else 'Lexicographic observed labels', 'groups':summaries, 'sample_sha256':hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode()).hexdigest(), 'sampling':'Uniform without replacement, fixed seed, sorted observation indices; summaries describe the preview sample only', 'distribution':{'quartiles':'linear quantiles via matplotlib boxplot_stats', 'whiskers':'1.5 IQR with matplotlib quartile-edge fallback; autorange=False; outliers retained', 'violin':'Gaussian KDE, Scott bandwidth, 100 coordinates, each width scaled to its own maximum; width is not group size', 'constant_groups':'single-value/constant samples use a line instead of a fabricated density'}, 'evidence_scope':'Exploratory finite float64 sample distributions; no transformations, hypothesis tests, differential expression or biological-replicate inference. Sample hash is not a full-matrix hash.'}
     plotted_values = np.asarray(values, dtype=float)[valid] if numeric else ([value for value, keep in zip(values, valid) if keep] if values is not None else None)
     labels = sorted(set(value for value in (plotted_values or []) if value is not None)) if not numeric else []
     if len(labels) > 20:
