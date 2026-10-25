@@ -446,3 +446,10 @@ requests; an unsupported explicit version returns HTTP 426 before dispatch. Disc
 remains accessible after owner authentication even with a mismatched header. Existing
 clients without the header retain protocol-1 behavior. The workbench footer and
 `omicos_runtime_capabilities` Agent tool expose the same contract.
+
+The pinned Harness rc.3 adapter has native unload/remount and WebServer-replacement
+coverage, including actual worker ownership, interrupted receipts and SSE cleanup.
+Concurrent startup requests share one handler/CSRF generation; retired routes fail
+before dispatch. Full plugin unload restarts an arbitrary Python namespace cold;
+carrier-only replacement preserves it. See [lifecycle evidence and remaining
+platform limits](docs/adr/0022-harness-generation-lifecycle.md).

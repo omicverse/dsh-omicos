@@ -1,3 +1,4 @@
+import {ownedRoute} from './owned-route.js'
 import type {} from './oss-service.js'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -77,11 +78,8 @@ export function apply(ctx: Context, config: Config): void {
     if (config.backend !== 'core') for (const dispose of registerOssTools(ctx, runtime, config.workspace)) yield dispose
   }, 'omicos: OSS scientific service')
   ctx.inject(['webServer', 'connection'], sub => {
-    let handler: ReturnType<typeof createOssHandler> | undefined
-    sub.effect(() => sub.webServer.register({ kind: 'prefix', path: '/omicos/oss', handler: async (req, res) => {
-      handler ??= createOssHandler(await runtime, { authorizePage: (req, res) => sub.connection.authorizeIndex(req, res), requestRejection: req => sub.connection.requestRejection(req) }, { backend: config.backend })
-      await handler(req, res)
-    } }))
+    const route=ownedRoute(async()=>createOssHandler(await runtime,{authorizePage:(req,res)=>sub.connection.authorizeIndex(req,res),requestRejection:req=>sub.connection.requestRejection(req)},{backend:config.backend}))
+    sub.effect(()=>{const unregister=sub.webServer.register({kind:'prefix',path:'/omicos/oss',handler:route.handle});return ()=>{route.close();unregister()}})
   })
   ctx.inject(['sessionController'], sub => {
     sub.effect(async function* () {

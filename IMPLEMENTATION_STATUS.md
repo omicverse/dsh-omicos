@@ -27,6 +27,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Every cloud mutation carries the rendered account/origin/login-generation identity and is rejected before dispatch when stale; automatic refresh never replays account-mismatched billing actions. Project execution and workspace resolution remain account-independent.
 - Cloud credentials are bound to their origin; changing cloud bases never forwards previously saved tokens.
 - Durable SSE scientific events with Last-Event-ID replay, slow-reader backpressure and snapshot recovery; frontend retry is restricted to pre-dispatch CSRF rejection and preserves operation IDs.
+- Harness route generations cache a single lazy handler promise, so concurrent startup requests share CSRF state. Retired dependency scopes reject pending/new requests with 503 before dispatch. Actual rc.3 Cordis/WebServer lifecycle tests cover unload/remount and optional carrier replacement. All 271 tests across 48 files passed under actual Node 22.13.1, with typechecks/build, clean packed install and the isolated published full Harness Web browser/approval/MCP/conversation regression also passing without page errors; see ADR 0022.
 - Python/R workers and environment probes inherit a deliberate runtime variable projection; additional scientific variables require explicit name allowlisting. A real Python test verifies a synthetic Host secret is absent.
 - Execution receipts and notebooks include actual interpreter/package versions and environment fingerprints without process environment variables or credentials.
 - License notices are generated from actual esbuild inputs for every inlined npm dependency and shipped with source/build/test scripts.
@@ -87,8 +88,7 @@ Verification at this checkpoint:
 
 ### Finish and harden M1
 
-- Additional profiles and platforms remain unverified. The pinned Web baseline has the browser coverage described above; hot reload/remount and further platform behavior still need checks.
-- Hot reload/remount behavior remains to be checked; published full Web profile mounting, owner authentication, mock model chat and actual main-window approval have browser coverage.
+- Further profiles/platforms and live module-watcher replacement with active Scientist sessions remain unverified. Pinned rc.3 Cordis unload/remount and actual WebServer replacement now have native integration coverage: route/tool/preset cleanup, real owned-process exit, unrelated runtime preservation, durable interrupted/completed receipts, memory/preferences, no automatic replay, SSE listener cleanup and startup/teardown ordering. This does not establish Windows/Electron or every active-agent graph. Published full Web profile mounting, owner authentication, mock model chat and actual main-window approval retain browser coverage.
 - Real external provider/BYOK service contracts and broader authored scientific Skill content beyond the four original bundled checklists. Installable versioned plaintext method packs and managed Pipeline bindings are implemented; executable external Skill/plugin migration and official resource authorization remain separate. The actual DSH controller/provider/approval path has isolated local mock coverage.
 - Official cross-device complete order listing remains to be verified; local durable recovery receipts are implemented. Paid-order records use the existing invoicing endpoint; no unverified remote pending-order listing API is invented.
 - Real staging account / payment sandbox / actual merchant callbacks and entitlement refresh contract.
