@@ -1,3 +1,4 @@
+import { runtimeCapabilities } from '../oss/capabilities.js'
 import { inspectAnnDataCode } from '../oss/anndata.js'
 import { listWorkspace } from '../oss/files.js'
 import { scientificSkill } from '../oss/skills.js'
@@ -37,6 +38,7 @@ export function registerOssTools(ctx: Context, runtime: Promise<OssRuntime>, wor
       }
       return decision
     }),
+    ctx.tools.register(defineTool({ name: 'omicos_runtime_capabilities', description: 'Discover the current public scientific protocol and implemented/optional/unavailable capabilities without starting interpreters or contacting the cloud. Configured interpreters are not proof that packages are installed.', parameters: {}, output, isConcurrencySafe: () => true, async execute() { return response(runtimeCapabilities(await runtime)) } })),
     ctx.tools.register(defineTool({ name: 'omicos_science_context', description: `Read project variables, project memory, recent executions and scientific guidance without launching Python. ${OMICOS_RESEARCH_GUIDANCE}`,
       parameters: { language: { type: 'string', enum: ['python', 'r'] } }, output, isConcurrencySafe: () => true,
       async execute(args, exec) { const service = await project(exec, args.language); const snapshot = service.snapshot(dshSessionIdOf(exec)); if (args.language === 'r') snapshot.memories = (await project(exec)).snapshot(dshSessionIdOf(exec)).memories; return response({ ...snapshot, executions: snapshot.executions.slice(-10).map(job => ({ id: job.id, state: job.state, createdAt: job.createdAt, artifacts: job.artifacts, output_tail: job.output.slice(-1000), error: job.error?.slice(-2000) })), guidance: OMICOS_RESEARCH_GUIDANCE }) } })),

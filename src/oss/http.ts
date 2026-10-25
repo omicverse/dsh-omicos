@@ -1,3 +1,5 @@
+import { runtimeCapabilities } from './capabilities.js'
+import { PROTOCOL_VERSION } from './types.js'
 import { FigureError } from './figure-types.js'
 import { artifactBytes } from './artifact-bytes.js'
 import { MemoryError } from './memory-types.js'
@@ -62,8 +64,11 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         const asset = await readFile(fileURLToPath(new URL(`../workbench.${extension}`, import.meta.url)))
         response.writeHead(200, { 'content-type': extension === 'js' ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8' }); response.end(asset); return
       }
+      if (method === 'GET' && path === '/omicos/oss/api/capabilities') { sendJson(response, 200, runtimeCapabilities(runtime, options.backend)); return }
+      const requestedProtocol = request.headers['x-omicos-protocol']
+      if (path.startsWith('/omicos/oss/api/') && requestedProtocol !== undefined && requestedProtocol !== String(PROTOCOL_VERSION)) { sendJson(response, 426, { error: 'Unsupported OmicOS scientific protocol; inspect capabilities before retrying', protocol: PROTOCOL_VERSION }); return }
       if (method === 'GET' && path === '/omicos/oss/api/session') {
-        sendJson(response, 200, { csrf: nonce, backend: options.backend || 'oss', account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: 1 }); return
+        sendJson(response, 200, { csrf: nonce, backend: options.backend || 'oss', account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: PROTOCOL_VERSION }); return
       }
       if (method !== 'GET' && request.headers['x-omicos-csrf'] !== nonce) throw new CloudError(403, 'Invalid CSRF token')
       const data = method === 'POST' ? await body(request, /\/(notebook-(create|save)|pipeline-define)$/.test(path) ? 2_100_000 : 300_000) : undefined

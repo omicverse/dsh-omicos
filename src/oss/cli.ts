@@ -1,8 +1,11 @@
 #!/usr/bin/env node
+import { runtimeVersion } from './capabilities.js'
 import { LocalOwnerAuth } from './http-auth.js'
 import { createServer } from 'node:http'
 import { OssRuntime } from './runtime.js'
 import { createOssHandler } from './http.js'
+
+if (process.argv.length === 3 && process.argv[2] === '--version') { console.log(runtimeVersion()); process.exit(0) }
 
 const options = new Map<string, string>()
 for (let index = 2; index < process.argv.length; index += 2) {

@@ -1,3 +1,4 @@
+import { RuntimeCapabilities } from './RuntimeCapabilities.js'
 import { CloudMemberships, CloudRenewalBanner, MEMBERSHIP_REFRESH } from './CloudMemberships.js'
 import { FigureStudioPane } from './FigureStudioPane.js'
 import { MemoryTreePane } from './MemoryTreePane.js'
@@ -197,5 +198,6 @@ export function OssWorkbench(): JSX.Element {
     <main>{error && <p role="alert" className="oss-error">{error} <button onClick={() => setError('')}>关闭提示</button></p>}{session?.account.login && <section className="oss-confirm"><h2>批准云账号登录</h2><p>在浏览器打开 <a href={session.account.login.verification_uri} target="_blank" rel="noreferrer">官方配对页面 ↗</a>，登录后输入配对码：</p><strong className="oss-pair-code">{session.account.login.user_code}</strong><p>本窗口会自动查询批准结果。插件不经手你的密码或验证码。</p></section>}
     {session?.account.logged_in && <CloudRenewalBanner key={`${session.account.server}:${session.account.generation}:${session.account.user?.id}`} account={session.account} onRenew={domain => { setDomain(domain); setStoreVisited(true); setPage('store'); requestAnimationFrame(() => document.getElementById('oss-cloud-catalog')?.scrollIntoView()) }} />}
     {!session ? <p>正在连接 OmicOS OSS…</p> : <>{storeVisited && <div hidden={page !== 'store'}><Store key={`${session.csrf}:${session.account.generation}:${session.account.user?.id || 'anonymous'}`} account={session.account} refresh={refresh} visible={page === 'store'} domain={domain} setDomain={setDomain} /></div>}<div hidden={page !== 'lab'}>{session.projects.length > 1 && <label>当前项目<select value={project?.id} onChange={event => setProjectId(event.target.value)}>{session.projects.map(item => <option key={item.id} value={item.id}>{item.workspace}</option>)}</select></label>}{project ? <Laboratory key={project.id} project={project} visible={page === 'lab'} /> : <p>请先从 Harness 项目会话运行 OmicOS 工具，或使用独立启动命令指定工作区。</p>}</div></>}
+    <RuntimeCapabilities />
     <footer>OmicOS OSS · 本地运行与云服务独立 · 科研数据由你掌握</footer></main></div>
 }

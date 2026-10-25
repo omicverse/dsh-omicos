@@ -79,3 +79,10 @@ it('keeps local workspace resolution independent of cloud account changes during
   expect(await api('open-session-project', { sessionId: 'same-workspace' })).toEqual({ id: 'local-project' })
   expect(attempts).toBe(2)
 })
+it('sends an explicit scientific protocol and refuses automatic fallback after version rejection', async () => {
+  const requests: RequestInit[] = []
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => { requests.push(init); return new Response(JSON.stringify({ error: 'Unsupported OmicOS scientific protocol; inspect capabilities before retrying', protocol: 2 }), { status: 426 }) }))
+  const { api } = await import('../src/client/oss-api.js')
+  await expect(api('project/fixture/execute', { operationId: 'never-dispatch', code: 'print(42)' })).rejects.toMatchObject({ status: 426 })
+  expect(requests).toHaveLength(1); expect((requests[0].headers as Record<string, string>)['x-omicos-protocol']).toBe('1')
+})

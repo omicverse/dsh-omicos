@@ -22,6 +22,8 @@ try {
   await access(join(installation, 'lib', 'third-party-standalone.txt'))
   await access(join(installation, 'lib', 'third-party-workbench.txt'))
   const manifest = JSON.parse(await readFile(join(installation, 'package.json'), 'utf8'))
+  const version = await execute(process.execPath, [join(installation, 'lib', 'oss', 'cli.js'), '--version'], { cwd: directory })
+  assert.equal(version.stdout.trim(), manifest.version)
   assert(!manifest.dependencies?.['@omicverse/omicos'] && !manifest.optionalDependencies?.['@omicverse/omicos'])
   await assert.rejects(access(join(directory, 'node_modules', '@omicverse', 'omicos')))
   child = spawn(process.execPath, [join(installation, 'lib', 'oss', 'cli.js'), '--workspace', join(directory, 'research'), '--state-dir', join(directory, 'state'), '--cloud-base', 'http://127.0.0.1:9', '--port', '0'], { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -38,6 +40,9 @@ try {
   assert.equal((await fetch(`${base}/omicos/oss/api/session`)).status, 401)
   const fetchHost = (url, init = {}) => fetch(url, { ...init, headers: { ...init.headers, authorization: `Bearer ${token}` } })
   const session = await (await fetchHost(`${base}/omicos/oss/api/session`)).json()
+  const capabilities = await (await fetchHost(`${base}/omicos/oss/api/capabilities`)).json()
+  assert.equal(capabilities.runtimeVersion, manifest.version)
+  assert.equal(capabilities.protocol.current, 1)
   assert.equal(session.projects.length, 1)
   const project = session.projects[0].id
   const response = await fetchHost(`${base}/omicos/oss/api/project/${project}/execute`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': session.csrf }, body: JSON.stringify({ code: 'answer = 40 + 2\nprint(answer)', operationId: 'packed-smoke', confirmed: true }) })

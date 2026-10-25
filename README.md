@@ -294,3 +294,14 @@ sandbox: trusted code has OS-user permissions and can deliberately escape the gr
 or leave external side effects. Windows and Electron-host lifecycle behavior are
 not yet verified. See [Pipeline decisions](docs/adr/0002-persistent-local-pipelines.md)
 and [worker ownership](docs/adr/0003-scientific-worker-ownership.md).
+
+## Capability discovery
+
+Run `omicos-oss --version` to inspect the installed version without opening a project.
+The owner-authenticated `GET /omicos/oss/api/capabilities` describes the runtime
+version, supported scientific protocol and implemented/optional/unverified features.
+It never starts interpreters or contacts cloud. Send `x-omicos-protocol: 1` to API
+requests; an unsupported explicit version returns HTTP 426 before dispatch. Discovery
+remains accessible after owner authentication even with a mismatched header. Existing
+clients without the header retain protocol-1 behavior. The workbench footer and
+`omicos_runtime_capabilities` Agent tool expose the same contract.

@@ -6,8 +6,8 @@ export class ApiError extends Error { constructor(readonly status: number, messa
 const identityOf = (account: CloudAccount) => JSON.stringify([account.server || null, account.logged_in, account.user?.id || null, account.generation ?? 0])
 export async function api<T>(path: string, data?: unknown, signal?: AbortSignal, expectedAccount?: CloudAccount): Promise<T> { return request<T>(path, data, signal, false, expectedAccount ? identityOf(expectedAccount) : accountIdentity) }
 async function request<T>(path: string, data: unknown, signal: AbortSignal | undefined, retried: boolean, expectedIdentity?: string): Promise<T> {
-  const response = await fetch(`/omicos/oss/api/${path}`, { cache: 'no-store', signal,
-    ...(data === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, 'x-omicos-account': encodeURIComponent(expectedIdentity || '') }, body: JSON.stringify(data) }) })
+  const response = await fetch(`/omicos/oss/api/${path}`, { cache: 'no-store', signal, headers: { 'x-omicos-protocol': '1' },
+    ...(data === undefined ? {} : { method: 'POST', headers: { 'x-omicos-protocol': '1', 'content-type': 'application/json', 'x-omicos-csrf': csrf, 'x-omicos-account': encodeURIComponent(expectedIdentity || '') }, body: JSON.stringify(data) }) })
   const body = await response.json()
   // This precise rejection occurs before body dispatch, so repeating it cannot duplicate a purchase/execution.
   // Never retry an unknown network result, payment error or arbitrary authorization failure.

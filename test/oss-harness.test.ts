@@ -18,6 +18,10 @@ it('cold-loads in real rc.3 Cordis/ToolRuntime; exposes scientific tools and fai
     const plugin = await ctx.plugin(Omicos, { workspace: directory, stateDir: join(directory, 'state'), backend: 'oss', upstreamBaseUrl: 'https://auth.omicos.cn', python: 'python3' })
     const names = ctx.tools.schemas().map(schema => schema.name)
     expect(names).toContain('omicos_run_python')
+    expect(names).toContain('omicos_runtime_capabilities')
+    const capabilities = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('capabilities'), name: 'omicos_runtime_capabilities', arguments: {} })
+    expect(JSON.stringify(capabilities)).toContain('omicos.capabilities/1')
+
     expect(names).toContain('omicos_notebook_state')
     expect(names).toContain('omicos_notebook_update')
     expect(names).toContain('omicos_notebook_run')

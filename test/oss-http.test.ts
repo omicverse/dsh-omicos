@@ -110,6 +110,18 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await fetchHost(`${base}/omicos/oss/api/${prefix}figure-artifact?id=${saved.id}`)).status).toBe(409)
   })
 
+  it('discovers capabilities under owner auth and rejects unsupported protocols before mutation', async () => {
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/capabilities`)).status).toBe(401)
+    const capabilityResponse = await fetchHost(`${base}/omicos/oss/api/capabilities`, { headers: { 'x-omicos-protocol': '999' } })
+    expect(capabilityResponse.status).toBe(200); const capabilities = await capabilityResponse.json() as any
+    expect(capabilities.protocol.current).toBe(1)
+    expect(capabilities.features.find((item: any) => item.id === 'runtime.provisioning').state).toBe('unavailable')
+    expect((await fetchHost(`${base}/omicos/oss/api/session`, { headers: { 'x-omicos-protocol': '999' } })).status).toBe(426)
+    expect((await post('login', {}, { 'x-omicos-protocol': '2' })).status).toBe(426)
+    expect(seen).toHaveLength(0)
+    expect((await fetchHost(`${base}/omicos/oss/api/session`, { headers: { 'x-omicos-protocol': '1' } })).status).toBe(200)
+  })
+
   it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {
     const core = createServer(createOssHandler(runtime, owner, { backend: 'core' })); const address = await listen(core)
     try {
