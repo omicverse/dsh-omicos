@@ -42,6 +42,11 @@ jobs:
           pnpm test:browser
         env:
           OMICOS_SCIENCE_TEST_PYTHON: python
+      - name: Published Harness Web integration
+        if: matrix.node == '24'
+        run: pnpm test:harness-browser
+        env:
+          OMICOS_SCIENCE_TEST_PYTHON: python
       - uses: actions/upload-artifact@v4
         if: always() && matrix.node == '24'
         with:

@@ -86,6 +86,9 @@ The OSS tool surface is:
 - `omicos_inspect_anndata`: approved metadata-only audit without changing expression values.
 - `omicos_scientific_skill`: public AnnData/QC/differential-expression/figure checklists.
 - `omicos_environment`: interpreter and installed scientific package metadata.
+- `omicos_notebook_state`: list/read/export persistent Notebook documents and execution references.
+- `omicos_notebook_update`: approved create/import/save with exact revision checks.
+- `omicos_notebook_run`: approved saved-cell execution with stable retry IDs.
 - `omicos_cloud_store`: cloud account and store/workspace entry points; no payment tool.
 
 Python and memory-write tools use Harness's pre-execution approval mechanism.
@@ -207,3 +210,10 @@ scripts and source are included in the package. New OSS runtime code does not co
 Core implementation files. Official cloud service availability, paid resources,
 third-party data and models have their own terms; they are not included by the
 plugin license. Review each proposed Core extraction before public distribution.
+
+The full published Harness Web integration can be reproduced with
+`pnpm test:harness-browser` (Playwright Chromium must be installed). It creates
+an isolated temporary DSH profile, installs this local plugin, uses a local synthetic
+model key and model server, and verifies owner authentication, the OmicOS entry,
+fixed Scientist chat, and approval in the actual main window before real Python
+execution. It does not use your normal DSH profile or call a paid model.

@@ -34,14 +34,15 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; Node 22.13.1 and current local Node runtime exercised.
+- TypeScript host/client typecheck passed; the complete 139-test scientific suite passed on actual Node 22.13.1 and current local Node.
 - 139 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
-- Actual isolated Harness Web rc.3 profile: unauthenticated workbench/page/assets/session return 401; after Harness cookie bootstrap all return 200. Full model/approval UI flows remain unverified.
+- Actual isolated Harness Web rc.3 profile: unauthenticated workbench/page/assets/session return 401; after Harness cookie bootstrap all return 200. Full mock-provider chat and main-window approval flow verified: no file before approval; real Python writes 42 after Allow once; assistant history survives reload.
 - GitHub Actions workflow added for Node 22.13.1/24, scientific fixtures, clean package and browser smoke; remote CI execution is not yet claimed.
+- `pnpm test:harness-browser` creates a temporary profile with the published rc.3 CLI, synthetic local model and isolated credentials; verifies the actual OmicOS tab opens its project workbench, and tests main-window approval before Python side effects. Added to the Node 24 CI job; remote CI results are not yet claimed.
 - Reproducible browser/package scripts are checked in under `scripts/`; screenshots now default to ignored `test-results/oss-browser/`. No real payments were made.
 
 ## Still to implement / verify (not claimed complete)
@@ -49,8 +50,8 @@ Verification at this checkpoint:
 ### Finish and harden M1
 
 - Full profile browser coverage remains to be checked; the complete suite passed on actual Node 22.13.1, and a packed standalone installation passed without Harness/private Core.
-- Full DSH web-profile/browser mounting and hot reload, beyond actual Host service cold-load tests.
-- Actual DSH chat/provider/approval browser integration validation; full scientific Skill migration beyond the four bundled checklists.
+- Hot reload/remount behavior remains to be checked; published full Web profile mounting, owner authentication, mock model chat and actual main-window approval have browser coverage.
+- Real external provider/BYOK service contracts and full scientific Skill migration beyond the four bundled checklists. The actual DSH controller/provider/approval path has isolated local mock coverage.
 - Durable payment/order listing beyond the current account-scoped recent-order pointer; verify upstream listing APIs.
 - Real staging account / payment sandbox / actual merchant callbacks and entitlement refresh contract.
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.
