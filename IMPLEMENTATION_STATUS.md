@@ -20,6 +20,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
 - Official per-domain membership panel and on-open cloud expiry banner with dismiss/renewal-to-catalog actions. Paid/trial/promo/admin/seat sources are labelled; server expiry/reminder states, not token TTL or client inference, drive the display. Missing/malformed/unsupported reads remain unknown rather than free. Explicit-domain cancel/restore preflights the acknowledged domain and sends it in the actual server query contract; wrong/ignored domains reject before POST. Reads and UI quote/detail results are fenced against account/domain/selection changes. Browser fixtures verify cancellation/restoration with no checkout and deliberately delayed old-domain detail/quote responses.
 - Paid-order/invoice UI, explicit invoice application/withdrawal, live lab pricing and owner-filtered seat management/top-up payment; browser flow tested against an isolated mock cloud.
+- Approved AnnData explorer: existing embedding scatter, numeric histograms and category counts; explicit X/layer/raw feature source, typed obs coloring, dimensions, deterministic seed and 1–10000 uniform sample limit. Sparse/backed reads use 128-row chunks; no full X densification, preprocessing or implicit reductions. Missing/non-finite data and sample fingerprints are recorded; >20 sampled categories and ambiguous identifiers reject. Authenticated targeted execution reads and generation fencing back the workbench/Agent tools. Real 0.10.9 and isolated 0.12.19 AnnData tests preserve X/layers/raw/obs/obsm and a read-only H5AD file hash; browser uses the new environment.
 - Workspace data browser, bounded text previews, prepared CSV/TSV/H5AD/RDS loading cells and approved AnnData metadata inspection; real AnnData tests verify X remains unchanged.
 - DSH entry resolves the active session workspace through the formal Host controller instead of silently opening the Host process working directory.
 - Every cloud mutation carries the rendered account/origin/login-generation identity and is rejected before dispatch when stale; automatic refresh never replays account-mismatched billing actions. Project execution and workspace resolution remain account-independent.
@@ -42,11 +43,13 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the complete 183-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
-- 183 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the complete 187-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
+- 187 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Pipeline flow fixed a definition, persisted its background run over page reload, approved a human gate, and verified actual output/journal. Native Node 22.13.1 tests cover checkpoint restoration after Host restart, changed-file/environment blocking, namespace isolation, true cancellation and interrupted-work deduplication.
 - Browser memory flow saves a proposal, confirms it, inspects immutable history, reloads it and withdraws it; full Harness mock-provider requests contain active shared facts and exclude private/unconfirmed notes.
+- AnnData browser flow inspects the actual shared Python object, selects an existing embedding/obs field, approves a bounded plot and verifies real PNG plus sample evidence. Cross-version fixtures exercised AnnData 0.10.9 and a temporary Python 3.11 environment with AnnData 0.12.19, pandas 2.3.3, NumPy 2.4.6 and Matplotlib 3.11.2; the existing scientific environment was not modified.
+- Partial Python figures are captured under their failed execution, then closed; a following successful cell cannot inherit the previous failed cell's open figure. Real figure tests preserve failed-state provenance and verify no stale artifacts.
 - Browser Figure Studio flow executes a real Notebook plot, approves its source-pinned figure, downloads an assessed provenance manifest, revises to draft, compares a prior caption and restores the document after reload. Actual Python/Pipeline PNG/PDF/SVG source downloads survive runtime restart without launching an interpreter.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
@@ -76,7 +79,7 @@ Verification at this checkpoint:
 
 ### M2–M4 capability migration
 
-- Richer dataset/AnnData charts, upload/import workflows and broader R environment provisioning/platform matrix.
+- Broader dataset chart families, upload/import workflows and R environment provisioning/platform matrix. Existing AnnData embedding/obs/feature previews and approved metadata inspection are implemented.
 - Broader Figure Studio layout/composition/export workflows and isolated scientific review; immutable source curation, human review/version comparison and Notebook local PNG output rendering are implemented.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
 - Agent delegation constraints and scientific plans/approvals; global cross-project memory/dossier indexing. Project-local session/long-term memory tree and explicit consolidation are implemented.

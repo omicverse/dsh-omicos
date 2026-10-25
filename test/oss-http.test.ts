@@ -122,6 +122,21 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await fetchHost(`${base}/omicos/oss/api/session`, { headers: { 'x-omicos-protocol': '1' } })).status).toBe(200)
   })
 
+  it('requires AnnData plotting approval and fences a lost namespace before starting a new worker', async () => {
+    const reference = (await runtime.list())[0]; const project = await runtime.byId(reference.id); const prefix = `project/${reference.id}/`
+    const settings = { variable: 'adata', embedding: 'X_umap', color: 'none', maxPoints: 5 }
+    expect((await post(`${prefix}anndata-plot`, { settings, operationId: 'not-approved' })).status).toBe(400)
+    expect((await post(`${prefix}anndata-plot`, { settings: { ...settings, maxPoints: 10001 }, operationId: 'bad-plot', confirmed: true })).status).toBe(400)
+    expect(project.snapshot().executions).toHaveLength(0)
+    const request = { settings, operationId: 'lost-generation', expectedGeneration: '00000000-0000-4000-8000-000000000000', confirmed: true }
+    const response = await post(`${prefix}anndata-plot`, request); expect(response.status).toBe(200); const submitted = await response.json() as any
+    const duplicate = await (await post(`${prefix}anndata-plot`, request)).json() as any; expect(duplicate.id).toBe(submitted.id)
+    const receipt = await (await fetchHost(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}`)).json() as any
+    expect(receipt.state).toBe('interrupted'); expect(project.snapshot().kernel.state).toBe('cold')
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}`)).status).toBe(401)
+    expect((await fetchHost(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}&language=r`)).status).toBe(404)
+  })
+
   it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {
     const core = createServer(createOssHandler(runtime, owner, { backend: 'core' })); const address = await listen(core)
     try {

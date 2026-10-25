@@ -35,6 +35,15 @@ conflicts require reloading and merging, so another window's edits are not overw
 Imported rich outputs are retained for export with an unverified marker and are
 never executed as browser HTML. The current import limit is 2 MB / 500 cells.
 
+The AnnData explorer inspects the current Python object, then previews an existing
+embedding, obs distribution or one explicitly selected X/layer/raw feature. Every
+inspection/plot requires approval. Seeded uniform sampling is capped at 10000 rows;
+sparse/backed reads use small row chunks and never densify the full expression
+matrix. More than 20 sampled categories reject. Missing coordinates/colors and the
+preview-subset hash are recorded in the execution; no normalization, logarithm,
+filtering or embedding computation is implicit. See
+[AnnData exploration boundaries](docs/adr/0008-bounded-anndata-exploration.md).
+
 Figure Studio curates actual Python/R and Pipeline artifacts with versioned captions,
 declared methods/data references and explicit human review. Every edit resets review
 to draft; old captions and assessments remain in history. Download the original figure

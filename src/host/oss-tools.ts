@@ -1,5 +1,5 @@
 import { runtimeCapabilities } from '../oss/capabilities.js'
-import { inspectAnnDataCode } from '../oss/anndata.js'
+import { inspectAnnDataCode, plotAnnDataCode } from '../oss/anndata.js'
 import { listWorkspace } from '../oss/files.js'
 import { scientificSkill } from '../oss/skills.js'
 import { inspectEnvironment, inspectREnvironment } from '../oss/environment.js'
@@ -33,7 +33,7 @@ export function registerOssTools(ctx: Context, runtime: Promise<OssRuntime>, wor
     ctx.on('tools/pre-execute', async (exec, next) => {
       const decision = await next()
       if (decision.kind !== 'allow') return decision
-      if (['omicos_run_python', 'omicos_run_r', 'omicos_inspect_anndata', 'omicos_project_memory_write', 'omicos_notebook_update', 'omicos_notebook_run', 'omicos_pipeline_define', 'omicos_pipeline_start', 'omicos_memory_propose', 'omicos_memory_transition', 'omicos_figure_save'].includes(exec.name) || (exec.name === 'omicos_pipeline_control' && (exec.arguments as { action?: string })?.action !== 'cancel')) {
+      if (['omicos_run_python', 'omicos_run_r', 'omicos_inspect_anndata', 'omicos_plot_anndata', 'omicos_project_memory_write', 'omicos_notebook_update', 'omicos_notebook_run', 'omicos_pipeline_define', 'omicos_pipeline_start', 'omicos_memory_propose', 'omicos_memory_transition', 'omicos_figure_save'].includes(exec.name) || (exec.name === 'omicos_pipeline_control' && (exec.arguments as { action?: string })?.action !== 'cancel')) {
         return { kind: 'ask', reason: `OmicOS scientific operation requires approval: ${exec.name}\n${JSON.stringify(exec.arguments).slice(0, 4000)}` }
       }
       return decision
@@ -61,6 +61,8 @@ export function registerOssTools(ctx: Context, runtime: Promise<OssRuntime>, wor
       async execute(args, exec) { const service = await project(exec, args.language); await service.cancel(args.id); return response(service.get(args.id)) } })),
     ctx.tools.register(defineTool({ name: 'omicos_project_memory_write', description: 'Save a user-confirmed project fact with an explicit source. Never store guessed facts as evidence. Empty text withdraws the named memory while preserving revision history.', parameters: { id: { type: 'string', required: true }, text: { type: 'string', required: true }, source: { type: 'string', required: true } }, output, isConcurrencySafe: () => false,
       async execute(args, exec) { const service = await project(exec); await service.remember(args.id, args.text, args.source, { sessionId: dshSessionIdOf(exec), actor: 'harness:approved-legacy', owner: false }); return response({ saved: true }) } })),
+    ctx.tools.register(defineTool({ name: 'omicos_plot_anndata', description: 'Plot an existing AnnData embedding or bounded obs/feature distribution without preprocessing or changing X/layers/metadata. settings_json: variable,plot(embedding/distribution),embedding?,axes:[0,1],color(none/obs/feature),field?,source(X/layer/raw),layer?,maxPoints(1..10000),seed. Uses deterministic uniform observation sampling; reads at most two embedding columns and one selected expression column. More than 20 sampled categories reject. Never computes reductions, normalizes, logs or infers replication. Human approval required; optional expected generation fences a lost kernel.', parameters: { settings_json: { type: 'string', required: true }, operation_id: { type: 'string', required: true }, expected_generation: { type: 'string' } }, output, isConcurrencySafe: () => false,
+      async execute(args, exec) { exec.signal.throwIfAborted(); const service = await project(exec); const job = await service.submit(plotAnnDataCode(JSON.parse(args.settings_json)), args.operation_id, dshSessionIdOf(exec) || 'shared', args.expected_generation); return response(await waitFor(service, job.id, exec.signal)) } })),
     ctx.tools.register(defineTool({ name: 'omicos_workspace_files', description: 'List project data files without reading contents, following external symlinks or serving Host credentials. Hidden/runtime folders are excluded. Returns at most 300 entries per directory.', parameters: { path: { type: 'string' } }, output, isConcurrencySafe: () => true,
       async execute(args, exec) { return response(await listWorkspace((await project(exec)).workspace, args.path || '', (await runtime).sensitiveFiles)) } })),
     ctx.tools.register(defineTool({ name: 'omicos_inspect_anndata', description: 'Inspect an existing AnnData variable: shapes, raw/layers, metadata columns, embeddings, backing and unique identifiers. Does not normalize, densify, compute whole-matrix statistics or claim preprocessing state from markers alone. Approval required.', parameters: { variable: { type: 'string', required: true }, operation_id: { type: 'string', required: true } }, output, isConcurrencySafe: () => false,

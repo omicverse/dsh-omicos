@@ -9,6 +9,7 @@ export function runtimeCapabilities(runtime: OssRuntime, backend: 'oss' | 'core'
   const features: RuntimeCapability[] = [
     { id: 'science.python', state: 'configured', description: 'Persistent local Python kernel; selected interpreter/package availability requires explicit environment diagnostics.', requires: ['python'], limits: ['Trusted OS-user code; not a sandbox', 'Exclusive project owner across Host processes'] },
     { id: 'science.r', state: 'configured', description: 'Independent persistent R namespace.', requires: ['Rscript', 'jsonlite'], limits: ['Installation is explicit; no automatic dependency provisioning'] },
+    { id: 'science.anndata-explorer', state: 'available', description: 'Approved, non-mutating existing embedding and obs/feature distribution previews.', requires: ['anndata', 'numpy', 'pandas', 'scipy', 'matplotlib'], limits: ['Up to 10000 uniformly sampled observations', 'At most 20 sampled categories', 'No implicit reductions or transforms', 'Preview subset hashes are not full-input provenance'] },
     { id: 'science.environment', state: 'available', description: 'Explicit interpreter/package diagnostics and execution environment fingerprints.' },
     { id: 'science.execution', state: 'available', description: 'Durable SQLite execution receipts, stable operation IDs and cancellation.', limits: ['Unknown/interrupted work does not replay automatically', 'Side effects are not exactly once'] },
     { id: 'science.events', state: 'available', description: 'Authenticated SSE with durable event cursors and reconnect replay.' },

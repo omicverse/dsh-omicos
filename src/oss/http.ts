@@ -8,7 +8,7 @@ import { NotebookError } from './notebooks.js'
 import type { HttpOwnerAuth } from './http-auth.js'
 import { streamScientificEvents } from './events.js'
 import { listWorkspace, previewWorkspaceFile } from './files.js'
-import { inspectAnnDataCode } from './anndata.js'
+import { AnnDataError, inspectAnnDataCode, plotAnnDataCode } from './anndata.js'
 import { inspectEnvironment, inspectREnvironment } from './environment.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -129,9 +129,17 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         else if (action === 'files' && method === 'GET') result = await listWorkspace(parent.workspace, url.searchParams.get('path') || '', runtime.sensitiveFiles)
         else if (action === 'file-preview' && method === 'GET') result = await previewWorkspaceFile(parent.workspace, url.searchParams.get('path') || '', runtime.sensitiveFiles)
         else if (action === 'anndata' && method === 'POST') {
+          if (language !== 'python') throw new AnnDataError(400, 'AnnData inspection uses the Python kernel')
           if (data.confirmed !== true) throw new CloudError(400, 'Explicit inspection approval required')
           result = await parent.submit(inspectAnnDataCode(String(data.variable || '')), String(data.operationId || ''), 'workbench:anndata-inspection')
         }
+        else if (action === 'anndata-plot' && method === 'POST') {
+          if (language !== 'python') throw new AnnDataError(400, 'AnnData plotting uses the Python kernel')
+          if (data.confirmed !== true) throw new AnnDataError(400, 'Explicit AnnData plotting approval required')
+          if (data.expectedGeneration !== undefined && (typeof data.expectedGeneration !== 'string' || !/^[a-f0-9-]{36}$/.test(data.expectedGeneration))) throw new AnnDataError(400, 'Invalid expected kernel generation')
+          result = await parent.submit(plotAnnDataCode(data.settings), String(data.operationId || ''), 'workbench:anndata-plot', data.expectedGeneration)
+        }
+        else if (action === 'execution' && method === 'GET') { const job = parent.receipt(url.searchParams.get('id') || ''); if (!job || job.language !== language) throw new AnnDataError(404, 'Project execution receipt not found'); result = job }
         else if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
           if (!runtime.chat) {
             if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: options.backend === 'core' ? '当前为 Core 兼容后端，请在 Harness 对话中使用原有委派工具；启用 OSS 后端后可连接项目专属 Scientist 会话。' : '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
@@ -228,7 +236,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
       sendJson(response, 200, result)
     } catch (error) {
       if (response.writableEnded) return
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

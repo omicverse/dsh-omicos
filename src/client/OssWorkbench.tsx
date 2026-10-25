@@ -1,3 +1,4 @@
+import { AnnDataExplorer } from './AnnDataExplorer.js'
 import { RuntimeCapabilities } from './RuntimeCapabilities.js'
 import { CloudMemberships, CloudRenewalBanner, MEMBERSHIP_REFRESH } from './CloudMemberships.js'
 import { FigureStudioPane } from './FigureStudioPane.js'
@@ -163,6 +164,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
     {(error || streamError) && <p role="alert" className="oss-error">{error || streamError}</p>}
     <ScienceChat projectId={project.id} />
     <DataBrowser projectId={project.id} prepare={(nextLanguage, source) => { setLanguage(nextLanguage); setCode(source) }} />
+    <AnnDataExplorer projectId={project.id} visible={visible} variables={language === 'python' ? snapshot?.variables || [] : []} />
     <FigureStudioPane key={`figures:${project.id}`} projectId={project.id} visible={visible} />
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />
     <PipelinePane projectId={project.id} visible={visible} />

@@ -19,6 +19,10 @@ it('cold-loads in real rc.3 Cordis/ToolRuntime; exposes scientific tools and fai
     const names = ctx.tools.schemas().map(schema => schema.name)
     expect(names).toContain('omicos_run_python')
     expect(names).toContain('omicos_runtime_capabilities')
+    expect(names).toContain('omicos_plot_anndata')
+    const deniedPlot = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('plot-denied'), name: 'omicos_plot_anndata', arguments: { settings_json: '{}', operation_id: 'unapproved-plot' } })
+    expect(JSON.stringify(deniedPlot)).toMatch(/denied|approval/i)
+
     const capabilities = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('capabilities'), name: 'omicos_runtime_capabilities', arguments: {} })
     expect(JSON.stringify(capabilities)).toContain('omicos.capabilities/1')
 
