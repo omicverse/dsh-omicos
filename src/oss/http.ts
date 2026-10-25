@@ -1,3 +1,4 @@
+import {searchProjects,ProjectSearchError} from './project-search.js'
 import {streamChat} from './chat-events.js'
 import { DossierError } from './dossier-types.js'
 import { AssemblyError } from './assembly-types.js'
@@ -101,6 +102,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         const project = await runtime.project(workspace)
         result = (await runtime.list()).find(item => item.workspace === project.workspace)
       }
+      else if(path==='/omicos/oss/api/project-search'&&method==='GET'){const privateFlag=url.searchParams.get('private');if(privateFlag!==null&&!['true','false'].includes(privateFlag))throw new CloudError(400,'Invalid private search flag');result=await searchProjects(await runtime.list(),url.searchParams.get('q')||'',privateFlag==='true',url.searchParams.get('cursor')||undefined)}
       else if (path === '/omicos/oss/api/login' && method === 'POST') result = await cloud.beginLogin()
       else if (path === '/omicos/oss/api/login/poll' && method === 'POST') result = await cloud.pollLogin()
       else if (path === '/omicos/oss/api/logout' && method === 'POST') { await cloud.logout(); result = cloud.snapshot() }
@@ -367,7 +369,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof AssemblyError || error instanceof PublicationError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof ProjectSearchError || error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof AssemblyError || error instanceof PublicationError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

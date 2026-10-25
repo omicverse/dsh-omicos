@@ -62,6 +62,16 @@ describe('scientific workbench and commerce boundary', () => {
     expect(calls).toHaveLength(0);expect(await (await fetchHost(`${path}?through=50&before=20`)).json()).toMatchObject({throughSeq:50,nextBefore:10})
     expect(calls).toEqual([{workspace:project.workspace,options:{throughSeq:50,beforeSeq:20}}]);expect((await (await fetchHost(`${base}/omicos/oss/api/project/${id}/chat`)).json() as any).history).toBe(true)
   })
+  it('requires owner authentication for cross-project search and rejects invalid scope/cursors',async()=>{
+    const path=`${base}/omicos/oss/api/project-search`
+    expect((await fetch(`${path}?q=Reference`)).status).toBe(401)
+    expect((await fetchHost(`${path}?q=`)).status).toBe(400)
+    expect((await fetchHost(`${path}?q=Reference&private=all`)).status).toBe(400)
+    expect((await fetchHost(`${path}?q=Reference&cursor=forged`)).status).toBe(409)
+    const project=await runtime.project(join(directory,'search-source')),node=project.memory.propose({title:'Reference',text:'Private genome',kind:'fact',scope:'session',sessionId:'other',sources:[{kind:'user',ref:'Fixture'}],operationId:'search-note'},{owner:true,actor:'user:test'})
+    let cursor:string|undefined,found=false;do{const result=await(await fetchHost(`${path}?q=genome&private=true${cursor?`&cursor=${cursor}`:''}`)).json() as any;found||=result.hits.some((hit:any)=>hit.id===node.id);cursor=result.next}while(cursor)
+    expect(found).toBe(true);expect(project.kernelState().state).toBe('cold')
+  })
   it('denies unauthenticated pages, assets, API snapshots, writes and event streams before exposing state', async () => {
     const project = (await runtime.project(directory)).id
     for (const path of ['', '/store', '/workbench.js', '/api/session', `/api/project/${project}/snapshot`, `/api/project/${project}/events`]) {
