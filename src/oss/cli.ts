@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { LocalOwnerAuth } from './http-auth.js'
 import { createServer } from 'node:http'
 import { OssRuntime } from './runtime.js'
 import { createOssHandler } from './http.js'
@@ -14,11 +15,12 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invali
 const runtime = await OssRuntime.open({ python: options.get('--python'), rscript: options.get('--rscript'), workerEnvNames: (options.get('--pass-env') || '').split(',').map(name => name.trim()).filter(Boolean), cloudBase: options.get('--cloud-base'), stateDir: options.get('--state-dir') })
 const initial = await runtime.project(options.get('--workspace') || process.cwd())
 const initialId = (await runtime.list()).find(project => project.workspace === initial.workspace)!.id
-const server = createServer(createOssHandler(runtime))
+const auth = await LocalOwnerAuth.open(runtime.stateDirectory)
+const server = createServer(createOssHandler(runtime, auth))
 server.requestTimeout = 30_000; server.headersTimeout = 15_000
 server.listen(port, '127.0.0.1', () => {
   const address = server.address()
-  console.log(`OmicOS OSS: http://127.0.0.1:${typeof address === 'object' ? address?.port : port}/omicos/oss?project=${initialId}`)
+  console.log(`OmicOS OSS: ${auth.authenticatedUrl(`http://127.0.0.1:${typeof address === 'object' ? address?.port : port}/omicos/oss?project=${initialId}`)}`)
   console.log('Local Python executes trusted code with your OS permissions. Dependencies are never installed automatically.')
 })
 let closing = false

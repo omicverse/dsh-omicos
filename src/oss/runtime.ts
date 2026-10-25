@@ -29,6 +29,8 @@ export class OssRuntime {
     }
     return runtime
   }
+  get stateDirectory(): string { return this.stateDir }
+  get sensitiveFiles(): readonly string[] { return [...this.cloud.sensitiveFiles, join(this.stateDir, 'http-owner.json'), join(this.stateDir, 'projects.json')] }
   private saveRegistry(): Promise<void> {
     const snapshot = { protocol: 1, projects: [...this.known.values()] }
     const write = this.registryWrites.then(() => writeJson(join(this.stateDir, 'projects.json'), snapshot))

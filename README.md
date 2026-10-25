@@ -22,8 +22,10 @@ pnpm build
 pnpm start:oss --workspace /absolute/path/to/research-project
 ```
 
-Open `http://127.0.0.1:18620/omicos/oss`. The store has its own window at
-`http://127.0.0.1:18620/omicos/oss/store`.
+Open the full launch link printed by the command. It contains a private, per-process
+owner credential that is exchanged for an HttpOnly browser cookie and removed from
+the address bar. Keep this link private. The store opens from the workbench.
+When hosted by Harness, both windows use its existing local owner authentication.
 
 Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
 `--rscript /path/to/Rscript`, `--pass-env NCBI_API_KEY,CUSTOM_DATA_VAR`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.

@@ -84,6 +84,8 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
       json(res, 403, { error: 'loopback only' })
       return
     }
+    const rejection = ctx.get('connection')?.requestRejection(req) ?? (ctx.get('connection') === undefined ? 401 : undefined)
+    if (rejection !== undefined) { json(res, rejection, { error: 'Local owner authentication required' }); return }
     const path = (req.url ?? '').split('?')[0]
     const method = (req.method ?? 'GET').toUpperCase()
     try {

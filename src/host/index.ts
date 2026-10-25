@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { HarnessScienceChat } from './oss-chat.js'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -67,10 +68,10 @@ export function apply(ctx: Context, config: Config): void {
     yield async () => { await (await runtime).dispose() }
     if (config.backend !== 'core') for (const dispose of registerOssTools(ctx, runtime, config.workspace)) yield dispose
   }, 'omicos: OSS scientific service')
-  ctx.inject(['webServer'], sub => {
+  ctx.inject(['webServer', 'connection'], sub => {
     let handler: ReturnType<typeof createOssHandler> | undefined
     sub.effect(() => sub.webServer.register({ kind: 'prefix', path: '/omicos/oss', handler: async (req, res) => {
-      handler ??= createOssHandler(await runtime)
+      handler ??= createOssHandler(await runtime, { authorizePage: (req, res) => sub.connection.authorizeIndex(req, res), requestRejection: req => sub.connection.requestRejection(req) })
       await handler(req, res)
     } }))
   })
@@ -79,7 +80,7 @@ export function apply(ctx: Context, config: Config): void {
       const service = await runtime
       const chat = new HarnessScienceChat(sub.sessionController)
       service.chat = chat
-      service.resolveSessionWorkspace = (sessionId, signal) => chat.workspaceForSession(sessionId, signal)
+      service.resolveSessionWorkspace = async (sessionId, signal) => { const cwd = await chat.workspaceForSession(sessionId, signal); return config.workspace || cwd }
       yield () => { if (service.chat === chat) { service.chat = undefined; service.resolveSessionWorkspace = undefined } }
     }, 'omicos: Harness conversation bridge')
   })
@@ -132,7 +133,7 @@ export function apply(ctx: Context, config: Config): void {
     }, 'omicos: commands')
   })
 
-  ctx.inject(['webServer'], (sub) => {
+  ctx.inject(['webServer', 'connection'], (sub) => {
     sub.effect(function* () {
       for (const dispose of registerOmicosRoutes(sub, { account, activity, pool })) {
         yield dispose

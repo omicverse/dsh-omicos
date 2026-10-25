@@ -29,13 +29,16 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
 - Scoped OmicOS Scientist preset and four original public scientific checklists; real Loader/preset mounting tested.
 
+- Workbench pages, APIs, assets and SSE require owner authentication before exposing state. Harness uses its connection service; standalone launch links establish origin-bound signed HttpOnly cookies using private persisted signing state.
+
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed; Node 22.13.1 and current local Node runtime exercised.
-- 131 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 135 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
+- Actual isolated Harness Web rc.3 profile: unauthenticated workbench/page/assets/session return 401; after Harness cookie bootstrap all return 200. Full model/approval UI flows remain unverified.
 - GitHub Actions workflow added for Node 22.13.1/24, scientific fixtures, clean package and browser smoke; remote CI execution is not yet claimed.
 - Reproducible browser/package scripts are checked in under `scripts/`; screenshots now default to ignored `test-results/oss-browser/`. No real payments were made.
 

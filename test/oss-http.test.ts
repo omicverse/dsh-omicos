@@ -4,13 +4,14 @@ import { mkdtemp, rm, stat, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { OssRuntime } from '../src/oss/runtime.js'
+import { LocalOwnerAuth } from '../src/oss/http-auth.js'
 import { createOssHandler } from '../src/oss/http.js'
 import { CloudService } from '../src/oss/cloud.js'
 
 const listen = (server: Server): Promise<string> => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(server.address() as any).port}`)))
 const close = (server: Server): Promise<void> => new Promise(resolve => { server.close(() => resolve()); server.closeAllConnections() })
 describe('scientific workbench and commerce boundary', () => {
-  let directory: string; let runtime: OssRuntime; let cloud: Server; let server: Server; let base: string
+  let directory: string; let runtime: OssRuntime; let cloud: Server; let server: Server; let base: string; let owner: LocalOwnerAuth
   let approvals = false; let paid = false; let orders = 0; let csrf = ''; const seen: Array<{ path: string; body: any; authorization?: string }> = []
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'omicos-oss-http-'))
@@ -38,11 +39,21 @@ describe('scientific workbench and commerce boundary', () => {
     const cloudBase = await listen(cloud)
     runtime = await OssRuntime.open({ cloudBase, stateDir: join(directory, 'state') })
     await runtime.project(join(directory, 'project'))
-    server = createServer(createOssHandler(runtime)); base = await listen(server)
-    csrf = (await (await fetch(`${base}/omicos/oss/api/session`)).json() as any).csrf
+    owner = new LocalOwnerAuth(); server = createServer(createOssHandler(runtime, owner)); base = await listen(server)
+    csrf = (await (await fetchHost(`${base}/omicos/oss/api/session`)).json() as any).csrf
   })
   afterEach(async () => { await close(server); await runtime.dispose(); await close(cloud); await rm(directory, { recursive: true, force: true }) })
-  const post = (path: string, data: unknown, headers: Record<string, string> = {}) => fetch(`${base}/omicos/oss/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, ...headers }, body: JSON.stringify(data) })
+  it('denies unauthenticated pages, assets, API snapshots, writes and event streams before exposing state', async () => {
+    const project = (await runtime.project(directory)).id
+    for (const path of ['', '/store', '/workbench.js', '/api/session', `/api/project/${project}/snapshot`, `/api/project/${project}/events`]) {
+      expect((await globalThis.fetch(`${base}/omicos/oss${path}`)).status).toBe(401)
+    }
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/login`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf }, body: '{}' })).status).toBe(401)
+    expect(seen).toHaveLength(0)
+  })
+
+  const fetchHost = (url: string, init: RequestInit = {}) => globalThis.fetch(url, { ...init, headers: { authorization: `Bearer ${owner.launchToken}`, ...init.headers } })
+  const post = (path: string, data: unknown, headers: Record<string, string> = {}) => fetchHost(`${base}/omicos/oss/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': csrf, ...headers }, body: JSON.stringify(data) })
   const login = async () => { approvals = true; expect((await post('login', {})).status).toBe(200); expect((await post('login/poll', {})).status).toBe(200) }
   it('blocks cross-origin, DNS rebinding and unauthenticated mutations', async () => {
     expect((await post('logout', {}, { origin: 'https://attacker.invalid' })).status).toBe(403)
@@ -54,7 +65,7 @@ describe('scientific workbench and commerce boundary', () => {
   })
   it('uses device pairing without Core, keeps tokens out of the browser and writes owner-only credentials', async () => {
     await login()
-    const response = await (await fetch(`${base}/omicos/oss/api/session`)).text()
+    const response = await (await fetchHost(`${base}/omicos/oss/api/session`)).text()
     expect(response).toContain('test@example.invalid')
     expect(response).not.toContain('private-user-token'); expect(response).not.toContain('private-device')
     const credentials = join(directory, 'state', 'cloud.json')
@@ -89,7 +100,7 @@ describe('scientific workbench and commerce boundary', () => {
     await login()
     const quote = await (await post('quote', { plan_code: 'pro', period: 'monthly', provider: 'alipay' })).json() as any
     await post('checkout', { confirmation: quote.confirmation })
-    const get = async (path: string) => await (await fetch(`${base}/omicos/oss/api/${path}`)).json() as any
+    const get = async (path: string) => await (await fetchHost(`${base}/omicos/oss/api/${path}`)).json() as any
     expect((await get('order?id=ord_1')).status).toBe('pending')
     paid = true
     expect((await get('order?id=ord_1')).status).toBe('paid')
@@ -97,7 +108,7 @@ describe('scientific workbench and commerce boundary', () => {
     const next = await (await post('quote', { plan_code: 'pro', period: 'monthly', provider: 'alipay' })).json() as any
     await post('logout', {})
     expect((await post('checkout', { confirmation: next.confirmation })).status).toBe(409)
-    expect((await fetch(`${base}/omicos/oss/api/order?id=ord_1`)).status).toBe(401)
+    expect((await fetchHost(`${base}/omicos/oss/api/order?id=ord_1`)).status).toBe(401)
   })
   it('uses authoritative lab prices and validates seat and period constraints', async () => {
     await login()
@@ -129,7 +140,7 @@ describe('scientific workbench and commerce boundary', () => {
     const service = await runtime.byId(id)
     const initial = service.eventCursor
     const abort = new AbortController()
-    const response = await fetch(`${base}/omicos/oss/api/project/${id}/events?after=${initial}`, { signal: abort.signal })
+    const response = await fetchHost(`${base}/omicos/oss/api/project/${id}/events?after=${initial}`, { signal: abort.signal })
     expect(response.headers.get('content-type')).toContain('text/event-stream')
     const reader = response.body!.getReader(); let text = ''
     const readUntil = async (predicate: (text: string) => boolean) => {
@@ -144,7 +155,7 @@ describe('scientific workbench and commerce boundary', () => {
     const cursor = receipts[receipts.length - 1].seq
     abort.abort()
     const reconnectAbort = new AbortController()
-    const resumed = await fetch(`${base}/omicos/oss/api/project/${id}/events?after=0`, { signal: reconnectAbort.signal, headers: { 'last-event-id': String(cursor) } })
+    const resumed = await fetchHost(`${base}/omicos/oss/api/project/${id}/events?after=0`, { signal: reconnectAbort.signal, headers: { 'last-event-id': String(cursor) } })
     const resumedReader = resumed.body!.getReader(); let resumedText = ''
     await service.remember('stream-fact', 'GRCh38', 'user confirmed')
     while (!resumedText.includes('memory/saved')) { const chunk = await resumedReader.read(); if (chunk.done) throw new Error('Reconnect stream ended'); resumedText += new TextDecoder().decode(chunk.value) }
@@ -159,7 +170,7 @@ describe('scientific workbench and commerce boundary', () => {
     const service = await runtime.byId(id)
     for (let i = 0; i < 100 && ['running', 'queued'].includes(service.get(job.id)!.state); i++) await new Promise(resolve => setTimeout(resolve, 20))
     expect(service.get(job.id)?.state).toBe('succeeded')
-    const notebook = await (await fetch(`${base}/omicos/oss/api/project/${id}/notebook`)).json() as any
+    const notebook = await (await fetchHost(`${base}/omicos/oss/api/project/${id}/notebook`)).json() as any
     expect(notebook.cells[0].outputs[0].text).toContain('42')
   })
 })

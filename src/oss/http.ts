@@ -1,3 +1,4 @@
+import type { HttpOwnerAuth } from './http-auth.js'
 import { streamScientificEvents } from './events.js'
 import { listWorkspace, previewWorkspaceFile } from './files.js'
 import { inspectAnnDataCode } from './anndata.js'
@@ -25,7 +26,7 @@ async function body(request: IncomingMessage): Promise<any> {
   return parsed
 }
 /** Loopback + Host + same-origin + per-process CSRF nonce. No permissive CORS. */
-export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const nonce = randomUUID()
   return async (request, response) => {
     try {
@@ -37,6 +38,9 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
       if (request.headers['sec-fetch-site'] === 'cross-site') throw new CloudError(403, 'Cross-site access denied')
       const path = url.pathname.replace(/\/$/, '')
       const method = request.method || 'GET'
+      const page = method === 'GET' && (path === '/omicos/oss' || path === '/omicos/oss/store')
+      if (page) { if (!auth.authorizePage(request, response)) return }
+      else { const rejected = auth.requestRejection(request); if (rejected !== undefined) { sendJson(response, rejected, { error: 'Local owner authentication required' }); return } }
       response.setHeader('cache-control', 'no-store')
       response.setHeader('x-content-type-options', 'nosniff')
       if (method === 'GET' && (path === '/omicos/oss' || path === '/omicos/oss/store')) {
@@ -105,8 +109,8 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
           streamScientificEvents(request, response, parent, after); return
         }
         else if (action === 'event-log' && method === 'GET') result = { cursor: parent.eventCursor, events: parent.events(Number(url.searchParams.get('after') || 0)) }
-        else if (action === 'files' && method === 'GET') result = await listWorkspace(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
-        else if (action === 'file-preview' && method === 'GET') result = await previewWorkspaceFile(parent.workspace, url.searchParams.get('path') || '', runtime.cloud.sensitiveFiles)
+        else if (action === 'files' && method === 'GET') result = await listWorkspace(parent.workspace, url.searchParams.get('path') || '', runtime.sensitiveFiles)
+        else if (action === 'file-preview' && method === 'GET') result = await previewWorkspaceFile(parent.workspace, url.searchParams.get('path') || '', runtime.sensitiveFiles)
         else if (action === 'anndata' && method === 'POST') {
           if (data.confirmed !== true) throw new CloudError(400, 'Explicit inspection approval required')
           result = await parent.submit(inspectAnnDataCode(String(data.variable || '')), String(data.operationId || ''), 'workbench:anndata-inspection')
