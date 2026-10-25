@@ -15,6 +15,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Host-only cloud device pairing and owner-only credential file; browser snapshots redact credentials.
 - Live price catalog, order quote/confirmation, checkout, QR, server-authoritative polling, subscription refresh,
   cancellation/restoration, account-switch invalidation, order-number recovery.
+- Durable SQLite order recovery receipts for subscription and lab-seat checkouts, scoped by cloud origin/account; paginated local history omits payment links. Reopening requires fresh authoritative status, matching amount/provider and a future expiry. Paid/expired/mismatched/unknown links are hidden. Checkout completion is journaled for its original owner even if logout races; local storage failure returns the successful order with a warning, never a retry. Browser reload restores the QR without a new checkout.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
 - Paid-order/invoice UI, explicit invoice application/withdrawal, live lab pricing and owner-filtered seat management/top-up payment; browser flow tested against an isolated mock cloud.
 - Workspace data browser, bounded text previews, prepared CSV/TSV/H5AD/RDS loading cells and approved AnnData metadata inspection; real AnnData tests verify X remains unchanged.
@@ -34,8 +35,8 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the complete 139-test scientific suite passed on actual Node 22.13.1 and current local Node.
-- 139 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the 139-test suite passed on actual Node 22.13.1 before commerce recovery additions. Current local Node ran the expanded 145-test suite; the new commerce suite also runs on Node 22.13.1.
+- 145 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
@@ -52,7 +53,7 @@ Verification at this checkpoint:
 - Full profile browser coverage remains to be checked; the complete suite passed on actual Node 22.13.1, and a packed standalone installation passed without Harness/private Core.
 - Hot reload/remount behavior remains to be checked; published full Web profile mounting, owner authentication, mock model chat and actual main-window approval have browser coverage.
 - Real external provider/BYOK service contracts and full scientific Skill migration beyond the four bundled checklists. The actual DSH controller/provider/approval path has isolated local mock coverage.
-- Durable payment/order listing beyond the current account-scoped recent-order pointer; verify upstream listing APIs.
+- Official cross-device complete order listing remains to be verified; local durable recovery receipts are implemented. Paid-order records use the existing invoicing endpoint; no unverified remote pending-order listing API is invented.
 - Real staging account / payment sandbox / actual merchant callbacks and entitlement refresh contract.
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.
 - Runtime installer/downloader and environment provisioning, with user-approved installation and rollback.

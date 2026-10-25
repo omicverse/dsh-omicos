@@ -1,3 +1,4 @@
+import { OrderLedger, paymentOrder, type OrderScope } from './orders.js'
 import type { InvoiceRequest, InvoicingSummary, LabPricing, SeatChange, LabSummary } from './commerce-types.js'
 import { randomUUID } from 'node:crypto'
 import { readJson, writeJson } from './storage.js'
@@ -14,7 +15,8 @@ export class CloudService {
   private login?: { device: string; code: string; uri: string; expires: number; interval: number; nextPoll: number }
   private quotes = new Map<string, { checkout: Checkout; generation: number; expires: number }>()
   private pendingCheckout = false
-  private constructor(readonly base: string, private credentialFile: string, private fetcher: typeof fetch) {}
+  private orders: OrderLedger
+  private constructor(readonly base: string, private credentialFile: string, private fetcher: typeof fetch) { this.orders = new OrderLedger(`${credentialFile}.orders.sqlite`) }
   static async open(base: string, credentialFile: string, fetcher: typeof fetch = fetch): Promise<CloudService> {
     const url = new URL(base)
     if (url.protocol !== 'https:' && !(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && url.protocol === 'http:')) throw new Error('Cloud requires HTTPS (HTTP allowed only for local test servers)')
@@ -25,7 +27,7 @@ export class CloudService {
     if (saved?.server === cloud.base && typeof saved.token === 'string' && saved.user?.id) cloud.credentials = saved
     return cloud
   }
-  private async request(path: string, method = 'GET', body?: unknown, authenticated = true): Promise<any> {
+  private async request(path: string, method = 'GET', body?: unknown, authenticated = true, accept?: (data: any) => Promise<void>): Promise<any> {
     const generation = this.generation
     if (authenticated && !this.credentials) throw new CloudError(401, '请先登录 OmicOS 云账号；本地分析无需登录')
     const response = await this.fetcher(`${this.base}${path}`, {
@@ -34,11 +36,12 @@ export class CloudService {
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     const data: any = await response.json().catch(() => ({}))
+    if (response.ok && accept) await accept(data)
     if (generation !== this.generation) throw new CloudError(409, '账号已切换，请刷新')
     if (!response.ok) throw new CloudError(response.status, String(data.detail?.message ?? data.detail ?? data.message ?? `云服务 HTTP ${response.status}`))
     return data
   }
-  get sensitiveFiles(): readonly string[] { return [this.credentialFile] }
+  get sensitiveFiles(): readonly string[] { return [this.credentialFile, ...this.orders.sensitiveFiles] }
   snapshot(): unknown {
     return { server: this.base, logged_in: Boolean(this.credentials), user: this.credentials?.user, generation: this.generation,
       login: this.login ? { user_code: this.login.code, verification_uri: this.login.uri, expires_at: this.login.expires } : undefined }
@@ -81,9 +84,50 @@ export class CloudService {
   subscriptions(): Promise<unknown> { return this.request('/api/billing/subscriptions') }
   async order(id: string): Promise<unknown> {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw new CloudError(400, '无效订单编号')
+    const generation = this.generation; const scope = this.orderScope()
     const order = await this.request(`/api/billing/orders/${encodeURIComponent(id)}`)
     if (order.order_no !== id) throw new CloudError(502, '云端返回的订单编号不匹配，请保留订单信息联系官方')
-    return order
+    let warning: string | undefined
+    try { await this.orders.checked(scope, id, String(order.status || 'unknown')) } catch { warning = '本地订单状态未能保存；本次查询结果仍以云端为准。' }
+    if (generation !== this.generation) throw new CloudError(409, '账号已切换，请刷新')
+    return { ...order, ...(warning ? { recovery_warning: warning } : {}) }
+  }
+  private orderScope(): OrderScope {
+    if (!this.credentials) throw new CloudError(401, '请先登录 OmicOS 云账号')
+    return { server: this.base, userId: this.credentials.user.id }
+  }
+  async localOrders(before?: string): Promise<unknown> {
+    const generation = this.generation; const scope = this.orderScope()
+    let result
+    try { result = await this.orders.list(scope, before) } catch { throw new CloudError(503, '本地订单记录暂不可读取，请保留原文件；仍可按订单编号查询云端状态。') }
+    if (generation !== this.generation) throw new CloudError(409, '账号已切换，请刷新')
+    return result
+  }
+  async reopenOrder(id: string): Promise<unknown> {
+    const generation = this.generation; const scope = this.orderScope()
+    const status: any = await this.order(id) // Always verify server ownership/status before exposing a saved payment link.
+    let saved
+    try { saved = await this.orders.get(scope, id) } catch { throw new CloudError(503, '本地付款链接暂不可读取；请保留订单编号，不要重复下单。') }
+    if (generation !== this.generation) throw new CloudError(409, '账号已切换，请刷新')
+    const matches = saved && Number.isSafeInteger(status.amount_rmb_cents) && status.amount_rmb_cents === Math.round(saved.amount_rmb * 100) && status.provider === saved.provider
+    const payable = saved && matches && status.status === 'pending' && typeof status.expires_at === 'string' && Date.parse(status.expires_at) > Date.now()
+    return { ...status, ...(saved ? { payment: { ...saved, expires_at: status.expires_at || saved.expires_at, pay_url: payable ? saved.pay_url : '' } } : {}), ...(saved && !payable && status.status === 'pending' ? { recovery_warning: '付款链接已过期或订单信息已变化，不能复用旧二维码；请联系官方核对，勿重复付款。' } : {}) }
+  }
+  private async createPayment(path: string, body: unknown, source: 'subscription' | 'lab-seats', optional = false): Promise<any> {
+    const scope = this.orderScope(); let warning: string | undefined
+    let result
+    try { result = await this.request(path, 'POST', body, true, async data => {
+      const order = paymentOrder(data)
+      if (!order) { if (!optional || data.order_no) warning = '云端返回的付款信息不完整，请保留订单编号联系官方，勿重复下单。'; return }
+      try { await this.orders.record(scope, order, source) }
+      catch { warning = '订单已创建，但本地恢复记录未能保存。请复制订单编号并保留当前二维码，勿重复下单。' }
+    }) } catch (error) {
+      if (error instanceof CloudError) throw error
+      throw new CloudError(502, '云端操作结果尚未确认，请先核对已有订单或联系官方，勿重复下单或调整席位。')
+    }
+    if ((!optional || result.order_no) && !paymentOrder(result)) throw new CloudError(502, `云端付款信息不完整${typeof result.order_no === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(result.order_no) ? `（订单 ${result.order_no}）` : ''}。操作结果须向官方核对，勿重复下单。`)
+    const receipt = paymentOrder(result)
+    return { ...(receipt || {}), ...Object.fromEntries(['plan_code', 'period', 'lab_id', 'status', 'message'].filter(key => typeof result[key] === 'string' && result[key].length <= 1000).map(key => [key, result[key]])), ...Object.fromEntries(['seats', 'new_total_seats'].filter(key => Number.isSafeInteger(result[key]) && result[key] >= 0).map(key => [key, result[key]])), ...(warning ? { recovery_warning: warning } : {}) }
   }
   async quote(input: Checkout): Promise<unknown> {
     if (!this.credentials) throw new CloudError(401, '购买前请登录')
@@ -122,7 +166,7 @@ export class CloudService {
     if (!quote || quote.generation !== this.generation || quote.expires < Date.now()) throw new CloudError(409, '确认已过期，请重新选择套餐')
     if (this.pendingCheckout) throw new CloudError(409, '正在创建订单，请等待结果')
     this.pendingCheckout = true; this.quotes.delete(confirmation)
-    try { return await this.request('/api/billing/checkout', 'POST', quote.checkout) }
+    try { return await this.createPayment('/api/billing/checkout', quote.checkout, 'subscription') }
     finally { this.pendingCheckout = false }
   }
   labPricing(): Promise<LabPricing> { return this.request('/api/billing/lab/pricing') }
@@ -146,7 +190,7 @@ export class CloudService {
   }
   changeLabSeats(id: string, seats: number, provider: string): Promise<SeatChange> {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id) || !Number.isSafeInteger(seats) || seats < 1 || seats > 100000 || !['wechat', 'alipay'].includes(provider)) throw new CloudError(400, '无效实验室、席位数或支付方式')
-    return this.request(`/api/billing/lab/${encodeURIComponent(id)}/seats`, 'POST', { seats, provider })
+    return this.createPayment(`/api/billing/lab/${encodeURIComponent(id)}/seats`, { seats, provider }, 'lab-seats', true)
   }
   reminders(): Promise<unknown> { return this.request('/api/billing/expiry-reminders') }
   manageSubscription(action: 'cancel' | 'uncancel', domain?: string): Promise<unknown> {

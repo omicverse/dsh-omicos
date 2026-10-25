@@ -8,6 +8,8 @@ export interface InvoiceableOrder { order_no: string; amount_rmb_cents: number; 
 export interface UserInvoice { id: string; buyer_title: string; amount_rmb_cents: number; status: 'pending' | 'issued' | 'voided'; invoice_no?: string; created_at: string; orders: string[] }
 export interface InvoicingSummary { paid_cents: number; invoiced_cents: number; remaining_cents: number; min_invoice_cents: number; min_special_invoice_cents?: number; daily_limit: number; submitted_today: number; orders: InvoiceableOrder[]; invoices: UserInvoice[] }
 export interface LabPricing { min_seats: number; can_purchase: boolean; currency: string; seat_price_monthly_rmb: number; seat_price_yearly_rmb: number; grants_plan: string }
-export interface SeatChange { status?: string; message?: string; order_no?: string; amount_rmb?: number; currency?: string; provider?: string; pay_url?: string; expires_at?: string; new_total_seats?: number }
+export interface SeatChange { recovery_warning?: string; status?: string; message?: string; order_no?: string; amount_rmb?: number; currency?: string; provider?: string; pay_url?: string; expires_at?: string; new_total_seats?: number }
 export interface LabSummary { id: string; owner_id: string; name: string; seat_quota: number; status: string; my_role?: string }
-export interface PaymentOrder { order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
+export interface PaymentOrder { recovery_warning?: string; order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
+
+export interface RecoveredOrder { order_no: string; status: string; payment?: PaymentOrder; recovery_warning?: string }

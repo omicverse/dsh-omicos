@@ -32,7 +32,7 @@ describe('scientific workbench and commerce boundary', () => {
       else if (path === '/api/billing/invoicing/invoices') response.end(JSON.stringify({ invoice_id: 'inv_1', status: 'pending' }))
       else if (path === '/api/billing/invoicing/invoices/inv_1/withdraw') response.end(JSON.stringify({ invoice_id: 'inv_1', status: 'voided' }))
       else if (path === '/api/billing/checkout') { orders++; response.end(JSON.stringify({ order_no: `ord_${orders}`, amount_rmb: 10, currency: 'CNY', pay_url: 'weixin://wxpay/bizpayurl?pr=example', provider: body.provider, expires_at: '2099-01-01' })) }
-      else if (path.startsWith('/api/billing/orders/')) response.end(JSON.stringify({ order_no: 'ord_1', status: paid ? 'paid' : 'pending' }))
+      else if (path.startsWith('/api/billing/orders/')) response.end(JSON.stringify({ order_no: 'ord_1', status: paid ? 'paid' : 'pending', amount_rmb_cents: 1000, provider: 'wechat', expires_at: '2099-01-01' }))
       else if (path.startsWith('/api/billing/subscription')) response.end(JSON.stringify({ active: paid, subscription: paid ? { plan_code: 'pro' } : undefined }))
       else { response.statusCode = 404; response.end('{}') }
     })
@@ -95,6 +95,20 @@ describe('scientific workbench and commerce boundary', () => {
     const request = seen.find(item => item.path === '/api/billing/checkout')!
     expect(request.body).toEqual(choice); expect(request.authorization).toBe('Bearer private-user-token')
     expect((await post('webhook/mock', { order_no: 'ord_1' })).status).toBe(404)
+  })
+  it('restores a saved order through authenticated routes, and hides QR after paid or logout', async () => {
+    expect((await fetchHost(`${base}/omicos/oss/api/orders`)).status).toBe(401)
+    await login()
+    const quote = await (await post('quote', { plan_code: 'pro', period: 'monthly', provider: 'wechat' })).json() as any
+    await post('checkout', { confirmation: quote.confirmation })
+    const get = async (path: string) => (await fetchHost(`${base}/omicos/oss/api/${path}`)).json() as Promise<any>
+    const listing = await get('orders')
+    expect(listing.orders[0].order_no).toBe('ord_1'); expect(JSON.stringify(listing)).not.toContain('weixin:')
+    expect((await get('order/reopen?id=ord_1')).payment.pay_url).toContain('weixin:')
+    paid = true
+    expect((await get('order/reopen?id=ord_1')).payment.pay_url).toBe('')
+    await post('logout', {})
+    expect((await fetchHost(`${base}/omicos/oss/api/order/reopen?id=ord_1`)).status).toBe(401)
   })
   it('gets payment and entitlement state from the server; logout invalidates quotes', async () => {
     await login()

@@ -1,3 +1,4 @@
+import { OrderHistory } from './OrderHistory.js'
 import { NotebookPane } from './NotebookPane.js'
 import { useScienceSnapshot } from './useScienceSnapshot.js'
 import { DataBrowser } from './DataBrowser.js'
@@ -6,7 +7,7 @@ import { EnvironmentPane } from './EnvironmentPane.js'
 import { ScienceChat } from './ScienceChat.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import type { LabPricing } from '../oss/commerce-types.js'
+import type { LabPricing, RecoveredOrder } from '../oss/commerce-types.js'
 import type { ScienceSnapshot } from '../oss/types.js'
 import { api, HOST_REFRESH_EVENT, type Session, type CloudAccount } from './oss-api.js'
 import './oss.css'
@@ -14,7 +15,7 @@ import './oss.css'
 const message = (error: unknown) => error instanceof Error ? error.message : String(error)
 const short = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path
 interface Plan { code: string; name: string; display_name?: string; tagline?: string; monthly_price_rmb: number | null; quarterly_price_rmb?: number | null; yearly_price_rmb: number | null }
-interface Checkout { order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
+interface Checkout { recovery_warning?: string; order_no: string; amount_rmb: number; currency: string; provider: string; pay_url: string; expires_at: string }
 interface Quote { confirmation: string; plan: string; catalog_amount_rmb: number | null; notice: string; checkout: { period: string; provider: string; seats?: number } }
 
 function Store({ account, refresh, visible }: { account: CloudAccount; refresh: () => Promise<void>; visible: boolean }): JSX.Element {
@@ -33,6 +34,9 @@ function Store({ account, refresh, visible }: { account: CloudAccount; refresh: 
   const [labName, setLabName] = useState('')
   const [seats, setSeats] = useState(3)
   const [lookup, setLookup] = useState('')
+  const [historyVersion, setHistoryVersion] = useState(0)
+  const [recoveryNotice, setRecoveryNotice] = useState('')
+  const recover = (result: RecoveredOrder) => { setOrder(result.payment); setStatus(result.status); setRecoveryNotice(result.recovery_warning || (result.payment ? '' : `订单 ${result.order_no}：${result.status}；本设备没有该订单的原始付款链接。`)) }
   const generation = useRef(account.generation)
   generation.current = account.generation
   const subscriptionRefresh = useCallback(async () => {
@@ -46,7 +50,7 @@ function Store({ account, refresh, visible }: { account: CloudAccount; refresh: 
     void api<{ plans: Plan[] }>(`plans?domain=${encodeURIComponent(domain)}`, undefined, controller.signal).then(result => setPlans(result.plans), error => { if (!controller.signal.aborted) setError(message(error)) })
     return () => controller.abort()
   }, [domain])
-  useEffect(() => { setQuote(undefined); setOrder(undefined); setStatus(''); setError(''); void subscriptionRefresh() }, [account.generation, subscriptionRefresh])
+  useEffect(() => { setQuote(undefined); setOrder(undefined); setStatus(''); setError(''); setRecoveryNotice(''); void subscriptionRefresh() }, [account.generation, subscriptionRefresh])
   useEffect(() => { setQuote(undefined) }, [period, provider, domain, seats, labName])
   useEffect(() => {
     let alive = true; setQr('')
@@ -87,7 +91,7 @@ function Store({ account, refresh, visible }: { account: CloudAccount; refresh: 
     setQuote(undefined)
     const result = await api<Checkout>('checkout', { confirmation })
     if (original !== generation.current) return
-    setOrder(result); setStatus('pending')
+    setOrder(result); setStatus('pending'); setRecoveryNotice(result.recovery_warning || ''); setHistoryVersion(value => value + 1)
     sessionStorage.setItem(`omicos:last-order:${account.user?.id}`, result.order_no)
   })
   useEffect(() => {
@@ -113,10 +117,12 @@ function Store({ account, refresh, visible }: { account: CloudAccount; refresh: 
     </article>)}</div>
     {!account.logged_in && <p className="oss-note">请先登录 OmicOS 云账号再购买。登录入口在页面右上角；本地科研功能无需登录。</p>}
     {quote && <section className="oss-confirm" aria-label="订单确认"><h2>确认订阅</h2><p>{quote.plan} · {quote.checkout.period} · {quote.checkout.provider === 'wechat' ? '微信支付' : '支付宝'}</p><p>目录金额：{quote.catalog_amount_rmb == null ? '由服务端核算' : `¥${quote.catalog_amount_rmb}`}{quote.checkout.seats ? `，${quote.checkout.seats} 个席位` : ''}</p><p>{quote.notice}</p><button className="oss-primary" disabled={busy} onClick={confirm}>确认并生成付款订单</button> <button onClick={() => setQuote(undefined)}>返回选择</button></section>}
-    {order && <section className="oss-payment"><div><small>PAYMENT ORDER</small><h2>{status === 'paid' ? '支付成功' : status === 'expired' ? '订单已过期' : status === 'canceled' ? '订单已取消' : '扫码支付'}</h2><p className="oss-price">{order.currency} {order.amount_rmb}</p><p>订单号：<code>{order.order_no}</code></p><p>到期：{new Date(order.expires_at).toLocaleString()}</p><p>支付状态以服务端确认为准。关闭窗口不会取消订单。</p><button onClick={() => { setOrder(undefined); setStatus('') }}>收起订单</button></div>{status === 'pending' && (qr ? <img width={260} height={260} src={qr} alt={`${order.provider} 付款二维码`} /> : <p>付款链接格式暂不支持，请保留订单编号联系官方。</p>)}</section>}
-    {account.logged_in && <CloudManagement userId={account.user!.id} onOrder={result => { setOrder(result); setStatus('pending') }} />}
+    {recoveryNotice && <p role="status" className="oss-note">{recoveryNotice}</p>}
+    {order && <section className="oss-payment"><div><small>PAYMENT ORDER</small><h2>{status === 'paid' ? '支付成功' : status === 'expired' ? '订单已过期' : status === 'canceled' ? '订单已取消' : status === 'pending' ? '扫码支付' : '订单状态待核对'}</h2><p className="oss-price">{order.currency} {order.amount_rmb}</p><p>订单号：<code>{order.order_no}</code></p><p>到期：{new Date(order.expires_at).toLocaleString()}</p><p>支付状态以服务端确认为准。关闭窗口不会取消订单。</p><button onClick={() => { setOrder(undefined); setStatus('') }}>收起订单</button></div>{status === 'pending' && (qr ? <img width={260} height={260} src={qr} alt={`${order.provider} 付款二维码`} /> : <p>付款链接格式暂不支持，请保留订单编号联系官方。</p>)}</section>}
+    {account.logged_in && <CloudManagement userId={account.user!.id} onOrder={result => { setOrder(result); setStatus('pending'); setRecoveryNotice(result.recovery_warning || ''); setHistoryVersion(value => value + 1) }} />}
+    {account.logged_in && <OrderHistory version={historyVersion} onOpen={recover} />}
     <div className="oss-two"><article className="oss-card"><h2>我的订阅</h2>{subscription ? <><p>{subscription.active ? `当前：${subscription.subscription?.plan_code || subscription.plan_code}` : '暂无有效订阅'}</p>{subscription.subscription?.expires_at && <p>有效期至 {new Date(subscription.subscription.expires_at).toLocaleString()}</p>}{subscription.active && <button disabled={busy} onClick={() => { const action = subscription.cancelled ? 'uncancel' : 'cancel'; if (window.confirm(subscription.cancelled ? '恢复此订阅？' : '取消此订阅的后续续订？现有权益以服务端规则为准。')) void run(async () => { await api('subscription/manage', { action, domain: domain || undefined, confirmed: true }); await subscriptionRefresh() }) }}>{subscription.cancelled ? '恢复订阅' : '取消续订'}</button>}</> : <p>{account.logged_in ? '正在查询…' : '登录后查看订阅'}</p>}<button disabled={!account.logged_in || busy} onClick={() => void run(subscriptionRefresh)}>刷新权益</button></article>
-    <article className="oss-card"><h2>找回订单</h2><p>重新打开窗口后，可输入订单编号查询。查询失败时请勿重复付款。</p><input placeholder="订单编号" value={lookup} onChange={event => setLookup(event.target.value)} /><button disabled={!account.logged_in || busy || !lookup.trim()} onClick={() => void run(async () => { const result = await api<any>(`order?id=${encodeURIComponent(lookup.trim())}`); setError(`订单 ${result.order_no}：${result.status}`) })}>查询订单状态</button><button disabled={!account.logged_in} onClick={() => setLookup(sessionStorage.getItem(`omicos:last-order:${account.user?.id}`) || '')}>最近订单</button></article></div>
+    <article className="oss-card"><h2>找回订单</h2><p>重新打开窗口后，可输入订单编号查询。查询失败时请勿重复付款。</p><input placeholder="订单编号" value={lookup} onChange={event => setLookup(event.target.value)} /><button disabled={!account.logged_in || busy || !lookup.trim()} onClick={() => void run(async () => { const result = await api<RecoveredOrder>(`order/reopen?id=${encodeURIComponent(lookup.trim())}`); recover(result) })}>查询订单状态</button><button disabled={!account.logged_in} onClick={() => setLookup(sessionStorage.getItem(`omicos:last-order:${account.user?.id}`) || '')}>最近订单</button></article></div>
   </section>
 }
 

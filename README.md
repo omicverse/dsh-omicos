@@ -217,3 +217,12 @@ an isolated temporary DSH profile, installs this local plugin, uses a local synt
 model key and model server, and verifies owner authentication, the OmicOS entry,
 fixed Scientist chat, and approval in the actual main window before real Python
 execution. It does not use your normal DSH profile or call a paid model.
+
+Orders created on this device are recorded in a private, account-and-origin-scoped
+SQLite recovery ledger. The store can reopen them after a window close or restart.
+The local list omits payment links and labels status as the last check; reopening
+requires a fresh official query and matching amount/provider/expiry before showing
+a saved QR. Paid or expired orders never regain a payable QR. A failed local save
+after checkout reports a recovery warning with the successful order; it never
+repeats the purchase. This is local recovery history, not a complete cross-device
+cloud order listing.

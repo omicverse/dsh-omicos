@@ -76,6 +76,8 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req
       else if (path === '/omicos/oss/api/subscriptions' && method === 'GET') result = await cloud.subscriptions()
       else if (path === '/omicos/oss/api/quote' && method === 'POST') result = await cloud.quote(data)
       else if (path === '/omicos/oss/api/checkout' && method === 'POST') result = await cloud.checkout(String(data.confirmation || ''))
+      else if (path === '/omicos/oss/api/orders' && method === 'GET') result = await cloud.localOrders(url.searchParams.get('before') || undefined)
+      else if (path === '/omicos/oss/api/order/reopen' && method === 'GET') result = await cloud.reopenOrder(url.searchParams.get('id') || '')
       else if (path === '/omicos/oss/api/order' && method === 'GET') result = await cloud.order(url.searchParams.get('id') || '')
       else if (path === '/omicos/oss/api/labs' && method === 'GET') result = await cloud.labs()
       else if (path === '/omicos/oss/api/lab-pricing' && method === 'GET') result = await cloud.labPricing()
