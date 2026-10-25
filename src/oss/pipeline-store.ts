@@ -1,7 +1,8 @@
+import {openPipelineExport,type PipelineExport} from './pipeline-export.js'
 import { createRequire } from 'node:module'
 import type { DatabaseSync as Database } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
-import { chmod, mkdir, open } from 'node:fs/promises'
+import { chmod, mkdir, open,realpath,stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PipelineError, type PipelineDefinition, type PipelineRun, type PipelineEvent, type PipelineRunSummary, type PipelineHistoryKind, type PipelineHistoryPage, type PipelineRunWindow } from './pipeline-types.js'
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
@@ -42,7 +43,8 @@ export function normalizePipeline(input: any): PipelineDefinition {
   return pinned
 }
 export class PipelineStore {
-  private constructor(private db: Database) {}
+  private exports=new Set<AbortController>();private closed=false
+  private constructor(private db:Database,private file:string,private identity:{dev:number;ino:number}) {}
   static async open(workspace: string): Promise<PipelineStore> {
     const directory = join(workspace, '.omicos-oss'); await mkdir(directory, { recursive: true, mode: 0o700 })
     const path = join(directory, 'pipelines.sqlite'); const file = await open(path, 'a', 0o600); await file.close(); await chmod(path, 0o600)
@@ -54,7 +56,7 @@ export class PipelineStore {
       if (version === 0 && db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().length) throw new Error('Unrecognized Pipeline database contents')
       db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;')
       if (version === 0) db.exec(`BEGIN IMMEDIATE; CREATE TABLE definitions(id TEXT PRIMARY KEY, document_json TEXT NOT NULL); CREATE TABLE runs(id TEXT PRIMARY KEY, operation_id TEXT NOT NULL UNIQUE, record_json TEXT NOT NULL); CREATE TABLE events(seq INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, type TEXT NOT NULL, at TEXT NOT NULL, data_json TEXT NOT NULL); PRAGMA application_id=${APPLICATION}; PRAGMA user_version=1; COMMIT;`)
-      return new PipelineStore(db)
+      return new PipelineStore(db,await realpath(path),await stat(path))
     } catch (error) { db.close(); throw error }
   }
   define(input: unknown): PipelineDefinition { const definition = normalizePipeline(input); this.db.prepare('INSERT OR IGNORE INTO definitions(id,document_json) VALUES(?,?)').run(definition.id, JSON.stringify(definition)); return definition }
@@ -131,5 +133,9 @@ export class PipelineStore {
     const rows = this.db.prepare(`SELECT r.rowid AS row_id,r.id AS run_id,json_extract(r.record_json,'$.definitionId') AS definition_id,a.key AS attempt_index,b.key AS artifact_index,json_extract(a.value,'$.executionId') AS execution_id,json_extract(a.value,'$.state') AS state,b.value AS artifact_json FROM runs r,json_each(r.record_json,'$.attempts') a,json_each(a.value,'$.artifacts') b WHERE (r.rowid<? OR (r.rowid=? AND (CAST(a.key AS INTEGER)>? OR (CAST(a.key AS INTEGER)=? AND CAST(b.key AS INTEGER)>?)))) ORDER BY r.rowid DESC,CAST(a.key AS INTEGER),CAST(b.key AS INTEGER) LIMIT 51`).all(row, row, attempt, attempt, index)
     return { entries: rows.slice(0, 50).map(item => ({ source: { kind: 'pipeline' as const, language: this.definition(String(item.definition_id)).language, runId: String(item.run_id), executionId: String(item.execution_id), artifactId: JSON.parse(String(item.artifact_json)).id }, artifact: JSON.parse(String(item.artifact_json)), state: String(item.state) })), next: rows.length > 50 ? `${rows[49].row_id}:${rows[49].attempt_index}:${rows[49].artifact_index}` : undefined }
   }
-  close(): void { this.db.close() }
+  async exportRun(id:string,revision:number,signal:AbortSignal):Promise<PipelineExport>{
+    if(this.closed)throw new PipelineError(503,'Pipeline store is closed');const own=new AbortController();this.exports.add(own)
+    try{return await openPipelineExport(this.file,this.identity,id,revision,AbortSignal.any([signal,own.signal]),value=>normalizePipeline(value).id,()=>this.exports.delete(own))}catch(error){this.exports.delete(own);throw error}
+  }
+  close():void{if(this.closed)return;this.closed=true;for(const controller of this.exports)controller.abort(new Error('Pipeline store closed'));this.exports.clear();this.db.close()}
 }

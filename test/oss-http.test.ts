@@ -229,6 +229,16 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}executions`)).status).toBe(401)
   })
 
+  it('owner-authenticates exact-revision complete Pipeline metadata downloads with length and SHA-256',async()=>{
+    const reference=(await runtime.list())[0],project=await runtime.byId(reference.id),pipelines=await runtime.pipelines(project.workspace)
+    const definition=pipelines.define({title:'完整 Pipeline 🐟',language:'python',steps:[{id:'only',code:'print(42)'}]}),created=pipelines.store.create(definition.id,'http-export').run
+    const run=pipelines.store.update(created.id,created.revision,'fixture/complete',draft=>{draft.state='succeeded';draft.attempts=Array.from({length:35},(_,index)=>({id:`attempt-${index}`,operationId:`attempt-${index}`,step:0,kind:'step',state:'succeeded',outputTail:'汉字🐟'.repeat(3000)}))})
+    const path=`${base}/omicos/oss/api/project/${reference.id}/pipeline-export?run=${run.id}`
+    expect((await fetch(`${path}&revision=${run.revision}`)).status).toBe(401);expect((await fetchHost(path)).status).toBe(400);expect((await fetchHost(`${path}&revision=${run.revision-1}`)).status).toBe(409)
+    const response=await fetchHost(`${path}&revision=${run.revision}`);expect(response.status).toBe(200);expect(response.headers.get('content-disposition')).toContain(`r${run.revision}.json`)
+    const bytes=Buffer.from(await response.arrayBuffer());expect(Number(response.headers.get('content-length'))).toBe(bytes.length);expect(response.headers.get('x-omicos-export-sha256')).toBe(createHash('sha256').update(bytes).digest('hex'));expect(response.headers.get('x-omicos-pipeline-revision')).toBe(String(run.revision))
+    const exported=JSON.parse(bytes.toString());expect(exported.definition).toEqual(definition);expect(exported.run).toEqual(run);expect(exported.events).toHaveLength(2);expect(project.kernelState().state).toBe('cold');expect(seen).toHaveLength(0)
+  })
   it('exposes paginated Pipeline summaries and exact old IDs without execution or cloud login', async () => {
     const reference = (await runtime.list())[0]; const project = await runtime.byId(reference.id); const pipelines = await runtime.pipelines(project.workspace)
     const pinned = pipelines.define({ title: 'Archived pipeline', language: 'python', steps: [{ id: 'only', code: 'print(42)' }] })

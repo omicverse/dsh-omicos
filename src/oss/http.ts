@@ -1,3 +1,4 @@
+import {streamPipelineExport} from './pipeline-export-http.js'
 import {searchProjects,ProjectSearchError} from './project-search.js'
 import {streamChat} from './chat-events.js'
 import { DossierError } from './dossier-types.js'
@@ -289,6 +290,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
             const controlled=await pipelines.control(id,data.revision,data.action,{checkpointAttemptId:data.checkpointAttemptId,sideEffectsReviewed:data.sideEffectsReviewed,allowEnvironmentChange:data.allowEnvironmentChange});result=data.windowed===true?pipelines.store.window(controlled.id):controlled
           }
           else if (action === 'pipeline-run' && method === 'GET'){const view=url.searchParams.get('view');if(view!==null&&view!=='window')throw new CloudError(400,'Unsupported Pipeline run view');result=view==='window'?pipelines.store.window(id):pipelines.get(id)}
+          else if(action==='pipeline-export'&&method==='GET'){await streamPipelineExport(request,response,pipelines.store,id,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):NaN);return}
           else if(action==='pipeline-history-item'&&method==='GET')result=pipelines.store.historyItem(id,url.searchParams.get('kind') as any,url.searchParams.has('position')?Number(url.searchParams.get('position')):NaN,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):NaN)
           else if(action==='pipeline-history'&&method==='GET')result=pipelines.store.historyPage(id,url.searchParams.get('kind') as any,url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined)
           else if (action === 'pipeline-events' && method === 'GET') result = { events: pipelines.store.events(id, Number(url.searchParams.get('after') || 0)) }
