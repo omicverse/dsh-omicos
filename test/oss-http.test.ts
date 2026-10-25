@@ -200,12 +200,16 @@ describe('scientific workbench and commerce boundary', () => {
     const settings = { variable: 'adata', embedding: 'X_umap', color: 'none', maxPoints: 5 }
     expect((await post(`${prefix}anndata-plot`, { settings, operationId: 'not-approved' })).status).toBe(400)
     expect((await post(`${prefix}anndata-plot`, { settings: { ...settings, maxPoints: 10001 }, operationId: 'bad-plot', confirmed: true })).status).toBe(400)
+    const dotSettings={variable:'adata',plot:'dotplot',features:['g1','g2'],groupBy:'group',threshold:1}
+    expect((await post(`${prefix}anndata-plot`,{settings:dotSettings,operationId:'dot-not-approved'})).status).toBe(400)
+    expect((await post(`${prefix}anndata-plot`,{settings:{...dotSettings,features:['g1','g1']},operationId:'dot-invalid',confirmed:true})).status).toBe(400)
     expect(project.snapshot().executions).toHaveLength(0)
     const request = { settings, operationId: 'lost-generation', expectedGeneration: '00000000-0000-4000-8000-000000000000', confirmed: true }
     const response = await post(`${prefix}anndata-plot`, request); expect(response.status).toBe(200); const submitted = await response.json() as any
     const duplicate = await (await post(`${prefix}anndata-plot`, request)).json() as any; expect(duplicate.id).toBe(submitted.id)
     const receipt = await (await fetchHost(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}`)).json() as any
     expect(receipt.state).toBe('interrupted'); expect(project.snapshot().kernel.state).toBe('cold')
+    const dot=await(await post(`${prefix}anndata-plot`,{...request,settings:dotSettings,operationId:'dot-lost-generation'})).json() as any;const dotReceipt=await(await fetchHost(`${base}/omicos/oss/api/${prefix}execution?id=${dot.id}`)).json() as any;expect(dotReceipt.state).toBe('interrupted');expect(dotReceipt.code).toContain('above_threshold_n');expect(project.kernelState().state).toBe('cold')
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}`)).status).toBe(401)
     expect((await fetchHost(`${base}/omicos/oss/api/${prefix}execution?id=${submitted.id}&language=r`)).status).toBe(404)
   })
