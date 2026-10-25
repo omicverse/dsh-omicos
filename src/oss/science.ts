@@ -38,7 +38,16 @@ export class ScienceService extends EventEmitter {
   private releaseLock?: () => Promise<void>
   private lockFailure?: string
   private cancelTimer?: ReturnType<typeof setTimeout>
-  private constructor(readonly workspace: string, readonly interpreter: string, readonly language: 'python' | 'r', private envNames: readonly string[]) { super() }
+  private isolatedPython = false
+  get usesIsolatedPython(): boolean { return this.isolatedPython }
+  private executionBlock?: string
+  get interpreter(): string { return this.interpreterPath }
+  get executionUnavailable(): string | undefined { return this.executionBlock }
+  configureColdInterpreter(interpreter: string, unavailable?: string, isolatedPython = false): void {
+    if (this.child || this.starting || this.active || this.finishing || this.queue.length) throw new Error('Cannot change the interpreter of a live scientific kernel')
+    this.interpreterPath = interpreter; this.executionBlock = unavailable; this.isolatedPython = isolatedPython
+  }
+  private constructor(readonly workspace: string, private interpreterPath: string, readonly language: 'python' | 'r', private envNames: readonly string[]) { super() }
 
   static async open(workspace: string, python = 'python3', language: 'python' | 'r' = 'python', envNames: readonly string[] = []): Promise<ScienceService> {
     await mkdir(workspace, { recursive: true })
@@ -102,6 +111,7 @@ export class ScienceService extends EventEmitter {
       if (existing.code !== code || existing.sessionId !== sessionId || existing.expectedKernelGeneration !== expectedKernelGeneration) throw new Error('Operation ID already belongs to another execution')
       return structuredClone(existing)
     }
+    if (this.executionBlock) throw new Error(this.executionBlock)
     const job: Execution = { id: randomUUID(), operationId, sessionId, code, language: this.language, state: 'queued', createdAt: new Date().toISOString(), output: '', artifacts: [], ...(expectedKernelGeneration ? { expectedKernelGeneration } : {}) }
     // Register before awaiting disk: concurrent retries see the same operation.
     this.executions.push(job)
@@ -112,6 +122,7 @@ export class ScienceService extends EventEmitter {
     return structuredClone(job)
   }
   async prepare(): Promise<KernelEnvironment> {
+    if (this.executionBlock) throw new Error(this.executionBlock)
     if (this.closing) throw new Error('Scientific service is shutting down')
     await this.start()
     if (!this.environment) throw new Error('Scientific worker did not report its environment')
@@ -134,7 +145,7 @@ export class ScienceService extends EventEmitter {
     return pending
   }
   private async startWorker(): Promise<void> {
-    const args = this.language === 'python' ? ['-u', workerPaths.python, this.workspace] : ['--vanilla', workerPaths.r, this.workspace]
+    const args = this.language === 'python' ? [...(this.isolatedPython ? ['-I'] : []), '-B', '-u', workerPaths.python, this.workspace] : ['--vanilla', workerPaths.r, this.workspace]
     const child = spawn(process.execPath, [supervisor, this.interpreter, ...args], { cwd: this.workspace, detached: process.platform !== 'win32', stdio: ['pipe', this.language === 'python' ? 'ignore' : 'pipe', 'pipe', 'pipe', 'pipe'], env: { ...workerEnvironment(process.env, this.envNames), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) } })
     child.stdin?.on('error', error => { if (this.child === child) { this.child = undefined; this.failWorker(`Worker input failed: ${error.message}`); this.signalWorker(child, 'SIGKILL') } })
     this.child = child; this.generation = randomUUID()
@@ -157,7 +168,7 @@ export class ScienceService extends EventEmitter {
           if (message.type === 'ready') {
             const reported = message.environment || {}
             const metadata = { language: this.language, version: typeof reported.version === 'string' ? reported.version : 'unknown', executable: typeof reported.executable === 'string' ? reported.executable : this.interpreter,
-              platform: typeof reported.platform === 'string' ? reported.platform : undefined,
+              platform: typeof reported.platform === 'string' ? reported.platform : undefined, ...(reported.isolated === true ? { isolated: true } : {}),
               packages: Object.fromEntries(Object.entries(reported.packages || {}).sort(([a], [b]) => a.localeCompare(b)).map(([name, version]) => [name, typeof version === 'string' ? version : null])) }
             this.environment = { ...metadata, fingerprint: createHash('sha256').update(JSON.stringify(metadata)).digest('hex') }
             clearTimeout(timer); ok(); return

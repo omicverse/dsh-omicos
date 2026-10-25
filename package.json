@@ -52,6 +52,8 @@
     "start:oss": "node lib/oss/cli.js",
     "test:browser": "pnpm build && node scripts/browser-smoke.cjs",
     "test:package": "pnpm build && node scripts/clean-install-smoke.mjs",
+    "test:provisioning": "pnpm build && node scripts/provision-orphan-smoke.cjs",
+    "test:provisioning:online": "pnpm build && node scripts/provision-pypi-smoke.cjs --online",
     "test:harness-browser": "pnpm build && node scripts/harness-browser-smoke.cjs"
   },
   "dependencies": {

@@ -55,7 +55,7 @@ for name in ['numpy', 'pandas', 'scipy', 'anndata', 'scanpy', 'omicverse', 'matp
         packages[name] = None
     except Exception:
         packages[name] = 'unavailable'
-emit({'type': 'ready', 'environment': {'language': 'python', 'version': sys.version.split()[0], 'executable': sys.executable, 'platform': sys.platform, 'packages': packages}})
+emit({'type': 'ready', 'environment': {'language': 'python', 'version': sys.version.split()[0], 'executable': sys.executable, 'platform': sys.platform, 'isolated': bool(sys.flags.isolated), 'packages': packages}})
 for line in sys.stdin:
     command = json.loads(line)
     current = command['id']

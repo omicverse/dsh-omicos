@@ -1,3 +1,4 @@
+import { ManagedEnvironments } from './managed-environments.js'
 import { ResearchPlans } from './research-plans.js'
 import { ResearchPlanError } from './research-plan-types.js'
 import { FigureStudio } from './figures.js'
@@ -21,6 +22,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
   private planProjects = new Map<string, Promise<ResearchPlans>>()
   private figureProjects = new Map<string, Promise<FigureStudio>>()
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
@@ -56,10 +58,15 @@ export class OssRuntime {
     if (!service) {
       service = ScienceService.open(path, this.python, 'python', this.envNames).then(async service => {
         try {
+          const managerPromise = ManagedEnvironments.open(service.workspace, this.python, this.sensitiveFiles)
+          this.environmentProjects.set(id, managerPromise)
+          const manager = await managerPromise
+          try { service.configureColdInterpreter(await manager.selectedInterpreter(), undefined, Boolean(manager.selection().environmentId)) }
+          catch (error) { service.configureColdInterpreter(this.python, `Selected Python environment is unavailable: ${String(error)}. Open managed environments and explicitly choose a rollback for the next Host start.`) }
           this.known.set(id, { id, workspace: service.workspace })
           await this.saveRegistry()
           return service
-        } catch (error) { await service.dispose(); throw error }
+        } catch (error) { const manager = this.environmentProjects.get(id); this.environmentProjects.delete(id); if (manager) await (await manager.catch(() => undefined))?.dispose(); await service.dispose(); throw error }
       })
       this.projects.set(id, service)
       service.catch(() => { if (this.projects.get(id) === service) this.projects.delete(id) })
@@ -82,11 +89,16 @@ export class OssRuntime {
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
     let service = this.pipelineProjects.get(parent.workspace)
     if (!service) {
-      service = PipelineService.open(parent.workspace, this.python, this.rscript, this.envNames, this.sensitiveFiles)
+      service = PipelineService.open(parent.workspace, parent.python, this.rscript, this.envNames, this.sensitiveFiles, parent.executionUnavailable, parent.usesIsolatedPython)
       this.pipelineProjects.set(parent.workspace, service)
       service.catch(() => { if (this.pipelineProjects.get(parent.workspace) === service) this.pipelineProjects.delete(parent.workspace) })
     }
     return service
+  }
+  async managedEnvironments(workspace: string): Promise<ManagedEnvironments> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    return this.environmentProjects.get(projectId(parent.workspace))!
   }
   async researchPlans(workspace: string): Promise<ResearchPlans> {
     const parent = await this.project(workspace)
@@ -137,6 +149,8 @@ export class OssRuntime {
   }
   async dispose(): Promise<void> {
     this.closing = true
+    await Promise.allSettled([...this.environmentProjects.values()].map(async service => (await service).dispose()))
+    this.environmentProjects.clear()
     await Promise.allSettled([...this.planProjects.values()].map(async service => (await service).dispose()))
     this.planProjects.clear()
     await Promise.allSettled([...this.figureProjects.values()].map(async service => (await service).dispose()))

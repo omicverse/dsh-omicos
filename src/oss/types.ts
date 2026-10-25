@@ -2,7 +2,7 @@
 export const PROTOCOL_VERSION = 1
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'interrupted'
 export interface Artifact { id: string; path: string; mime: string; sha256: string; bytes: number }
-export interface KernelEnvironment { language: 'python' | 'r'; version: string; executable: string; platform?: string; packages: Record<string, string | null>; fingerprint: string }
+export interface KernelEnvironment { language: 'python' | 'r'; version: string; executable: string; platform?: string; isolated?: boolean; packages: Record<string, string | null>; fingerprint: string }
 export interface Execution {
   id: string; operationId: string; sessionId: string; language: 'python' | 'r'; code: string
   state: JobState; createdAt: string; startedAt?: string; endedAt?: string

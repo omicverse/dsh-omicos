@@ -35,6 +35,7 @@ jobs:
         env:
           OMICOS_SCIENCE_TEST_PYTHON: python
       - run: pnpm test:package
+      - run: node scripts/provision-orphan-smoke.cjs
       - name: Browser integration
         if: matrix.node == '24'
         run: |

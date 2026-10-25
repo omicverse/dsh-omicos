@@ -1,3 +1,4 @@
+import { EnvironmentError } from './environment-types.js'
 import { ResearchPlanError } from './research-plan-types.js'
 import { runtimeCapabilities } from './capabilities.js'
 import { HistoryError, PROTOCOL_VERSION } from './types.js'
@@ -153,7 +154,18 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else if (action === 'chat-cancel' && method === 'POST') { await runtime.chat.cancel(project.workspace); result = { ok: true } }
           else throw new CloudError(405, 'Method not allowed')
         }
-        else if (action === 'environment' && method === 'GET') result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python)
+        else if (action === 'environment' && method === 'GET') { if (language === 'python' && project.executionUnavailable) throw new EnvironmentError(409, project.executionUnavailable); result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python, project.usesIsolatedPython) }
+        else if (action?.startsWith('managed-environment-')) {
+          const environments = await runtime.managedEnvironments(parent.workspace)
+          if (action === 'managed-environment-list' && method === 'GET') result = { ...environments.list(url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined), currentInterpreter: parent.python, currentUnavailable: parent.executionUnavailable }
+          else if (action === 'managed-environment-document' && method === 'GET') result = environments.get(url.searchParams.get('id') || '')
+          else if (action === 'managed-environment-history' && method === 'GET') result = environments.selectionHistory(url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
+          else if (action === 'managed-environment-install' && method === 'POST') { if (data.confirmed !== true) throw new EnvironmentError(400, 'Explicit package installation approval required'); result = environments.start(data.install) }
+          else if (action === 'managed-environment-cancel' && method === 'POST') { if (data.confirmed !== true) throw new EnvironmentError(400, 'Explicit installation cancellation required'); result = await environments.cancel(data.id) }
+          else if (action === 'managed-environment-remove' && method === 'POST') { if (data.confirmed !== true) throw new EnvironmentError(400, 'Explicit partial environment removal required'); result = await environments.removePartial(data.id) }
+          else if (action === 'managed-environment-select' && method === 'POST') { if (data.confirmed !== true) throw new EnvironmentError(400, 'Explicit next-Host environment selection required'); result = await environments.select(data.selection) }
+          else throw new CloudError(405, 'Method not allowed')
+        }
         else if (action?.startsWith('research-plan-')) {
           const plans = await runtime.researchPlans(parent.workspace); const id = url.searchParams.get('id') || ''
           const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined
@@ -259,7 +271,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

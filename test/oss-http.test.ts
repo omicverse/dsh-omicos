@@ -368,6 +368,20 @@ describe('scientific workbench and commerce boundary', () => {
     expect(journal.events.some((event: any) => event.type === 'run/succeeded')).toBe(true)
     expect(seen).toHaveLength(0)
   })
+  it('keeps managed environment installation and next-Host selection behind owner/CSRF and explicit human confirmation', async () => {
+    const id=(await runtime.list())[0].id;const prefix=`project/${id}/managed-environment-`
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}list`)).status).toBe(401)
+    expect((await post(`${prefix}install`,{install:{title:'Unapproved',operationId:'unapproved',packages:[]}})).status).toBe(400)
+    expect((await post(`${prefix}install`,{confirmed:true,install:{title:'No CSRF',operationId:'wrong-csrf',packages:[]}},{'x-omicos-csrf':'wrong'})).status).toBe(403)
+    expect((await post(`${prefix}install`,{confirmed:true,install:{title:'Invalid',operationId:'invalid',packages:[{name:'numpy',version:'latest',sha256:[]}]}})).status).toBe(400)
+    const listing=await(await fetchHost(`${base}/omicos/oss/api/${prefix}list`)).json() as any;expect(listing.entries).toEqual([]);expect(listing.selection.environmentId).toBeNull()
+    expect((await post(`${prefix}select`,{selection:{operationId:'rollback',revision:1,environmentId:null}})).status).toBe(400)
+    expect((await post(`${prefix}select`,{confirmed:true})).status).toBe(400)
+    expect((await post(`${prefix}select`,{confirmed:true,selection:{operationId:'empty-choice',revision:1,environmentId:''}})).status).toBe(400)
+    const selected=await(await post(`${prefix}select`,{confirmed:true,selection:{operationId:'rollback',revision:1,environmentId:null}})).json() as any;expect(selected.revision).toBe(2)
+    expect((await post(`${prefix}select`,{confirmed:true,selection:{operationId:'stale',revision:1,environmentId:null}})).status).toBe(409)
+    expect((await runtime.byId(id)).kernelState().state).toBe('cold');expect(seen).toHaveLength(0)
+  })
   it('requires owner/CSRF and explicit confirmation for versioned human plan decisions without implicit execution', async () => {
     const id = (await runtime.list())[0].id; const prefix = `project/${id}/research-plan-`
     const definition = { title: 'HTTP research plan', objective: 'Inspect sources before analysis', steps: [{ id: 'inspect', title: 'Inspect', inputs: ['declared input'], outputs: ['report'], methods: ['method v1'], risk: 'Do not transform data', acceptance: 'Actual receipt and human assessment' }] }

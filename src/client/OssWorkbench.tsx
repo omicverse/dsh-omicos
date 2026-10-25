@@ -1,3 +1,4 @@
+import { ManagedEnvironmentPane } from './ManagedEnvironmentPane.js'
 import { ResearchPlanPane } from './ResearchPlanPane.js'
 import { ExecutionHistory } from './ExecutionHistory.js'
 import { AnnDataExplorer } from './AnnDataExplorer.js'
@@ -169,6 +170,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
     <AnnDataExplorer projectId={project.id} visible={visible} variables={language === 'python' ? snapshot?.variables || [] : []} />
     <FigureStudioPane key={`figures:${project.id}`} projectId={project.id} visible={visible} />
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />
+    <article className="oss-card"><ManagedEnvironmentPane key={`environment:${project.id}`} projectId={project.id} visible={visible} /></article>
     <ResearchPlanPane key={`plan:${project.id}`} projectId={project.id} visible={visible} executions={snapshot?.executions || []} />
     <PipelinePane projectId={project.id} visible={visible} />
     <ExecutionHistory projectId={project.id} language={language} visible={visible} />

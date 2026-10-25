@@ -18,10 +18,10 @@ export class PipelineService {
   private controllers = new Map<string, AbortController>()
   private closing = false
   private disposing?: Promise<void>
-  private constructor(readonly workspace: string, readonly store: PipelineStore, private python: string, private rscript: string, private envNames: readonly string[], private sensitive: readonly string[]) {}
-  static async open(workspace: string, python: string, rscript: string, envNames: readonly string[], sensitive: readonly string[]): Promise<PipelineService> {
+  private constructor(readonly workspace: string, readonly store: PipelineStore, private python: string, private rscript: string, private envNames: readonly string[], private sensitive: readonly string[], private pythonUnavailable?: string, private isolatedPython = false) {}
+  static async open(workspace: string, python: string, rscript: string, envNames: readonly string[], sensitive: readonly string[], pythonUnavailable?: string, isolatedPython = false): Promise<PipelineService> {
     const store = await PipelineStore.open(workspace)
-    try { store.recover(); return new PipelineService(workspace, store, python, rscript, envNames, sensitive) } catch (error) { store.close(); throw error }
+    try { store.recover(); return new PipelineService(workspace, store, python, rscript, envNames, sensitive, pythonUnavailable, isolatedPython) } catch (error) { store.close(); throw error }
   }
   private async directory(runId: string): Promise<string> {
     this.store.get(runId)
@@ -50,6 +50,7 @@ export class PipelineService {
     const existing = this.store.byOperation(operationId)
     if (existing) { if (existing.definitionId !== definitionId) throw new PipelineError(409, 'Start operation belongs to another definition'); return existing }
     if (new Set([...this.active.keys(), ...this.workers.keys()]).size >= 4) throw new PipelineError(409, 'Four local Pipeline runs already hold kernels; finish or cancel a waiting run first')
+    if (this.pythonUnavailable && this.store.definition(definitionId).language === 'python') throw new PipelineError(409, this.pythonUnavailable)
     this.checkFilesAvailable(definitionId)
     const { run, created } = this.store.create(definitionId, operationId)
     if (created) this.launch(run.id)
@@ -74,10 +75,12 @@ export class PipelineService {
     for (let index = 0; index < evidence.length; index++) if (actual[index]?.sha256 !== evidence[index].sha256 || actual[index]?.bytes !== evidence[index].bytes) throw new PipelineError(409, `Declared input/checkpoint changed: ${evidence[index].path}`)
   }
   private async worker(run: PipelineRun, definition: PipelineDefinition, fresh = false): Promise<ScienceService> {
+    if (this.pythonUnavailable && definition.language === 'python') throw new PipelineError(409, this.pythonUnavailable)
     let service = this.workers.get(run.id)
     if (fresh && service) { await service.dispose(); this.workers.delete(run.id); service = undefined }
     if (!service) {
       service = await ScienceService.open(await this.directory(run.id), definition.language === 'r' ? this.rscript : this.python, definition.language, this.envNames)
+      if (definition.language === 'python') service.configureColdInterpreter(this.python, this.pythonUnavailable, this.isolatedPython)
       this.workers.set(run.id, service)
     }
     return service

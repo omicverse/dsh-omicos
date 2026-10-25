@@ -78,6 +78,26 @@ requires a separate sharing approval. Long-term memory is currently scoped to on
 project. Declared file/citation references are not automatically read or verified.
 See [memory architecture](docs/adr/0004-scoped-revisioned-memory.md).
 
+The Python environment panel can explicitly create an independent managed venv.
+Provide exact package versions and SHA-256 wheel hashes, including all dependencies;
+leave the package array empty for a base environment. Only binary wheels install,
+from public PyPI or a project-relative offline wheel directory. Nothing installs on
+reads or Agent calls. Installations show bounded logs and can be canceled; unfinished
+files can be explicitly removed while keeping receipts. Failures never replace the
+previous environment. No base Python interpreter or R installer is bundled.
+
+Select a ready environment (or external Python for rollback) for the **next Host
+start**. The current kernel and its variables stay intact. Selected files are checked
+before selection/startup; changed/missing environments block new Python work while
+the workbench remains available for rollback. Python Pipeline defaults follow the
+next-start choice and recovery retains environment checks. This currently has POSIX
+coverage; Windows/Electron, full base-runtime download and public scientific lock
+catalogs remain unverified/unimplemented. See
+[managed environment decisions](docs/adr/0012-managed-python-environments.md).
+`pnpm test:provisioning` checks forced Host death/recovery; the optional
+`pnpm test:provisioning:online` explicitly downloads one small pinned PyPI fixture
+into a temporary environment. Neither uses official cloud credentials or payments.
+
 Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
 `--rscript /path/to/Rscript`, `--pass-env NCBI_API_KEY,CUSTOM_DATA_VAR`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
 The service binds only to loopback; exposing it as a public server is unsupported.
