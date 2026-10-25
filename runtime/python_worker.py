@@ -76,10 +76,12 @@ for line in sys.stdin:
                 directory = workspace / '.omicos-oss' / 'artifacts' / current
                 for index, number in enumerate(plt.get_fignums()):
                     directory.mkdir(parents=True, exist_ok=True)
-                    file = directory / ('figure-%s.png' % index)
-                    plt.figure(number).savefig(file, dpi=150, bbox_inches='tight')
-                    data = file.read_bytes()
-                    artifacts.append({'id': '%s-%s' % (current, index), 'path': str(file.relative_to(workspace)), 'mime': 'image/png', 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+                    for extension, mime in [('png', 'image/png'), ('pdf', 'application/pdf'), ('svg', 'image/svg+xml')]:
+                        file = directory / ('figure-%s.%s' % (index, extension))
+                        plt.figure(number).savefig(file, dpi=150, bbox_inches='tight')
+                        data = file.read_bytes()
+                        artifact_id = '%s-%s' % (current, index) if extension == 'png' else '%s-%s-%s' % (current, index, extension)
+                        artifacts.append({'id': artifact_id, 'path': str(file.relative_to(workspace)), 'mime': mime, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
                 plt.close('all')
         except KeyboardInterrupt:
             canceled = True

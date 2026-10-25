@@ -23,6 +23,10 @@ it('cold-loads in real rc.3 Cordis/ToolRuntime; exposes scientific tools and fai
     expect(names).toContain('omicos_notebook_run')
     expect(names).toContain('omicos_pipeline_state')
     expect(names).toContain('omicos_pipeline_start')
+    expect(names).toContain('omicos_figure_state'); expect(names).toContain('omicos_figure_save')
+    const figureDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('figure-denied'), name: 'omicos_figure_save', arguments: { figure_json: '{}' } })
+    expect(JSON.stringify(figureDenied)).toMatch(/denied|approval/i)
+
     expect(names).not.toContain('omicos_analyze')
     const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('context'), name: 'omicos_science_context', arguments: {} })
     expect(JSON.stringify(result)).toContain('scientific')

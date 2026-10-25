@@ -70,11 +70,21 @@ export class MemoryTree {
     memo.set(node.id, issues); return issues
   }
   view(id: string, access: MemoryAccess = {}): MemoryView { const node = this.get(id, access); const issues = this.issues(node); return { node, issues, effective: node.state === 'confirmed' && issues.length === 0 } }
+  // Node 22.13 can finalize temporary prepared statements while a nested query runs
+  // during iterate(). Materialize bounded pages before checking scope/dependencies.
+  private *scan(before = Number.MAX_SAFE_INTEGER): Generator<{ rowid: number; id: string }> {
+    for (;;) {
+      const rows = this.db.prepare('SELECT rowid,id FROM memories WHERE rowid<? ORDER BY rowid DESC LIMIT 100').all(before)
+      if (!rows.length) return
+      for (const row of rows) yield { rowid: Number(row.rowid), id: String(row.id) }
+      before = Number(rows.at(-1)!.rowid)
+    }
+  }
   list(access: MemoryAccess = {}, query: { search?: string; parentId?: string | null; before?: number; limit?: number } = {}) {
     const limit = query.limit ?? 50
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (query.before !== undefined && (!Number.isSafeInteger(query.before) || query.before < 1))) throw new MemoryError(400, 'Invalid memory page cursor/limit')
     const search = (query.search || '').toLocaleLowerCase().slice(0, 500)
-    const rows = this.db.prepare('SELECT rowid,id FROM memories WHERE rowid<? ORDER BY rowid DESC').iterate(query.before ?? Number.MAX_SAFE_INTEGER)
+    const rows = this.scan(query.before)
     const entries: MemoryView[] = []; let next: number | undefined; let lastRowId: number | undefined
     for (const row of rows) {
       const node = this.raw(String(row.id))
@@ -86,8 +96,8 @@ export class MemoryTree {
   }
   outline(access: MemoryAccess = {}) {
     const topics: Array<Pick<MemoryNode, 'id' | 'title' | 'parentId' | 'scope' | 'sessionId' | 'state' | 'revision'>> = []
-    for (const row of this.db.prepare("SELECT id FROM memories WHERE json_extract(record_json,'$.kind')='topic' ORDER BY rowid").iterate()) {
-      const node = this.raw(String(row.id)); if (!this.canRead(node, access)) continue
+    for (const row of this.scan()) {
+      const node = this.raw(String(row.id)); if (node.kind !== 'topic' || !this.canRead(node, access)) continue
       if (topics.length >= 500) return { topics, truncated: true }
       const { id, title, parentId, scope, sessionId, state, revision } = node; topics.push({ id, title, parentId, scope, sessionId, state, revision })
     }

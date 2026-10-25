@@ -69,6 +69,8 @@ export class ScienceService extends EventEmitter {
     this.saving = next.catch(() => {})
     return next
   }
+  receipt(id: string): Execution | undefined { return this.ledger.execution(id) }
+  figureCandidates(cursor?: string) { return this.ledger.figureCandidates(cursor) }
   get memory() { return this.ledger.memory }
   snapshot(sessionId?: string): ScienceSnapshot {
     return structuredClone({ protocol: PROTOCOL_VERSION, project: this.workspace, eventCursor: this.eventCursor,

@@ -10,6 +10,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Independent Node Host / public Python worker protocol with no model loop or private runtime dependency.
 - Persistent per-project Python and separate R namespaces, queue, stable invocation deduplication, cancellation and bounded output.
 - SQLite WAL execution/memory ledger with transactional receipts, one-time JSON migration preserving originals, lazy durable project registry, incomplete-job recovery, project-level heartbeat lock, distinct kernel generations.
+- Figure Studio v1: private SQLite immutable revisions, versioned captions/method/data declarations, project Python/R and Pipeline source receipts, explicit human review with assessed digest, reset-to-draft edits, search/history/source-catalog paging, byte-integrity status, version comparison and original artifact/provenance manifest downloads. Source changes reject download/approval without rerunning code; historical reviews remain audit records. Agent tools read/propose through Harness approval but cannot independently approve figures. Python retains PNG/PDF/SVG; vectors download as nosniff attachments, and Notebook local PNG outputs render directly.
 - Figure capture/integrity checks, variable inspection, sourced memory CRUD and notebook export.
 - Standalone responsive React scientific workspace; separate store route/window; DSH entry links.
 - Host-only cloud device pairing and owner-only credential file; browser snapshots redact credentials.
@@ -39,15 +40,17 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the complete 167-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
-- 167 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the complete 174-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
+- 174 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Pipeline flow fixed a definition, persisted its background run over page reload, approved a human gate, and verified actual output/journal. Native Node 22.13.1 tests cover checkpoint restoration after Host restart, changed-file/environment blocking, namespace isolation, true cancellation and interrupted-work deduplication.
 - Browser memory flow saves a proposal, confirms it, inspects immutable history, reloads it and withdraws it; full Harness mock-provider requests contain active shared facts and exclude private/unconfirmed notes.
+- Browser Figure Studio flow executes a real Notebook plot, approves its source-pinned figure, downloads an assessed provenance manifest, revises to draft, compares a prior caption and restores the document after reload. Actual Python/Pipeline PNG/PDF/SVG source downloads survive runtime restart without launching an interpreter.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Actual isolated Harness Web rc.3 profile: unauthenticated workbench/page/assets/session return 401; after Harness cookie bootstrap all return 200. Full mock-provider chat and main-window approval flow verified: no file before approval; real Python writes 42 after Allow once; assistant history survives reload.
+- Node 22.13 native SQLite queries avoid long-lived temporary statement iterators across nested reads; a real baseline run exposed/fixed premature statement finalization in figure search and the analogous memory scans.
 - GitHub Actions workflow added for Node 22.13.1/24, scientific fixtures, clean package and browser smoke; remote CI execution is not yet claimed.
 - `pnpm test:harness-browser` creates a temporary profile with the published rc.3 CLI, synthetic local model and isolated credentials; verifies the actual OmicOS tab opens its project workbench, and tests main-window approval before Python side effects. Added to the Node 24 CI job; remote CI results are not yet claimed.
 - Reproducible browser/package scripts are checked in under `scripts/`; screenshots now default to ignored `test-results/oss-browser/`. No real payments were made.
@@ -70,7 +73,7 @@ Verification at this checkpoint:
 ### M2–M4 capability migration
 
 - Richer dataset/AnnData charts, upload/import workflows and broader R environment provisioning/platform matrix.
-- Richer Notebook figure rendering/review and Figure Studio; basic persistent cell editing/import/export/re-execution is implemented.
+- Broader Figure Studio layout/composition/export workflows and isolated scientific review; immutable source curation, human review/version comparison and Notebook local PNG output rendering are implemented.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
 - Agent delegation constraints and scientific plans/approvals; global cross-project memory/dossier indexing. Project-local session/long-term memory tree and explicit consolidation are implemented.
 - Broader Pipeline orchestration/templates, mixed-language composition and remote Runner adapters. Ordered local Python/R definitions, human gates and durable checkpoint recovery are implemented; exhaustive I/O capture and exactly-once external side effects are not claimed.

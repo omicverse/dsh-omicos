@@ -1,3 +1,6 @@
+import { FigureStudio } from './figures.js'
+import { FigureError, type FigureSource } from './figure-types.js'
+import { artifactBytes } from './artifact-bytes.js'
 import { PipelineService } from './pipelines.js'
 import type { ScienceChat } from './chat.js'
 import { createHash } from 'node:crypto'
@@ -16,6 +19,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private figureProjects = new Map<string, Promise<FigureStudio>>()
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
@@ -81,6 +85,27 @@ export class OssRuntime {
     }
     return service
   }
+  async figures(workspace: string): Promise<FigureStudio> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.figureProjects.get(parent.workspace)
+    if (!service) {
+      service = FigureStudio.open(parent.workspace, async (source: FigureSource) => {
+        if (source.kind === 'pipeline') {
+          const pipelines = await this.pipelines(parent.workspace); const execution = await pipelines.execution(source.runId!, source.executionId)
+          if (execution.language !== source.language) throw new FigureError(400, 'Figure language does not match execution')
+          const artifact = execution.artifacts.find(item => item.id === source.artifactId); if (!artifact) throw new FigureError(404, 'Execution artifact not found')
+          return { execution, artifact, bytes: (await pipelines.artifact(source.runId!, execution.id, artifact.id)).bytes }
+        }
+        const execution = parent.receipt(source.executionId)
+        if (!execution || execution.language !== source.language) throw new FigureError(404, 'Project execution receipt not found')
+        const artifact = execution.artifacts.find(item => item.id === source.artifactId); if (!artifact) throw new FigureError(404, 'Execution artifact not found')
+        return { execution, artifact, bytes: await artifactBytes(parent.workspace, artifact) }
+      })
+      this.figureProjects.set(parent.workspace, service); service.catch(() => { if (this.figureProjects.get(parent.workspace) === service) this.figureProjects.delete(parent.workspace) })
+    }
+    return service
+  }
   async list(): Promise<ProjectReference[]> { return structuredClone([...this.known.values()]) }
   async byId(id: string): Promise<ScienceService> {
     const active = this.projects.get(id)
@@ -94,6 +119,8 @@ export class OssRuntime {
   }
   async dispose(): Promise<void> {
     this.closing = true
+    await Promise.allSettled([...this.figureProjects.values()].map(async service => (await service).dispose()))
+    this.figureProjects.clear()
     await Promise.allSettled([...this.pipelineProjects.values()].map(async service => (await service).dispose()))
     this.pipelineProjects.clear()
     await Promise.allSettled([...this.rProjects.values()].map(async project => (await project).dispose()))

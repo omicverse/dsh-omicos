@@ -1,3 +1,4 @@
+import { FigureError } from './figure-types.js'
 import { MemoryTree } from './memory-store.js'
 import type { MemoryAccess } from './memory-types.js'
 import { createRequire } from 'node:module'
@@ -71,6 +72,14 @@ export class ScienceLedger {
   }
   executions(language: string): Execution[] {
     return this.db.prepare('SELECT record_json FROM executions WHERE language=? ORDER BY rowid').all(language).map(row => JSON.parse(String(row.record_json)) as Execution)
+  }
+  execution(id: string): Execution | undefined { const row = this.db.prepare('SELECT record_json FROM executions WHERE id=?').get(id); return row ? JSON.parse(String(row.record_json)) as Execution : undefined }
+  figureCandidates(cursor?: string) {
+    const parts = cursor === undefined ? [Number.MAX_SAFE_INTEGER, -1] : cursor.split(':').map(Number)
+    if (parts.length !== 2 || !Number.isSafeInteger(parts[0]) || parts[0] < 1 || !Number.isSafeInteger(parts[1]) || parts[1] < -1) throw new FigureError(400, 'Invalid artifact page cursor')
+    const [row, index] = parts
+    const rows = this.db.prepare(`SELECT e.rowid AS row_id,e.id,e.language,json_extract(e.record_json,'$.state') AS state,json_extract(e.record_json,'$.createdAt') AS created_at,a.key AS artifact_index,a.value AS artifact_json FROM executions e,json_each(e.record_json,'$.artifacts') a WHERE (e.rowid<? OR (e.rowid=? AND CAST(a.key AS INTEGER)>?)) ORDER BY e.rowid DESC,CAST(a.key AS INTEGER) LIMIT 51`).all(row, row, index)
+    return { entries: rows.slice(0, 50).map(item => ({ source: { kind: 'project' as const, language: String(item.language) as 'python' | 'r', executionId: String(item.id), artifactId: JSON.parse(String(item.artifact_json)).id }, artifact: JSON.parse(String(item.artifact_json)), state: String(item.state), createdAt: String(item.created_at) })), next: rows.length > 50 ? `${rows[49].row_id}:${rows[49].artifact_index}` : undefined }
   }
   memories(sessionId?: string): Memory[] { return this.memory.active({ sessionId }).map(({ id, text, source, updatedAt }) => ({ id, text, source, updatedAt })) }
   saveExecutions(language: string, jobs: Execution[]): void {

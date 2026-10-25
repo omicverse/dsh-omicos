@@ -35,6 +35,15 @@ conflicts require reloading and merging, so another window's edits are not overw
 Imported rich outputs are retained for export with an unverified marker and are
 never executed as browser HTML. The current import limit is 2 MB / 500 cells.
 
+Figure Studio curates actual Python/R and Pipeline artifacts with versioned captions,
+declared methods/data references and explicit human review. Every edit resets review
+to draft; old captions and assessments remain in history. Download the original figure
+and its version-specific provenance JSON. Byte size/SHA-256 are checked on every
+download; a changed source is rejected and never regenerated automatically. Python
+plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actual PNG
+outputs. Vector files are downloads, not executable inline documents. See
+[Figure Studio architecture](docs/adr/0005-figure-studio.md).
+
 Research memory now has a topic tree with sourced facts, session-private notes and
 project-local long-term entries. Save a proposal, review its sources and explicitly
 confirm its version before the Scientist can use it. Summaries pin source revisions;

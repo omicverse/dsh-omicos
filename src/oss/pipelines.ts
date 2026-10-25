@@ -1,7 +1,8 @@
+import { artifactBytes } from './artifact-bytes.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, readFile, realpath, stat } from 'node:fs/promises'
-import { join, sep } from 'node:path'
+import { mkdir, realpath, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import { ScienceService } from './science.js'
 import { ScienceLedger } from './ledger.js'
 import { workspacePath } from './files.js'
@@ -215,10 +216,7 @@ export class PipelineService {
   async artifact(id: string, executionId: string, artifactId: string): Promise<{ bytes: Buffer; mime: string }> {
     const execution = await this.execution(id, executionId); const artifact = execution.artifacts.find(artifact => artifact.id === artifactId)
     if (!artifact) throw new PipelineError(404, 'Pipeline artifact not found')
-    const directory = await this.directory(id); const file = await realpath(join(directory, artifact.path))
-    if (!file.startsWith(directory + sep)) throw new PipelineError(403, 'Artifact outside run directory')
-    const bytes = await readFile(file); if (createHash('sha256').update(bytes).digest('hex') !== artifact.sha256) throw new PipelineError(409, 'Pipeline artifact changed since execution')
-    return { bytes, mime: artifact.mime }
+    return { bytes: await artifactBytes(await this.directory(id), artifact), mime: artifact.mime }
   }
   dispose(): Promise<void> { return this.disposing ??= this.shutdown() }
   private async shutdown(): Promise<void> {

@@ -1,3 +1,5 @@
+import { FigureError } from './figure-types.js'
+import { artifactBytes } from './artifact-bytes.js'
 import { MemoryError } from './memory-types.js'
 import { PipelineError } from './pipeline-types.js'
 import { NotebookError } from './notebooks.js'
@@ -7,9 +9,8 @@ import { listWorkspace, previewWorkspaceFile } from './files.js'
 import { inspectAnnDataCode } from './anndata.js'
 import { inspectEnvironment, inspectREnvironment } from './environment.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { randomUUID, createHash } from 'node:crypto'
-import { readFile, realpath } from 'node:fs/promises'
-import { join, sep } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { CloudError } from './cloud.js'
 import type { OssRuntime } from './runtime.js'
@@ -27,6 +28,11 @@ async function body(request: IncomingMessage, limit = 300_000): Promise<any> {
   try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') } catch { throw new CloudError(400, 'Invalid JSON') }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new CloudError(400, 'JSON object required')
   return parsed
+}
+function sendArtifact(response: ServerResponse, artifact: { bytes: Buffer; mime: string }): void {
+  const raster = artifact.mime === 'image/png' || artifact.mime === 'image/jpeg'
+  response.writeHead(200, { 'content-type': raster ? artifact.mime : 'application/octet-stream', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', ...(raster ? {} : { 'content-disposition': `attachment; filename="omicos-artifact.${artifact.mime === 'application/pdf' ? 'pdf' : artifact.mime === 'image/svg+xml' ? 'svg' : 'bin'}"` }) })
+  response.end(artifact.bytes)
 }
 /** Loopback + Host + same-origin + per-process CSRF nonce. No permissive CORS. */
 export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, options: { backend?: 'oss' | 'core' } = {}): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -152,9 +158,26 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else if (action === 'pipeline-execution' && method === 'GET') result = await pipelines.execution(id, url.searchParams.get('execution') || '')
           else if (action === 'pipeline-artifact' && method === 'GET') {
             const artifact = await pipelines.artifact(id, url.searchParams.get('execution') || '', url.searchParams.get('id') || '')
-            response.writeHead(200, { 'content-type': artifact.mime === 'image/png' ? 'image/png' : 'application/octet-stream' }); response.end(artifact.bytes); return
+            sendArtifact(response, artifact); return
           }
           else throw new CloudError(405, 'Method not allowed')
+        }
+        else if (action === 'figure-candidates' && method === 'GET') {
+          const kind = url.searchParams.get('kind') || 'project'; if (!['project', 'pipeline'].includes(kind)) throw new FigureError(400, 'Unsupported figure source kind')
+          result = kind === 'pipeline' ? (await runtime.pipelines(parent.workspace)).store.figureCandidates(url.searchParams.get('before') || undefined) : parent.figureCandidates(url.searchParams.get('before') || undefined)
+        }
+        else if (action?.startsWith('figure-')) {
+          const figures = await runtime.figures(parent.workspace); const id = String(data?.id || url.searchParams.get('id') || '')
+          const revision = url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined
+          if (action === 'figure-list' && method === 'GET') result = figures.list(url.searchParams.get('q') || '', url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
+          else if (action === 'figure-document' && method === 'GET') result = figures.get(id, revision)
+          else if (action === 'figure-integrity' && method === 'GET') result = await figures.integrity(id, revision)
+          else if (action === 'figure-history' && method === 'GET') result = figures.history(id, url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
+          else if (action === 'figure-save' && method === 'POST') result = await figures.save(data.figure, 'user:workbench')
+          else if (action === 'figure-review' && method === 'POST') { if (data.confirmed !== true) throw new FigureError(400, 'Explicit figure review confirmation required'); result = await figures.review(data.review, 'user:workbench') }
+          else if (action === 'figure-manifest' && method === 'GET') { response.setHeader('content-disposition', 'attachment; filename="omicos-figure.json"'); result = figures.manifest(id, revision) }
+          else if (action === 'figure-artifact' && method === 'GET') { const artifact = await figures.artifact(id, revision); response.writeHead(200, { 'content-type': artifact.mime === 'image/png' || artifact.mime === 'image/jpeg' ? artifact.mime : 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename="omicos-figure.${artifact.mime === 'application/pdf' ? 'pdf' : artifact.mime === 'image/svg+xml' ? 'svg' : artifact.mime === 'image/jpeg' ? 'jpg' : 'png'}"` }); response.end(artifact.bytes); return }
+          else throw new FigureError(405, 'Method not allowed')
         }
         else if (action === 'memory-tree' && method === 'GET') result = parent.memory.summaryList({ owner: true }, { search: url.searchParams.get('q') || '', ...(url.searchParams.has('parent') ? { parentId: url.searchParams.get('parent') === 'root' ? null : url.searchParams.get('parent') } : {}), before: url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined })
         else if (action === 'memory-node' && method === 'GET') result = url.searchParams.has('revision') ? { node: parent.memory.get(url.searchParams.get('id') || '', { owner: true }, Number(url.searchParams.get('revision'))), historical: true } : parent.memory.view(url.searchParams.get('id') || '', { owner: true })
@@ -193,17 +216,14 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         } else if (action === 'artifact' && method === 'GET') {
           const artifact = project.snapshot().executions.flatMap(job => job.artifacts).find(item => item.id === url.searchParams.get('id'))
           if (!artifact) throw new CloudError(404, 'Artifact not found')
-          const file = await realpath(join(project.workspace, artifact.path))
-          if (!file.startsWith(project.workspace + sep)) throw new CloudError(403, 'Artifact outside workspace')
-          const bytes = await readFile(file)
-          if (createHash('sha256').update(bytes).digest('hex') !== artifact.sha256) throw new CloudError(409, 'Artifact changed since execution')
-          response.writeHead(200, { 'content-type': artifact.mime === 'image/png' ? 'image/png' : 'application/octet-stream' }); response.end(bytes); return
+          const bytes = await artifactBytes(project.workspace, artifact)
+          sendArtifact(response, { bytes, mime: artifact.mime }); return
         } else throw new CloudError(404, 'Unknown project operation')
       } else throw new CloudError(404, 'Unknown OmicOS OSS route')
       sendJson(response, 200, result)
     } catch (error) {
       if (response.writableEnded) return
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

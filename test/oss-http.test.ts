@@ -1,6 +1,8 @@
+import { ScienceLedger } from '../src/oss/ledger.js'
+import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { request as httpRequest, createServer, type Server } from 'node:http'
-import { mkdtemp, rm, stat, readFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { OssRuntime } from '../src/oss/runtime.js'
@@ -77,6 +79,33 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await read('memory-tree')).entries[0].state).toBe('confirmed')
     expect((await read(`memory-history?id=${proposed.id}`)).revisions.map((node: any) => node.state)).toEqual(['confirmed', 'proposed'])
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${route}memory-tree`)).status).toBe(401)
+  })
+
+  it('protects figure revision, explicit review, historical downloads and vector attachment routes', async () => {
+    const reference = (await runtime.list())[0]; const project = await runtime.byId(reference.id); const prefix = `project/${reference.id}/`
+    const ledger = await ScienceLedger.open(project.workspace)
+    const png = Buffer.from([137,80,78,71,13,10,26,10]); const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>untrusted()</script></svg>')
+    const artifacts = [png, svg].map((bytes, index) => ({ id: `figure-${index}`, path: `.omicos-oss/figure-${index}`, mime: index ? 'image/svg+xml' : 'image/png', sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length }))
+    try { ledger.saveExecutions('python', [{ id: 'figure-receipt', operationId: 'figure-receipt', sessionId: 'fixture', language: 'python', state: 'succeeded', code: 'plot(values)', output: '', artifacts, createdAt: '2026-10-25' }]) } finally { ledger.close() }
+    await Promise.all(artifacts.map((artifact, index) => writeFile(join(project.workspace, artifact.path), index ? svg : png)))
+    const candidates = await (await fetchHost(`${base}/omicos/oss/api/${prefix}figure-candidates`)).json() as any
+    expect(candidates.entries).toHaveLength(2)
+    const figure = { title: 'Test figure', caption: 'Declared caption', methods: [], dataReferences: [], source: candidates.entries[0].source, operationId: 'figure-save' }
+    const savedResponse = await post(`${prefix}figure-save`, { figure }); expect(savedResponse.status).toBe(200); const saved = await savedResponse.json() as any
+    expect((await post(`${prefix}figure-save`, { figure: { ...figure, id: saved.id, revision: 0, operationId: 'stale-figure' } })).status).toBe(409)
+    const review = { id: saved.id, revision: saved.revision, decision: 'approved', note: 'Checked locally', operationId: 'figure-review' }
+    expect((await post(`${prefix}figure-review`, { review })).status).toBe(400)
+    expect((await post(`${prefix}figure-review`, { review, confirmed: true })).status).toBe(200)
+    const artifact = await fetchHost(`${base}/omicos/oss/api/${prefix}figure-artifact?id=${saved.id}&revision=1`)
+    expect(artifact.status).toBe(200); expect(Buffer.from(await artifact.arrayBuffer())).toEqual(png)
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}figure-artifact?id=${saved.id}`)).status).toBe(401)
+    const vector = await (await post(`${prefix}figure-save`, { figure: { ...figure, source: candidates.entries[1].source, operationId: 'svg-figure' } })).json() as any
+    const download = await fetchHost(`${base}/omicos/oss/api/${prefix}figure-artifact?id=${vector.id}`)
+    expect(download.headers.get('content-type')).toBe('application/octet-stream'); expect(download.headers.get('content-disposition')).toContain('attachment'); expect(download.headers.get('x-content-type-options')).toBe('nosniff')
+    const manifest = await (await fetchHost(`${base}/omicos/oss/api/${prefix}figure-manifest?id=${saved.id}`)).json() as any
+    expect(manifest.figure.execution.code).toBe('plot(values)'); expect(manifest.figure.review.state).toBe('approved')
+    await writeFile(join(project.workspace, artifacts[0].path), 'changed')
+    expect((await fetchHost(`${base}/omicos/oss/api/${prefix}figure-artifact?id=${saved.id}`)).status).toBe(409)
   })
 
   it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {

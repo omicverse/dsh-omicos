@@ -85,5 +85,12 @@ export class PipelineStore {
   }
   private event(run: PipelineRun, type: string): void { this.db.prepare('INSERT INTO events(run_id,type,at,data_json) VALUES(?,?,?,?)').run(run.id, type, run.updatedAt, JSON.stringify({ revision: run.revision, state: run.state, nextStep: run.nextStep, epoch: run.epoch, definitionId: run.definitionId, reason: run.reason, attempts: run.attempts.length, recovery: run.recoveries.at(-1) })) }
   events(id: string, after = 0): PipelineEvent[] { this.get(id); if (!Number.isSafeInteger(after) || after < 0) throw new PipelineError(400, 'Invalid Pipeline event cursor'); return this.db.prepare('SELECT * FROM events WHERE run_id=? AND seq>? ORDER BY seq LIMIT 200').all(id, after).map(row => ({ seq: Number(row.seq), runId: String(row.run_id), type: String(row.type), at: String(row.at), data: JSON.parse(String(row.data_json)) })) }
+  figureCandidates(cursor?: string) {
+    const parts = cursor === undefined ? [Number.MAX_SAFE_INTEGER, -1, -1] : cursor.split(':').map(Number)
+    if (parts.length !== 3 || !Number.isSafeInteger(parts[0]) || parts[0] < 1 || parts.slice(1).some(value => !Number.isSafeInteger(value) || value < -1)) throw new PipelineError(400, 'Invalid Pipeline artifact cursor')
+    const [row, attempt, index] = parts
+    const rows = this.db.prepare(`SELECT r.rowid AS row_id,r.id AS run_id,json_extract(r.record_json,'$.definitionId') AS definition_id,a.key AS attempt_index,b.key AS artifact_index,json_extract(a.value,'$.executionId') AS execution_id,json_extract(a.value,'$.state') AS state,b.value AS artifact_json FROM runs r,json_each(r.record_json,'$.attempts') a,json_each(a.value,'$.artifacts') b WHERE (r.rowid<? OR (r.rowid=? AND (CAST(a.key AS INTEGER)>? OR (CAST(a.key AS INTEGER)=? AND CAST(b.key AS INTEGER)>?)))) ORDER BY r.rowid DESC,CAST(a.key AS INTEGER),CAST(b.key AS INTEGER) LIMIT 51`).all(row, row, attempt, attempt, index)
+    return { entries: rows.slice(0, 50).map(item => ({ source: { kind: 'pipeline' as const, language: this.definition(String(item.definition_id)).language, runId: String(item.run_id), executionId: String(item.execution_id), artifactId: JSON.parse(String(item.artifact_json)).id }, artifact: JSON.parse(String(item.artifact_json)), state: String(item.state) })), next: rows.length > 50 ? `${rows[49].row_id}:${rows[49].attempt_index}:${rows[49].artifact_index}` : undefined }
+  }
   close(): void { this.db.close() }
 }
