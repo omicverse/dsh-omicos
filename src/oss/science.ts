@@ -23,6 +23,7 @@ export class ScienceService extends EventEmitter {
   private generation?: string
   private environment?: KernelEnvironment
   private executions: Execution[] = []
+  private dispatchChecks = new Map<string, (dispatch: boolean) => void>()
   private dirtyExecutions = new Map<string, number>()
   private writeSequence = 0
   private variables: Variable[] = []
@@ -86,6 +87,7 @@ export class ScienceService extends EventEmitter {
   private retainRecent(): void {
     const recent = new Set(this.executions.slice(-100).map(job => job.id))
     this.executions = this.executions.filter(job => recent.has(job.id) || !terminal.has(job.state) || this.dirtyExecutions.has(job.id) || this.active?.id === job.id || this.finishing?.id === job.id)
+    for (const id of this.dispatchChecks.keys()) { const job = this.executions.find(item => item.id === id); if (!job || terminal.has(job.state)) this.dispatchChecks.delete(id) }
   }
   history(query: { before?: number; state?: string; search?: string } = {}) { return this.ledger.executionHistory(this.language, query) }
   historyFor(language: 'python' | 'r', query: { before?: number; state?: string; search?: string } = {}) { return this.ledger.executionHistory(language, query) }
@@ -102,7 +104,7 @@ export class ScienceService extends EventEmitter {
       executionWindow: { shown: executions.length, total, active: this.executions.filter(job => !terminal.has(job.state)).length, hasMore: total > executions.length }, executions, variables: this.variables, memories: this.memories(sessionId) })
   }
   get(id: string): Execution | undefined { const job = this.executions.find(job => job.id === id) || this.ledger.execution(id); return job?.language === this.language ? structuredClone(job) : undefined }
-  async submit(code: string, operationId: string, sessionId: string, expectedKernelGeneration?: string): Promise<Execution> {
+  async submit(code: string, operationId: string, sessionId: string, expectedKernelGeneration?: string, beforeDispatch?: (dispatch: boolean) => void): Promise<Execution> {
     if (this.closing) throw new Error('Scientific service is shutting down')
     if (!code.trim() || code.length > 200_000) throw new Error('Code must contain 1–200000 characters')
     if (!operationId || operationId.length > 200 || !sessionId || sessionId.length > 200) throw new Error('Valid operationId and sessionId are required')
@@ -115,7 +117,8 @@ export class ScienceService extends EventEmitter {
     const job: Execution = { id: randomUUID(), operationId, sessionId, code, language: this.language, state: 'queued', createdAt: new Date().toISOString(), output: '', artifacts: [], ...(expectedKernelGeneration ? { expectedKernelGeneration } : {}) }
     // Register before awaiting disk: concurrent retries see the same operation.
     this.executions.push(job)
-    try { await this.persist([job]) } catch (error) { this.executions.splice(this.executions.indexOf(job), 1); this.dirtyExecutions.delete(job.id); throw error }
+    if (beforeDispatch) this.dispatchChecks.set(job.id, beforeDispatch)
+    try { await this.persist([job]) } catch (error) { this.executions.splice(this.executions.indexOf(job), 1); this.dirtyExecutions.delete(job.id); this.dispatchChecks.delete(job.id); throw error }
     this.queue.push(job)
     this.emit('change')
     void this.pump().catch(error => this.failWorker(String(error)))
@@ -178,6 +181,7 @@ export class ScienceService extends EventEmitter {
       })
     })
   }
+  private checkDispatch(job: Execution, dispatch = false): void { try { this.dispatchChecks.get(job.id)?.(dispatch) } catch (error) { throw new Error(`Execution pre-dispatch policy rejected; code was not executed. ${String(error)}`) } }
   private async pump(): Promise<void> {
     if (this.active || this.closing) return
     const next = this.queue.shift()
@@ -187,11 +191,14 @@ export class ScienceService extends EventEmitter {
       next.state = 'interrupted'; next.endedAt = new Date().toISOString(); next.error = 'Expected kernel generation is unavailable; restore a checkpoint or explicitly restart. Code was not executed.'
       await this.persist([next]); this.active = undefined; this.retainRecent(); this.emit('change'); await this.pump(); return
     }
+    this.checkDispatch(next)
     await this.start()
+    this.checkDispatch(next)
     if (next.state === 'canceled') { this.active = undefined; this.retainRecent(); void this.pump(); return }
     if (next.expectedKernelGeneration && this.generation !== next.expectedKernelGeneration) throw new Error('Kernel generation changed before execution; code was not sent')
     next.state = 'running'; next.startedAt = new Date().toISOString(); next.kernelGeneration = this.generation; next.environment = structuredClone(this.environment)
     await this.persist([next]); this.emit('change')
+    this.checkDispatch(next, true)
     this.child!.stdin!.write(JSON.stringify({ id: next.id, code: next.code }) + '\n')
   }
   private async consume(message: { id: string; type: string; text?: string; error?: string; canceled?: boolean; variables?: Variable[]; artifacts?: Execution['artifacts'] }): Promise<void> {
@@ -288,6 +295,7 @@ export class ScienceService extends EventEmitter {
     this.ledger.close()
     const release = this.releaseLock; this.releaseLock = undefined
     if (release && !this.lockFailure) await release()
+    this.dispatchChecks.clear()
     this.removeAllListeners()
   }
 }

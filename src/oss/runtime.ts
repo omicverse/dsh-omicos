@@ -1,3 +1,4 @@
+import { ScientificMethods } from './methods.js'
 import { DataUploads } from './uploads.js'
 import { ManagedEnvironments } from './managed-environments.js'
 import { ResearchPlans } from './research-plans.js'
@@ -23,6 +24,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private methodProjects = new Map<string, Promise<ScientificMethods>>()
   private uploadProjects = new Map<string, Promise<DataUploads>>()
   private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
   private planProjects = new Map<string, Promise<ResearchPlans>>()
@@ -91,10 +93,17 @@ export class OssRuntime {
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
     let service = this.pipelineProjects.get(parent.workspace)
     if (!service) {
-      service = PipelineService.open(parent.workspace, parent.python, this.rscript, this.envNames, this.sensitiveFiles, parent.executionUnavailable, parent.usesIsolatedPython)
+      service = this.methods(parent.workspace).then(methods => PipelineService.open(parent.workspace, parent.python, this.rscript, this.envNames, this.sensitiveFiles, parent.executionUnavailable, parent.usesIsolatedPython, references => methods.validateReferences(references)))
       this.pipelineProjects.set(parent.workspace, service)
       service.catch(() => { if (this.pipelineProjects.get(parent.workspace) === service) this.pipelineProjects.delete(parent.workspace) })
     }
+    return service
+  }
+  async methods(workspace: string): Promise<ScientificMethods> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.methodProjects.get(parent.workspace)
+    if (!service) { service = ScientificMethods.open(parent.workspace); this.methodProjects.set(parent.workspace, service); service.catch(() => { if (this.methodProjects.get(parent.workspace) === service) this.methodProjects.delete(parent.workspace) }) }
     return service
   }
   async uploads(workspace: string): Promise<DataUploads> {
@@ -168,6 +177,8 @@ export class OssRuntime {
     this.figureProjects.clear()
     await Promise.allSettled([...this.pipelineProjects.values()].map(async service => (await service).dispose()))
     this.pipelineProjects.clear()
+    await Promise.allSettled([...this.methodProjects.values()].map(async service => (await service).dispose()))
+    this.methodProjects.clear()
     await Promise.allSettled([...this.rProjects.values()].map(async project => (await project).dispose()))
     this.rProjects.clear()
     await Promise.allSettled([...this.projects.values()].map(async project => (await project).dispose()))

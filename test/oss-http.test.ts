@@ -368,6 +368,20 @@ describe('scientific workbench and commerce boundary', () => {
     expect(journal.events.some((event: any) => event.type === 'run/succeeded')).toBe(true)
     expect(seen).toHaveLength(0)
   })
+  it('keeps method publication human-only, preserves immutable versions and rejects withdrawn Pipeline pins before execution', async () => {
+    const id=(await runtime.list())[0].id;const prefix=`project/${id}/`;const document={key:'lab.http',version:'1.0.0',title:'HTTP method',description:'Fixture',body:'Inspect source before analysis; no automatic execution.',authors:['Fixture author'],sources:['https://example.org/source'],license:{id:'MIT',text:'Declared fixture license'}};const pack={schema:'omicos.methods/1',methods:[{...document,review:{state:'published'}}]}
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}method-list`)).status).toBe(401)
+    expect((await post(`${prefix}method-import`,{pack,operationId:'unapproved'})).status).toBe(400)
+    const imported=await(await post(`${prefix}method-import`,{confirmed:true,pack,operationId:'import'})).json() as any;const draft=imported[0];expect(draft.review.state).toBe('draft')
+    const review={id:draft.id,revision:1,action:'publish',operationId:'publish',note:'Reviewed fixture scope and source/license declarations'};expect((await post(`${prefix}method-review`,{review})).status).toBe(400)
+    expect((await post(`${prefix}method-review`,{confirmed:true,review})).status).toBe(200)
+    const reference=await(await fetchHost(`${base}/omicos/oss/api/${prefix}method-reference?id=${draft.id}`)).json() as any;expect(reference.id).toBe(`omicos-method:${draft.id}`)
+    const defined=await(await post(`${prefix}pipeline-define`,{definition:{title:'Pinned method fixture',language:'python',references:[reference],steps:[{id:'s',code:'print(42)'}]}})).json() as any;expect(defined.id).toMatch(/^[a-f0-9]{64}$/)
+    expect((await post(`${prefix}method-review`,{confirmed:true,review:{...review,revision:2,operationId:'withdraw',action:'withdraw',note:'Do not run this version'}})).status).toBe(200)
+    expect((await post(`${prefix}pipeline-start`,{confirmed:true,definitionId:defined.id,operationId:'must-not-start'})).status).toBe(409)
+    const history=await(await fetchHost(`${base}/omicos/oss/api/${prefix}method-history?id=${draft.id}`)).json() as any;expect(history.reviews.map((review:any)=>review.state)).toEqual(['withdrawn','published','draft'])
+    expect((await runtime.byId(id)).kernelState().state).toBe('cold');expect(seen).toHaveLength(0)
+  })
   it('imports verified raw binary chunks only after owner/CSRF approval and never overwrites or executes uploaded data', async () => {
     const id=(await runtime.list())[0].id;const prefix=`project/${id}/upload-`;const bytes=Buffer.from('sample,value\na,42\nb,43\n');const digest=createHash('sha256').update(bytes).digest('hex');const upload={operationId:'http-import',directory:'',name:'uploaded.csv',bytes:bytes.length,chunkHashes:[digest],expectedSha256:digest}
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}list`)).status).toBe(401)

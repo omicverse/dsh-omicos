@@ -1,3 +1,5 @@
+import { builtinMethodPack } from './methods.js'
+import { MethodError } from './method-types.js'
 import { UploadError, UPLOAD_CHUNK_BYTES } from './upload-types.js'
 import { EnvironmentError } from './environment-types.js'
 import { ResearchPlanError } from './research-plan-types.js'
@@ -81,7 +83,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         sendJson(response, 200, { csrf: nonce, backend: options.backend || 'oss', account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: PROTOCOL_VERSION }); return
       }
       if (method !== 'GET' && request.headers['x-omicos-csrf'] !== nonce) throw new CloudError(403, 'Invalid CSRF token')
-      const data = method === 'POST' ? await body(request, /\/(notebook-(create|save)|pipeline-define)$/.test(path) ? 2_100_000 : 300_000) : undefined
+      const data = method === 'POST' ? await body(request, /\/(notebook-(create|save)|pipeline-define|method-import)$/.test(path) ? 2_100_000 : 300_000) : undefined
       const cloud = runtime.cloud
       if (method === 'POST' && path.startsWith('/omicos/oss/api/') && !path.startsWith('/omicos/oss/api/project/') && path !== '/omicos/oss/api/open-session-project' && request.headers['x-omicos-account'] !== encodeURIComponent(cloud.identity())) throw new CloudError(409, 'Cloud account changed; refresh before submitting')
       let result: unknown
@@ -163,6 +165,19 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') { if (language === 'python' && project.executionUnavailable) throw new EnvironmentError(409, project.executionUnavailable); result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python, project.usesIsolatedPython) }
+        else if (action?.startsWith('method-')) {
+          const methods = await runtime.methods(parent.workspace); const id = url.searchParams.get('id') || ''
+          const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined
+          if (action === 'method-builtin-pack' && method === 'GET') result = builtinMethodPack()
+          else if (action === 'method-list' && method === 'GET') result = methods.list(url.searchParams.get('q') || '', url.searchParams.get('state') || '', before)
+          else if (action === 'method-document' && method === 'GET') result = methods.get(id)
+          else if (action === 'method-reference' && method === 'GET') result = methods.reference(id)
+          else if (action === 'method-history' && method === 'GET') result = methods.history(id, before)
+          else if (action === 'method-export' && method === 'GET') result = methods.export(id)
+          else if (action === 'method-import' && method === 'POST') { if (data.confirmed !== true) throw new MethodError(400, 'Explicit method pack import approval required'); result = await methods.importPack(data.pack, data.operationId, 'user:workbench') }
+          else if (action === 'method-review' && method === 'POST') { if (data.confirmed !== true) throw new MethodError(400, 'Explicit human method publication/withdrawal required'); result = await methods.review(data.review) }
+          else throw new CloudError(405, 'Method not allowed')
+        }
         else if (action?.startsWith('upload-')) {
           const uploads = await runtime.uploads(parent.workspace); const id = data?.id || url.searchParams.get('id') || ''
           if (action === 'upload-list' && method === 'GET') result = uploads.list(url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
@@ -289,7 +304,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

@@ -1,3 +1,5 @@
+import { METHOD_PREFIX } from './methods.js'
+import type { MethodAssessment } from './method-types.js'
 import type { PipelineListQuery } from './pipeline-types.js'
 import { artifactBytes } from './artifact-bytes.js'
 import { createHash, randomUUID } from 'node:crypto'
@@ -7,10 +9,11 @@ import { join } from 'node:path'
 import { ScienceService } from './science.js'
 import { ScienceLedger } from './ledger.js'
 import { workspacePath } from './files.js'
-import { PipelineStore, digest } from './pipeline-store.js'
-import { PipelineError, type FileEvidence, type PipelineRun, type PipelineDefinition, type PipelineAttempt } from './pipeline-types.js'
+import { PipelineStore, digest, normalizePipeline } from './pipeline-store.js'
+import { PipelineError, type FileEvidence, type PipelineRun, type PipelineDefinition, type PipelineAttempt, type PipelineReference } from './pipeline-types.js'
 import type { Execution } from './types.js'
 
+const requireMethodRegistry = (references: readonly PipelineReference[]): MethodAssessment[] => { if (references.some(reference => reference.id.trim().toLowerCase().startsWith(METHOD_PREFIX))) throw new PipelineError(503, 'Managed method registry is unavailable; code was not executed'); return [] }
 const stopped = new Set(['failed', 'canceled', 'interrupted', 'succeeded'])
 export class PipelineService {
   private workers = new Map<string, ScienceService>()
@@ -18,10 +21,10 @@ export class PipelineService {
   private controllers = new Map<string, AbortController>()
   private closing = false
   private disposing?: Promise<void>
-  private constructor(readonly workspace: string, readonly store: PipelineStore, private python: string, private rscript: string, private envNames: readonly string[], private sensitive: readonly string[], private pythonUnavailable?: string, private isolatedPython = false) {}
-  static async open(workspace: string, python: string, rscript: string, envNames: readonly string[], sensitive: readonly string[], pythonUnavailable?: string, isolatedPython = false): Promise<PipelineService> {
+  private constructor(readonly workspace: string, readonly store: PipelineStore, private python: string, private rscript: string, private envNames: readonly string[], private sensitive: readonly string[], private pythonUnavailable?: string, private isolatedPython = false, private validateMethods: (references: readonly PipelineReference[]) => MethodAssessment[] = requireMethodRegistry) {}
+  static async open(workspace: string, python: string, rscript: string, envNames: readonly string[], sensitive: readonly string[], pythonUnavailable?: string, isolatedPython = false, validateMethods = requireMethodRegistry): Promise<PipelineService> {
     const store = await PipelineStore.open(workspace)
-    try { store.recover(); return new PipelineService(workspace, store, python, rscript, envNames, sensitive, pythonUnavailable, isolatedPython) } catch (error) { store.close(); throw error }
+    try { store.recover(); return new PipelineService(workspace, store, python, rscript, envNames, sensitive, pythonUnavailable, isolatedPython, validateMethods) } catch (error) { store.close(); throw error }
   }
   private async directory(runId: string): Promise<string> {
     this.store.get(runId)
@@ -32,7 +35,7 @@ export class PipelineService {
     return directory
   }
   private assertOpen() { if (this.closing) throw new PipelineError(503, 'Pipeline service is shutting down') }
-  define(input: unknown) { this.assertOpen(); return this.store.define(input) }
+  define(input: unknown) { this.assertOpen(); const definition = normalizePipeline(input); this.validateMethods(definition.references); return this.store.define(definition) }
   list(query: PipelineListQuery = {}) { const definitions = this.store.definitionPage(query.definitionsBefore, query.definitionQuery); const runs = this.store.runPage(query.runsBefore, query.runQuery, query.state); return { definitions: definitions.entries, runs: runs.entries, definitionPage: { total: definitions.total, next: definitions.next }, runPage: { total: runs.total, next: runs.next } } }
   get(id: string) { return this.store.get(id) }
   private checkFilesAvailable(definitionId: string, ownId?: string): void {
@@ -49,6 +52,7 @@ export class PipelineService {
     this.assertOpen()
     const existing = this.store.byOperation(operationId)
     if (existing) { if (existing.definitionId !== definitionId) throw new PipelineError(409, 'Start operation belongs to another definition'); return existing }
+    this.validateMethods(this.store.definition(definitionId).references)
     if (new Set([...this.active.keys(), ...this.workers.keys()]).size >= 4) throw new PipelineError(409, 'Four local Pipeline runs already hold kernels; finish or cancel a waiting run first')
     if (this.pythonUnavailable && this.store.definition(definitionId).language === 'python') throw new PipelineError(409, this.pythonUnavailable)
     this.checkFilesAvailable(definitionId)
@@ -75,6 +79,7 @@ export class PipelineService {
     for (let index = 0; index < evidence.length; index++) if (actual[index]?.sha256 !== evidence[index].sha256 || actual[index]?.bytes !== evidence[index].bytes) throw new PipelineError(409, `Declared input/checkpoint changed: ${evidence[index].path}`)
   }
   private async worker(run: PipelineRun, definition: PipelineDefinition, fresh = false): Promise<ScienceService> {
+    this.validateMethods(definition.references)
     if (this.pythonUnavailable && definition.language === 'python') throw new PipelineError(409, this.pythonUnavailable)
     let service = this.workers.get(run.id)
     if (fresh && service) { await service.dispose(); this.workers.delete(run.id); service = undefined }
@@ -109,12 +114,16 @@ export class PipelineService {
   }
   private async execute(id: string, worker: ScienceService, definition: PipelineDefinition, step: number, kind: PipelineAttempt['kind'], code: string): Promise<Execution> {
     const run = this.store.get(id)
+    this.validateMethods(definition.references)
     if (!run.kernelGeneration) throw new PipelineError(409, 'Pipeline namespace has no live generation; code was not submitted')
     if (run.cancelRequested || this.closing) throw new Error('Execution canceled before submission')
     const operationId = `pipeline-${id}-${run.epoch}-${kind}-${step}`
     const attempt: PipelineAttempt = { id: randomUUID(), step, kind, operationId, state: 'reserved' }
     this.store.update(id, undefined, 'execution/reserved', draft => { draft.attempts.push(attempt) })
-    const job = await worker.submit(this.source(definition, code), operationId, `pipeline:${id}`, run.kernelGeneration)
+    const job = await worker.submit(this.source(definition, code), operationId, `pipeline:${id}`, run.kernelGeneration, dispatch => {
+      const reviews = this.validateMethods(definition.references)
+      if (dispatch && reviews.length && JSON.stringify(this.store.get(id).attempts.find(item => item.id === attempt.id)?.methodReviews) !== JSON.stringify(reviews)) this.store.update(id, undefined, 'methods/validated', draft => { draft.attempts.find(item => item.id === attempt.id)!.methodReviews = reviews })
+    })
     this.store.update(id, undefined, 'execution/submitted', draft => { draft.attempts.find(item => item.id === attempt.id)!.executionId = job.id })
     if (this.store.get(id).cancelRequested) await worker.cancel(job.id)
     const result = await this.settled(worker, job.id)
@@ -196,6 +205,7 @@ export class PipelineService {
       const rejected = this.store.update(id, revision, 'approval/rejected', draft => { draft.state = 'canceled'; draft.reason = 'Human rejected this stage.' })
       await this.workers.get(id)?.dispose(); this.workers.delete(id); return rejected
     }
+    this.validateMethods(this.store.definition(run.definitionId).references)
     if (action === 'continue') {
       if (run.state !== 'waiting') throw new PipelineError(409, 'Only a waiting gate can continue in its live namespace')
       const worker = this.workers.get(id); const kernel = worker?.kernelState()

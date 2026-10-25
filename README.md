@@ -71,6 +71,19 @@ plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actu
 outputs. Vector files are downloads, not executable inline documents. See
 [Figure Studio architecture](docs/adr/0005-figure-studio.md).
 
+The scientific method library accepts plaintext method packs with exact versions,
+authors, source URLs and license declarations. New methods remain drafts until you
+publish them locally; exporting/importing never transfers approval. A key/version
+cannot be overwritten with changed bytes. The four original public checklists can
+be explicitly prepared as a reviewable pack; no external source is fetched or run.
+
+Pipeline can append an exact published method reference to its current draft without
+replacing steps or parameters. Managed pins are rechecked at define/start/recovery
+and actual dispatch. Withdrawing a method blocks future use while retaining earlier
+results/review revisions. Already-running code is not automatically killed. Normal
+tool/execution approval still applies, and publication is not independent scientific
+or legal validation. See [method version decisions](docs/adr/0014-versioned-scientific-methods.md).
+
 Scientific plans now retain a pinned objective, ordered steps, inputs/outputs,
 method references, risks and acceptance criteria. The Agent can read/propose; you
 approve/reject in the workbench. Task completion needs your assessment and an actual
