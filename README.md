@@ -459,3 +459,10 @@ remount: the next context prepares authorized MCP tools and refreshes the public
 prompt assembly, while current memory stays literal and approvals remain required.
 Cold transcript reads do not start transports. See [retained-scope evidence and
 remaining live-streaming limits](docs/adr/0023-retained-scientist-context.md).
+
+Scientist chat now streams visible text through the same Harness controller, with
+partial reconnect baselines and committed history. Closing the window stops only
+its observer; explicit Stop retains the existing cancel path. Reasoning, tool
+arguments and injected context are not relayed to this chat surface. Text windows
+are bounded and full history remains Harness-owned. See [stream protocol, limits
+and verification](docs/adr/0024-fixed-conversation-stream.md).

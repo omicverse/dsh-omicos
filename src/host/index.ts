@@ -88,7 +88,7 @@ export function apply(ctx: Context, config: Config): void {
       if (config.backend !== 'core') service.chat = chat
       const resolveWorkspace = async (sessionId: string, signal: AbortSignal) => { const cwd = await chat.workspaceForSession(sessionId, signal); return config.workspace || cwd }
       service.resolveSessionWorkspace = resolveWorkspace
-      yield () => { if (service.chat === chat) service.chat = undefined; if (service.resolveSessionWorkspace === resolveWorkspace) service.resolveSessionWorkspace = undefined }
+      yield async () => { if (service.chat === chat) service.chat = undefined; if (service.resolveSessionWorkspace === resolveWorkspace) service.resolveSessionWorkspace = undefined;await chat.dispose() }
     }, 'omicos: Harness conversation bridge')
   })
   if (config.backend !== 'core') {

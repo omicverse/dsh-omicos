@@ -27,6 +27,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Every cloud mutation carries the rendered account/origin/login-generation identity and is rejected before dispatch when stale; automatic refresh never replays account-mismatched billing actions. Project execution and workspace resolution remain account-independent.
 - Cloud credentials are bound to their origin; changing cloud bases never forwards previously saved tokens.
 - Durable SSE scientific events with Last-Event-ID replay, slow-reader backpressure and snapshot recovery; frontend retry is restricted to pre-dispatch CSRF rejection and preserves operation IDs.
+- Fixed Scientist chat now projects live public text from the actual Harness controller follow stream, including compact reconnect baselines and durable message replacement. Owner-only SSE is bounded/coalesced under backpressure; closing it never calls model cancel. Exact session/workspace checks precede data, and cursor gaps request a fresh baseline. Window/history limits are explicit and full authority stays in Harness; see ADR 0024.
 - Retained Scientist scopes now prepare the current Host MCP bridge on context assembly, wait for initial projection, and refresh the public prompt assembly when tools/instructions change. Native rc.3 preset binding/stdio fixtures reproduce the former missing-tools-on-remount bug and verify actual returned model schemas, refreshed memory once, old process exit, per-call approval, no global leakage and disabled grants surviving a further remount. Context cancellation stops preparation waits without claiming to revoke an Agent-owned transport. Retained live-context preparation explicitly fails while the Host provider is absent. All 273 tests across 48 files passed under actual Node 22.13.1, plus typechecks/build, clean packed install and isolated published Harness Web owner/approval/Python/MCP/conversation browser regression without page errors. Full live-model/module-watcher replacement remains separate; see ADR 0023.
 - Harness route generations cache a single lazy handler promise, so concurrent startup requests share CSRF state. Retired dependency scopes reject pending/new requests with 503 before dispatch. Actual rc.3 Cordis/WebServer lifecycle tests cover unload/remount and optional carrier replacement. All 271 tests across 48 files passed under actual Node 22.13.1, with typechecks/build, clean packed install and the isolated published full Harness Web browser/approval/MCP/conversation regression also passing without page errors; see ADR 0022.
 - Python/R workers and environment probes inherit a deliberate runtime variable projection; additional scientific variables require explicit name allowlisting. A real Python test verifies a synthetic Host secret is absent.
@@ -96,7 +97,7 @@ Verification at this checkpoint:
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.
 - Base Python/runtime binary installer/downloader, R provisioning and public multi-platform scientific lock catalogs. Explicit managed Python venv/wheel provisioning, next-Host selection and rollback are implemented with POSIX coverage.
 - Broader event-ledger provenance coverage, retention/deletion policies and large individual Pipeline attempt/checkpoint paging. Ad hoc and Pipeline collection paging, bounded recent execution windows, old-receipt lookup and complete streamed legacy export are implemented.
-- Agent-token streaming and event-driven chat beyond the scientific SSE stream.
+- Broader rich/multimodal chat presentation and full-history paging. Public text streaming now follows the fixed Harness session directly, with compact partial reconnect baselines, bounded windows, coalesced owner-authenticated SSE and observer-only cleanup; no second model loop or prompt replay. Reasoning/tool arguments/injected context are not forwarded. Pending client responses are fenced across project generations; see ADR 0024.
 - OS keychain integration; current credentials are restricted local files.
 
 ### M2–M4 capability migration
@@ -113,3 +114,10 @@ Verification at this checkpoint:
 
 See `OMICOS_OSS_DESIGN.md` for full scope, capability mapping, boundaries and acceptance criteria.
 Do not mark the overall goal complete when only this checkpoint passes.
+
+### Fixed-conversation streaming verification (2026-10-25)
+
+- Node 22.13.1 Vitest cache records 50 test files with no failures after the 280-test streaming checkpoint; a login test now waits for client completion rather than only server receipt.
+- Published Harness 0.2.1-rc.3 browser regression passed: visible partial reply, mid-reply reload restores partial baseline, exactly three expected scientific model requests, one committed reply, and no page errors.
+- Clean package install passed independent Python execution (`42`) and publication worker checks, without requiring private Core or Harness for standalone execution.
+- Production providers, remote CI, Windows and Electron remain unverified.

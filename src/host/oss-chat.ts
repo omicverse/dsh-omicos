@@ -2,32 +2,14 @@ import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import type { SessionController, SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { ChatMessage, ChatSnapshot, ScienceChat } from '../oss/chat.js'
+import type { ChatSnapshot, ScienceChat } from '../oss/chat.js'
 import { readJson, writeJson } from '../oss/storage.js'
 
-/** Only the known message surface is projected; arbitrary event payloads are not instructions. */
-export function projectChatRecords(records: readonly unknown[]): ChatMessage[] {
-  let messages: ChatMessage[] = []
-  for (const record of records) {
-    const item = record as { type?: string; event?: { type: string; seq: number; surfaceOp?: string | { op: string; startSeq: number; endSeq: number }; data: any } }
-    if (item.type !== 'event' || !item.event) continue
-    const event = item.event
-    const operation = event.surfaceOp
-    if (typeof operation === 'object' && operation.op === 'replace') messages = messages.filter(message => message.seq < operation.startSeq || message.seq > operation.endSeq)
-    const role = event.type === 'user/message' ? 'user' : event.type === 'assistant/message' ? 'assistant' : undefined
-    if (!role) continue
-    const data = role === 'user' ? event.data : event.data?.message
-    // Hide synthetic system-context user messages; only real human prompts belong in this chat UI.
-    if (role === 'user' && data?.source?.kind !== 'user') continue
-    const content = data?.content
-    if (!Array.isArray(content)) continue
-    const text = content.filter(part => part?.type === 'text' && typeof part.text === 'string').map(part => part.text).join('\n')
-    if (text) messages.push({ seq: event.seq, role, text: text.slice(-100000), ...(event.data?.interrupted ? { interrupted: true } : {}) })
-  }
-  return messages
-}
+export {publicChatRecords as projectChatRecords} from '../oss/chat-projection.js'
+import {ChatProjection} from '../oss/chat-projection.js'
 
 export class HarnessScienceChat implements ScienceChat {
+  private stopping=new AbortController();private followers=new Set<AsyncGenerator<ChatSnapshot|{messages:[];available:true}>>();private disposing?:Promise<void>
   private creating = new Map<string, Promise<string>>()
   constructor(private controller: SessionController) {}
   private file(workspace: string): string { return join(workspace, '.omicos-oss', 'chat.json') }
@@ -43,6 +25,7 @@ export class HarnessScienceChat implements ScienceChat {
       const first = await iterator.next()
       if (first.done || first.value.type !== 'snapshot') throw new Error('Harness did not provide a conversation opening snapshot')
       if (!first.value.header.cwd || (workspace !== undefined && resolve(first.value.header.cwd) !== resolve(workspace))) throw new Error('Conversation is bound to a different workspace; refusing to expose it')
+      if(first.value.header.id!==sessionId)throw new Error('Harness returned a different conversation identity')
       return first.value
     } finally { own.abort(); await iterator.return?.() }
   }
@@ -68,16 +51,27 @@ export class HarnessScienceChat implements ScienceChat {
     }
     return pending
   }
+  follow(workspace:string,signal:AbortSignal):AsyncIterable<ChatSnapshot|{messages:[];available:true}>{
+    this.stopping.signal.throwIfAborted();signal.throwIfAborted();if(this.followers.size>=32)throw Error('Too many live conversation observers')
+    const own=new AbortController();const iterator=this.observe(workspace,AbortSignal.any([signal,own.signal,this.stopping.signal]),()=>this.followers.delete(iterator));const close=iterator.return.bind(iterator);iterator.return=async value=>{own.abort();try{return await close(value)}finally{this.followers.delete(iterator)}};this.followers.add(iterator);return iterator
+  }
+  private async *observe(workspace:string,signal:AbortSignal,closed:()=>void):AsyncGenerator<ChatSnapshot|{messages:[];available:true}>{
+    try{const sessionId=await this.bound(workspace);signal.throwIfAborted();if(!sessionId){yield {messages:[],available:true};return}const projection=new ChatProjection(sessionId);let opened=false
+      for await(const frame of this.controller.follow({address:{kind:'session',sessionId:SessionId(sessionId)},maxMessages:50,assistantStream:true},signal)){
+        signal.throwIfAborted();if(!opened&&frame.type!=='snapshot')throw Error('Harness did not provide a conversation opening snapshot');if(frame.type==='snapshot'){if(!frame.header.cwd||resolve(frame.header.cwd)!==resolve(workspace))throw Error('Conversation is bound to a different workspace; refusing to expose it');if(frame.header.id!==sessionId)throw Error('Harness returned a different conversation identity');opened=true}yield projection.accept(frame)
+      }
+    }finally{closed()}
+  }
+  dispose():Promise<void>{if(this.disposing)return this.disposing;this.stopping.abort();return this.disposing=Promise.allSettled([...this.followers].map(iterator=>iterator.return(undefined))).then(()=>{this.followers.clear()})}
   async read(workspace: string, signal: AbortSignal): Promise<ChatSnapshot | { messages: []; available: true }> {
+    signal=AbortSignal.any([signal,this.stopping.signal]);signal.throwIfAborted()
     const sessionId = await this.bound(workspace)
     if (!sessionId) return { messages: [], available: true }
     const snapshot = await this.opening(sessionId, workspace, signal)
-    const records = snapshot.records as readonly any[]
-    let busy = false
-    for (const record of records) { if (record.event?.type === 'turn/start') busy = true; if (record.event?.type === 'turn/end') busy = false }
-    return { sessionId, messages: projectChatRecords(records), hasMore: snapshot.hasMore, cursor: snapshot.cursor, busy }
+    return new ChatProjection(sessionId).accept(snapshot)
   }
   async send(workspace: string, text: string, requestId: string, signal: AbortSignal): Promise<{ sessionId: string; accepted: true }> {
+    signal=AbortSignal.any([signal,this.stopping.signal]);signal.throwIfAborted()
     if (!text.trim() || text.length > 20000 || !/^[a-zA-Z0-9_-]{1,200}$/.test(requestId)) throw new Error('A bounded message and stable request ID are required')
     const sessionId = await this.ensure(workspace, signal)
     signal.throwIfAborted()
@@ -86,9 +80,10 @@ export class HarnessScienceChat implements ScienceChat {
     return { sessionId, accepted: true }
   }
   async cancel(workspace: string): Promise<void> {
+    this.stopping.signal.throwIfAborted()
     const sessionId = await this.bound(workspace)
     if (!sessionId) return
-    await this.opening(sessionId, workspace, new AbortController().signal)
+    await this.opening(sessionId, workspace, this.stopping.signal)
     this.controller.cancel({ sessionId: SessionId(sessionId) })
   }
 }

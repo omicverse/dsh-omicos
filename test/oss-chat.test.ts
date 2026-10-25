@@ -56,4 +56,15 @@ describe('Harness fixed scientific conversation bridge', () => {
     ]
     expect(projectChatRecords(records).map(item => item.text)).toEqual(['Question', 'Correct answer'])
   })
+  it('follows only the exact bound session, releases paused observers and never cancels a model when a window closes',async()=>{
+    const host=fake(),chat=new HarnessScienceChat(host.controller),signal=new AbortController().signal
+    const cold=chat.follow(workspace,signal)[Symbol.asyncIterator]();expect((await cold.next()).value).toEqual({messages:[],available:true});await cold.return?.();expect(host.count().created).toBe(0)
+    await chat.send(workspace,'Question','follow-request',signal);const sessionId=JSON.parse(await readFile(join(workspace,'.omicos-oss','chat.json'),'utf8')).sessionId;const iterator=chat.follow(workspace,signal)[Symbol.asyncIterator]();expect((await iterator.next()).value.sessionId).toBe(sessionId);await iterator.return?.();expect(host.count().stopped).toBe(0)
+    for(let i=0;i<40;i++){const unused=chat.follow(workspace,signal)[Symbol.asyncIterator]();await unused.return?.()}
+    const paused=chat.follow(workspace,signal)[Symbol.asyncIterator]();await paused.next();await chat.dispose();expect(host.count().stopped).toBe(0);expect(()=>chat.follow(workspace,signal)).toThrow();await expect(chat.read(workspace,signal)).rejects.toMatchObject({name:'AbortError'})
+  })
+  it('rejects a same-workspace but different-session opening before exposing messages',async()=>{
+    const host=fake(),chat=new HarnessScienceChat(host.controller);await writeFile(join(workspace,'.omicos-oss','chat.json'),JSON.stringify({sessionId:'bound'}));host.controller.follow=async function*(){yield {type:'snapshot',header:{id:'another',cwd:workspace},records:[{type:'event',event:{seq:1,type:'assistant/message',data:{message:{content:[{type:'text',text:'PRIVATE_OTHER_SESSION'}]}}}}],cursor:1,hasMore:false} as any};const iterator=chat.follow(workspace,new AbortController().signal)[Symbol.asyncIterator]();await expect(iterator.next()).rejects.toThrow(/different conversation/);host.controller.follow=async function*(){yield {type:'snapshot',header:{id:'bound',cwd:workspace},records:[],cursor:0,hasMore:false} as any;yield {type:'snapshot',header:{id:'another',cwd:workspace},records:[],cursor:0,hasMore:false} as any};const reset=chat.follow(workspace,new AbortController().signal)[Symbol.asyncIterator]();await reset.next();await expect(reset.next()).rejects.toThrow(/different conversation/);await chat.dispose()
+  })
+
 })

@@ -39,13 +39,13 @@ function run(arguments_, env, cwd) {
       const events = [
         { type: 'message_start', message: { id: `mock_${requests.length}`, model: body.model, usage: { input_tokens: 3, output_tokens: 0 } } },
         { type: 'content_block_start', index: 0, content_block: tool ? { type: 'tool_use', id: 'call_scientific', name: 'omicos_run_python', input: { code: 'from pathlib import Path\nPath("approved-by-ui.txt").write_text("42")\nprint(42)', operation_id: 'harness-browser-scientific' } } : mcpTool ? { type: 'tool_use', id: 'call_mcp', name: 'mcp__research__echo', input: { text: 'Browser MCP approved' } } : { type: 'text', text: '' } },
-        ...(tool || mcpTool) ? [] : [{ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'OmicOS mock Scientist connected.' } }],
+        ...(tool || mcpTool) ? [] : [{ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'OmicOS mock Scientist ' } },{ type: 'content_block_delta', index:0,delta:{type:'text_delta',text:'connected.'}}],
         { type: 'content_block_stop', index: 0 },
         { type: 'message_delta', delta: { stop_reason: (tool || mcpTool) ? 'tool_use' : 'end_turn' }, usage: { output_tokens: 1 } },
         { type: 'message_stop' },
       ];
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      response.end(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''));
+      for(const event of events){response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);if(scientific&&!tool&&!mcpTool&&event.type==='content_block_delta'&&event.delta.text==='OmicOS mock Scientist ')await new Promise(resolve=>setTimeout(resolve,3000))}response.end();
     } catch { response.writeHead(500); response.end() }
   });
   await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
@@ -119,7 +119,9 @@ function run(arguments_, env, cwd) {
     await approve.waitFor({ timeout:15000 });
     assert(!(await fs.readFile(path.join(workspace,'mcp-events.jsonl'),'utf8')).includes('invoked'));
     await approve.click();
-    await page.locator('.oss-chat-message').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor({ timeout: 25000 });
+    await page.locator('[data-chat-live]').filter({hasText:'OmicOS mock Scientist'}).waitFor({timeout:25000});await page.locator('[data-chat-connection]').filter({hasText:'实时连接'}).waitFor();await page.reload();await page.locator('[data-chat-live]').filter({hasText:'OmicOS mock Scientist'}).waitFor({timeout:15000});
+    await page.locator('.oss-chat-message:not([data-chat-live])').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor({ timeout: 25000 });
+    await page.locator('[data-chat-live]').waitFor({state:'detached'});assert.equal(requests.filter(body=>body.tools?.some(tool=>tool.name==='omicos_run_python')).length,3,'Observer reconnect must not repeat model requests');
     assert.equal(await fs.readFile(marker, 'utf8'), '42');
     assert(issuedMcp); assert((await fs.readFile(path.join(workspace,'mcp-events.jsonl'),'utf8')).includes('Browser MCP approved'));
     assert(requests.some(body=>body.messages?.some(message=>message.content?.some(block=>block.type==='tool_result'&&JSON.stringify(block).includes('Browser MCP approved; credential=false')))));
@@ -134,7 +136,7 @@ function run(arguments_, env, cwd) {
     assert(scientistRequests.length); for (const request of scientistRequests) { const system = JSON.stringify(request); assert(system.includes('BROWSER_CONFIRMED_GRCh38')); assert(!system.includes('BROWSER_PRIVATE_OTHER_SESSION')); assert(!system.includes('BROWSER_PENDING_GUESS')) }
 
     assert(requests.some(body => body.messages?.some(message => message.content?.some(block => block.type === 'tool_result' && JSON.stringify(block).includes('42')))));
-    await page.reload(); await page.locator('.oss-chat-message').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor();
+    await page.reload(); await page.locator('.oss-chat-message:not([data-chat-live])').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor();
     assert.deepEqual(errors, []);
     const output = path.resolve(process.env.OMICOS_SCREENSHOT_DIR || 'test-results/oss-browser'); await fs.mkdir(output, { recursive: true });
     await page.screenshot({ path: path.join(output, 'harness-scientist.png'), fullPage: true });
@@ -162,7 +164,7 @@ function run(arguments_, env, cwd) {
     await main.getByText('尚未连接 Core 内核。', { exact: false }).waitFor()
     await main.screenshot({ path: path.join(output, 'core-compat-entry.png'), fullPage: true })
     assert.deepEqual(errors, [])
-    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', mcp: 'real Scientist-scoped stdio plugin, UI enable/disable, actual separate call approval and immutable history', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
+    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', mcp: 'real Scientist-scoped stdio plugin, UI enable/disable, actual separate call approval and immutable history', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller follow -> visible partial text -> reload/reconnect partial baseline without another model call -> one committed assistant message -> reload; no second model loop', pageErrors: errors }));
   } finally {
     await browser?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }

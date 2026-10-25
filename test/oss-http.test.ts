@@ -48,6 +48,11 @@ describe('scientific workbench and commerce boundary', () => {
     csrf = (await (await fetchHost(`${base}/omicos/oss/api/session`)).json() as any).csrf
   })
   afterEach(async () => { await close(server); await runtime.dispose(); await close(cloud); await rm(directory, { recursive: true, force: true }) })
+  it('owner-authenticates chat SSE and projects stream availability without creating a conversation on cold reads',async()=>{
+    const project=await runtime.project(join(directory,'stream-project'));const id=(await runtime.list()).find(entry=>entry.workspace===project.workspace)!.id;let closed=0,canceled=0
+    runtime.chat={read:async()=>({sessionId:'fixed',messages:[],busy:false,cursor:0,hasMore:false}),send:async()=>({sessionId:'fixed',accepted:true}),cancel:async()=>{canceled++},async *follow(_workspace,signal){try{yield {sessionId:'fixed',messages:[],busy:true,cursor:0,hasMore:false,live:{attemptId:'a',text:'Public partial',truncated:false}};await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}))}finally{closed++}}}
+    const path=`${base}/omicos/oss/api/project/${id}/chat-events`;expect((await fetch(path)).status).toBe(401);const controller=new AbortController();const response=await fetchHost(path,{signal:controller.signal});expect(response.headers.get('content-type')).toContain('text/event-stream');const reader=response.body!.getReader();expect(new TextDecoder().decode((await reader.read()).value)).toContain('Public partial');controller.abort();await reader.cancel().catch(()=>{});for(let i=0;i<100&&!closed;i++)await new Promise(resolve=>setTimeout(resolve,5));expect(closed).toBe(1);expect(canceled).toBe(0);expect((await (await fetchHost(`${base}/omicos/oss/api/project/${id}/chat`)).json() as any).streaming).toBe(true)
+  })
   it('denies unauthenticated pages, assets, API snapshots, writes and event streams before exposing state', async () => {
     const project = (await runtime.project(directory)).id
     for (const path of ['', '/store', '/workbench.js', '/api/session', `/api/project/${project}/snapshot`, `/api/project/${project}/events`]) {
