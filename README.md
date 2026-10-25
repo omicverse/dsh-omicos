@@ -81,7 +81,7 @@ execution metadata are preserved without automatic redaction. Owner-confirmed PD
 and attaches original PNGs plus provenance. Select the bundled OFL font or a
 checksum-pinned static project TTF/OTF with an embedding-license declaration.
 CFF/no-subsetting fonts embed in full; missing glyphs reject. Unsupported
-16-bit/animated/profile-dependent PNG conversion rejects instead of silently
+16-bit grayscale/RGB PNGs (including alpha and Adam7) retain exact samples in the PDF; decoded samples are bounded to 96 MB per image. Animated/profile-dependent PNG conversion rejects instead of silently
 changing scientific precision/color. Vector/JPEG composition, color-managed
 PDF and journal-specific exports remain pending; see the
 [assembly design and limits](docs/adr/0017-source-pinned-figure-assemblies.md).

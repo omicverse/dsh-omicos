@@ -1,6 +1,6 @@
 # ADR 0018: Font-aware assembly PDF, original attachments and bounded rendering
 
-Status: implemented for static supported <=8-bit PNG panels and static outline TTF/CFF-OTF label fonts. Color-managed/16-bit/animated PNGs, vector/JPEG composition, broader typography and journal publication rules remain explicit migration work.
+Status: implemented for static supported <=16-bit PNG panels and static outline TTF/CFF-OTF label fonts. Color-managed/animated PNGs, vector/JPEG composition, broader typography and journal publication rules remain explicit migration work.
 
 ## Export authority and physical size
 
@@ -8,7 +8,7 @@ The saved assembly is unchanged. A separate owner-authenticated, CSRF-protected,
 
 A local one-page PDF has a white page, losslessly drawn supported pixel samples/alpha, an embedded checked label font, exact original PNG file attachments and JSON provenance plus a font-license declaration. PDF image drawing is not the unchanged PNG container: critical PNG sample/palette/alpha streams are decoded into PDF images. Original containers, metadata and their SHA-256 identities are separately retained byte-for-byte as attachments. Nonrendering text/time/physical-resolution metadata is excluded from the decoder input while retained in the original attachment, avoiding irrelevant compressed-text expansion during decoding.
 
-Only known supported sample/alpha chunks and nonrendering metadata are accepted. Animated, >8-bit, profile/gamma-dependent or unknown presentation-affecting PNG extensions reject instead of silently changing precision/color/orientation. SVG original-source export remains available. Current-source changes stay separately labeled in provenance; old review/source versions are not rewritten. Missing/changed original bytes reject before drawing. Inputs reuse assembly byte/pixel/repetition limits; combined unique PNG/font inputs are at most 44 MB and output at most 64 MB. Exact source data files are not attached automatically, and execution text/paths/image metadata are not automatically redacted.
+Only known supported sample/alpha chunks and nonrendering metadata are accepted. Animated, profile/gamma-dependent or unknown presentation-affecting PNG extensions reject instead of silently changing precision/color/orientation. SVG original-source export remains available. Current-source changes stay separately labeled in provenance; old review/source versions are not rewritten. Missing/changed original bytes reject before drawing. Inputs reuse assembly byte/pixel/repetition limits; combined unique PNG/font inputs are at most 44 MB and output at most 64 MB. Exact source data files are not attached automatically, and execution text/paths/image metadata are not automatically redacted.
 
 ## Fonts, license and format correctness
 
@@ -31,3 +31,10 @@ The renderer is a shipped CJS runtime file using exact public pdf-lib/fontkit ru
 Native tests parse real PDFs for page size, embedded font dictionaries, original PNG attachment bytes, source/environment provenance and physical/effective DPI. Actual Python-produced distinct PNGs reach PDF through the Runtime with no additional scientific execution. Font path/checksum/private/symlink/embedding-flag/coverage/overflow and PNG precision/profile refusal are exercised. Real CPU-bound worker fixtures demonstrate abort, deadline, shutdown and concurrency rejection before source preparation. A real child Host launched with a rejecting worker preload proves that Node preload flags are not inherited by the renderer. HTTP tests verify owner/CSRF/confirmation, exact revision, MIME and actual body SHA.
 
 CJK tests embed a real pinned static Noto OTF, verify full original font bytes in the PDF's OpenType stream, and preserve Chinese text. CI prepares that checksum-pinned fixture and uses independent Poppler text/raster tools, failing on renderer diagnostics. Local visual inspection confirms the visible Chinese glyphs rather than inferring success from text extraction alone. Browser integration exercises the owner-confirmed PDF workflow and verifies downloaded bytes; full scientific/package/Harness regression results belong in IMPLEMENTATION_STATUS.md. Remote CI, full Windows/Electron deployment and unsupported publication formats are not inferred from these local checks.
+
+
+### 16-bit sample preservation follow-up
+
+An independent decoder now reconstructs network-order 16-bit grayscale/RGB samples with optional alpha, all five row filters and Adam7 pass placement. The raw color plane and optional 16-bit soft mask are embedded directly as lossless Flate PDF image streams; no 8-bit PNG conversion is involved. Grayscale/RGB transparency keys compare the complete 16-bit samples. The page uses ordinary image XObject operators with unchanged assembly geometry. Unmanaged DeviceGray/DeviceRGB is explicit; colorimetric appearance is not guaranteed across devices.
+
+The decoder caps the unfiltered input at 96 MB per source, calculates exact pass scanline sizes before bounded inflation, checks compressed consumption/output size and rejects invalid filters/transparency and PNG chunk ordering. It executes inside the existing cancellable/deadline-limited worker. This is not a process-wide memory guarantee. Original PNG attachments remain unchanged. Tests independently encode all color types/filter/pass combinations and compare actual decoded PDF color/alpha bytes, rather than just original attachment hashes. Specification reference: [W3C PNG 3](https://www.w3.org/TR/png-3/), sections 7–11.

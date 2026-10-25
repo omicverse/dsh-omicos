@@ -47,6 +47,8 @@ jobs:
           test "$(tr -d '[:space:]' < test-results/oss-browser/cjk-publication.txt)" = "科研"
           pdftoppm -singlefile -scale-to 1200 -png test-results/oss-browser/cjk-publication.pdf test-results/oss-browser/cjk-publication 2>test-results/oss-browser/cjk-render.log
           test ! -s test-results/oss-browser/cjk-render.log
+          pdftoppm -singlefile -scale-to 1000 -png test-results/oss-browser/png16-publication.pdf test-results/oss-browser/png16-render 2>test-results/oss-browser/png16-render.log
+          test ! -s test-results/oss-browser/png16-render.log
       - run: pnpm test:package
       - run: node scripts/provision-orphan-smoke.cjs
       - name: Browser integration
