@@ -4,6 +4,7 @@ const COLLECT = 'omicos:collect-unsaved-editors'
 interface Collection {
   within?: Element
   tabId?: string
+  sessionId?: string
   editors: string[]
 }
 
@@ -16,6 +17,13 @@ export function useUnsavedNavigation(dirty: boolean, label: string) {
       const root = ref.current
       const detail = (event as CustomEvent<Collection>).detail
       if (!root) return
+      if (
+        detail.sessionId &&
+        root
+          .closest('[data-sidebar-right-session]')
+          ?.getAttribute('data-sidebar-right-session') !== detail.sessionId
+      )
+        return
       if (detail.tabId) {
         if (
           root
@@ -42,9 +50,10 @@ export function useUnsavedNavigation(dirty: boolean, label: string) {
 
 export function confirmUnsavedNavigation(
   within?: Element,
-  tabId?: string
+  tabId?: string,
+  sessionId?: string
 ): boolean {
-  const detail: Collection = { within, tabId, editors: [] }
+  const detail: Collection = { within, tabId, sessionId, editors: [] }
   window.dispatchEvent(new CustomEvent<Collection>(COLLECT, { detail }))
   return (
     !detail.editors.length ||
@@ -54,17 +63,44 @@ export function confirmUnsavedNavigation(
   )
 }
 
-/** Protect pointer-triggered session/view changes and scientific tab close buttons; native actions stay native. */
+/** Protect pointer navigation and native docked, floating and context-menu close actions. */
 export function installNavigationGuard(
   panelLabels: () => string[]
 ): () => void {
+  let menuTarget: { tabId: string; sessionId: string } | undefined
+  const sessionOf = (element: Element) =>
+    element
+      .closest('[data-sidebar-right-session]')
+      ?.getAttribute('data-sidebar-right-session') || undefined
+  const contextMenu = (event: MouseEvent) => {
+    menuTarget = undefined
+    if (!(event.target instanceof Element)) return
+    const tab = event.target.closest('[data-dockkit-tab]')
+    const tabId = tab?.getAttribute('data-dockkit-tab')
+    const sessionId = tab && sessionOf(tab)
+    if (tabId && sessionId) menuTarget = { tabId, sessionId }
+  }
   const guard = (event: MouseEvent) => {
     if (event.defaultPrevented || !(event.target instanceof Element)) return
     const target = event.target
-    const close = target.closest('[data-dockkit-tab-close]')
+    const close = target.closest(
+      '[data-dockkit-tab-close], [data-dockkit-float-close], [data-dockkit-menu-close]'
+    )
     if (close) {
-      const tabId = close.getAttribute('data-dockkit-tab-close')
-      if (tabId && !confirmUnsavedNavigation(undefined, tabId)) {
+      const floating = close.closest('[data-dockkit-float]')
+      const fromMenu = close.matches('[data-dockkit-menu-close]')
+      const tabId = fromMenu
+        ? menuTarget?.tabId
+        : close.getAttribute('data-dockkit-tab-close') ||
+          floating
+            ?.querySelector('[data-sidebar-right-tab]')
+            ?.getAttribute('data-sidebar-right-tab')
+      const sessionId = fromMenu ? menuTarget?.sessionId : sessionOf(close)
+      if (
+        tabId &&
+        sessionId &&
+        !confirmUnsavedNavigation(undefined, tabId, sessionId)
+      ) {
         event.preventDefault()
         event.stopImmediatePropagation()
       }
@@ -93,6 +129,11 @@ export function installNavigationGuard(
       event.stopImmediatePropagation()
     }
   }
+  document.addEventListener('contextmenu', contextMenu, true)
   document.addEventListener('click', guard, true)
-  return () => document.removeEventListener('click', guard, true)
+  return () => {
+    document.removeEventListener('contextmenu', contextMenu, true)
+    document.removeEventListener('click', guard, true)
+    menuTarget = undefined
+  }
 }

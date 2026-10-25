@@ -31,13 +31,14 @@ navigation, no document overflow and the rendered page.
 A small editor hook contributes dirty-editor labels to a local, synchronous collection.
 No field values, proposal text or MCP configuration are serialized. Main navigation
 excludes retained right-sidebar editors; project changes collect only their own pane;
-a docked tab's close button collects that exact sidebar tab, including retained hidden
-bodies. One ordinary discard reminder covers multiple affected editors. Existing
+native docked, floating and context-menu close actions collect that exact Session and
+sidebar tab, including retained hidden bodies. The portaled menu retains its origin tab. One ordinary discard reminder covers multiple affected editors. Existing
 Notebook tab drafts remain independent. Pipeline's untouched example is not a user edit.
 The existing server revision/approval/execution mechanisms are unchanged.
 
 The native browser tests exercise canceled and accepted main-memory navigation,
 combined Plan/Pipeline edits and a real scientific sidebar close. The guard currently
-covers pointer navigation, project selection and the docked close button. Keyboard or
-programmatic transitions and floating/context-menu close paths require further work;
+covers pointer navigation, project selection and docked/floating/context-menu close.
+Real browser gestures verify menu cancellation and float cancellation/acceptance preserve
+the target editor until the user accepts. Keyboard or programmatic transitions require further work;
 this ADR does not claim complete editor-lifecycle coverage or an Electron release.

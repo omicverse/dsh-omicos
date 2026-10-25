@@ -41,3 +41,8 @@
 - Compact screens retain the native workspace rail and move OmicOS pages to a labeled bottom bar. Check real frame bounds and horizontal navigation, not just document overflow.
 - Eight editor dirty states participate in one scope-aware pointer-navigation guard. Preserve existing Pipeline touched semantics. Test cancel/accept for multiple editors, main-memory navigation and an actual docked scientific tab close.
 - Remaining: keyboard/programmatic navigation, floating/context-menu close paths, fuller native scientific journeys and actual Electron window/packaging verification.
+
+## 7. Native close coverage
+- Scope dirty tab collection by native Session and tab IDs. Track the actual context-menu origin, including inactive tabs; float close resolves its own native title/body marker. Keep native close handlers authoritative.
+- Verify cancellation retains text and acceptance closes the actual tab in a running Harness. Native keyboard and programmatic transitions remain a separate unresolved surface.
+- Build the pinned public Harness desktop source through its prescribed build and development launcher; retain Electron host and native bridge.
