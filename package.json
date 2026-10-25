@@ -30,7 +30,8 @@
     "test",
     "tsconfig*.json",
     "LEGACY_CORE.md",
-    "IMPLEMENTATION_STATUS.md"
+    "IMPLEMENTATION_STATUS.md",
+    "docs"
   ],
   "dsh": {
     "bundle": {

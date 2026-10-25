@@ -26,6 +26,8 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Python/R workers and environment probes inherit a deliberate runtime variable projection; additional scientific variables require explicit name allowlisting. A real Python test verifies a synthetic Host secret is absent.
 - Execution receipts and notebooks include actual interpreter/package versions and environment fingerprints without process environment variables or credentials.
 - License notices are generated from actual esbuild inputs for every inlined npm dependency and shipped with source/build/test scripts.
+- Local ordered Pipeline executor v1 with content-addressed definitions, embedded versioned references, fixed JSON bindings, declared file hashes, isolated Python/R namespaces, human gates, background execution, SQLite revisioned run journal and checkpoint restoration. Recovery checks inputs, checkpoint bytes and actual environment before restore code; changed environments require explicit acceptance, and partial side effects require review. Unknown work never replays automatically; start IDs deduplicate, stale gate revisions reject, and declared file conflicts block overlapping live runs. Workbench and approved Agent tools expose these operations; R plots and hashed artifacts have real execution coverage.
+- Namespace-dependent execution is fenced at the worker queue by expected generation; a lost process cannot silently become a fresh kernel for a later Pipeline step. POSIX worker families use a responsive Node supervisor and Host-lifetime socket, with group cancellation/termination; compiled CLI browser tests confirm actual Python exits after Host SIGKILL before its delayed side effect. Windows process-family lifecycle and Electron-host deployment remain unverified.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
 - Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
@@ -36,9 +38,10 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the 139-test suite passed on actual Node 22.13.1 before commerce recovery additions. Current local Node ran the expanded 151-test suite; the new commerce suite also runs on Node 22.13.1.
-- 151 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the complete 159-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
+- 159 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
+- Browser Pipeline flow fixed a definition, persisted its background run over page reload, approved a human gate, and verified actual output/journal. Native Node 22.13.1 tests cover checkpoint restoration after Host restart, changed-file/environment blocking, namespace isolation, true cancellation and interrupted-work deduplication.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
@@ -68,7 +71,7 @@ Verification at this checkpoint:
 - Richer Notebook figure rendering/review and Figure Studio; basic persistent cell editing/import/export/re-execution is implemented.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
 - Agent delegation constraints, scientific plans/approvals, session and long-term memory tree/consolidation.
-- Immutable Pipeline definitions and checkpointed/resumable execution.
+- Broader Pipeline orchestration/templates, mixed-language composition and remote Runner adapters. Ordered local Python/R definitions, human gates and durable checkpoint recovery are implemented; exhaustive I/O capture and exactly-once external side effects are not claimed.
 - SSH/SLURM/cloud Runner profiles, compute credits/jobs, optional research/database connectors.
 - MCP/A2A integration, scheduled goals, project dossier and enterprise/team capabilities.
 - Broader lab collaboration, cloud usage/resource storefront and expiry reminders UI.

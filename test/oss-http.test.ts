@@ -218,6 +218,26 @@ describe('scientific workbench and commerce boundary', () => {
     expect(exported.cells[0].outputs[0].text.trim()).toBe('17')
     expect((await (await fetchHost(`${base}/omicos/oss/api/project/${id}/notebooks`)).json() as any).notebooks[0].revision).toBe(3)
   })
+  it('serves pinned Pipeline definitions, approved background execution and journal without cloud login', async () => {
+    const project = (await runtime.list())[0].id; const prefix = `project/${project}/`
+    const definition = await (await post(`${prefix}pipeline-define`, { definition: { title: 'HTTP Pipeline', language: 'python', steps: [{ id: 'one', code: 'value = 40' }, { id: 'two', gate: true, code: 'print(value + 2)' }] } })).json() as any
+    expect(definition.id).toMatch(/^[a-f0-9]{64}$/)
+    expect((await post(`${prefix}pipeline-start`, { definitionId: definition.id, operationId: 'http-pipeline' })).status).toBe(400)
+    const run = await (await post(`${prefix}pipeline-start`, { definitionId: definition.id, operationId: 'http-pipeline', confirmed: true })).json() as any
+    const service = await runtime.pipelines((await runtime.byId(project)).workspace)
+    for (let count = 0; count < 150 && service.get(run.id).state !== 'waiting'; count++) await new Promise(resolve => setTimeout(resolve, 20))
+    const waiting = service.get(run.id)
+    expect(waiting.state).toBe('waiting')
+    expect((await post(`${prefix}pipeline-control`, { runId: run.id, revision: 1, action: 'continue', confirmed: true })).status).toBe(409)
+    expect((await post(`${prefix}pipeline-control`, { runId: run.id, revision: waiting.revision, action: 'continue', confirmed: true })).status).toBe(200)
+    for (let count = 0; count < 150 && service.get(run.id).state !== 'succeeded'; count++) await new Promise(resolve => setTimeout(resolve, 20))
+    const executionId = service.get(run.id).attempts.at(-1)!.executionId
+    const execution = await (await fetchHost(`${base}/omicos/oss/api/${prefix}pipeline-execution?run=${run.id}&execution=${executionId}`)).json() as any
+    expect(execution.output.trim()).toBe('42')
+    const journal = await (await fetchHost(`${base}/omicos/oss/api/${prefix}pipeline-events?run=${run.id}`)).json() as any
+    expect(journal.events.some((event: any) => event.type === 'run/succeeded')).toBe(true)
+    expect(seen).toHaveLength(0)
+  })
   it('executes only registered workspaces and exports a real notebook', async () => {
     const id = (await runtime.list())[0].id
     expect((await post('project/not-registered/execute', { code: '1', confirmed: true })).status).not.toBe(200)

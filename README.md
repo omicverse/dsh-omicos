@@ -237,3 +237,35 @@ form was opened. If another window switches accounts, the Host rejects stale
 subscription, invoice and seat actions before contacting the cloud, refreshes the
 UI, and asks the user to review the current account. It never silently replays
 those actions. Local execution and workspace resolution remain account-independent.
+
+## Local Pipelines
+
+The workbench can save fixed ordered Python/R definitions and run them in independent
+project workers. Each definition pins code, JSON parameters, declared data paths,
+optional versioned reference text and its content hash. Editing creates a new hash.
+Saving never executes; the Run button approves execution, and `gate: true` pauses
+before that step for a separate human decision. These workers do not inherit ad hoc
+variables; they use the project working directory and configured interpreter.
+
+Checkpoints declare durable files and explicit `restoreCode`. The Host records hashes
+after successful execution. Recovery verifies original inputs/checkpoints, starts a
+fresh namespace, compares actual environment metadata, and runs the pinned restore
+source only after approval. Changed environments need explicit acceptance. Failure,
+cancellation or interruption never triggers an automatic replay; review partial
+side effects before restoring or recomputing. Four runs may hold local kernels at
+once; overlapping declared output/input paths are reserved to prevent collisions.
+
+Pipeline tools: `omicos_pipeline_state`, `omicos_pipeline_define`,
+`omicos_pipeline_start`, and `omicos_pipeline_control`. Definition/start/recovery
+actions use Harness approval; cancellation requests stop the named run. Full
+receipts, file/artifact hashes and sequenced recovery logs remain accessible after
+workers stop. The current executor is local and ordered, with one language per
+definition; remote/mixed-language orchestration remains in the migration plan.
+
+On POSIX, a bundled Node supervisor owns each scientific process group and monitors
+a separate Host-lifetime socket. Abrupt Host death terminates the owned family, even
+when Python/R are busy in native code. This is lifecycle management rather than a
+sandbox: trusted code has OS-user permissions and can deliberately escape the group
+or leave external side effects. Windows and Electron-host lifecycle behavior are
+not yet verified. See [Pipeline decisions](docs/adr/0002-persistent-local-pipelines.md)
+and [worker ownership](docs/adr/0003-scientific-worker-ownership.md).

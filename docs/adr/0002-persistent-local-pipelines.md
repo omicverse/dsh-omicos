@@ -1,0 +1,13 @@
+# 0002 — Immutable local scientific Pipelines
+
+Status: implementing. Scope follows the approved OSS migration design; this is not a claim that all Runner/Pipeline capabilities are complete.
+
+A Pipeline definition is content-addressed, with ordered Python or R steps, JSON parameter bindings, declared inputs/outputs, optional human gates and durable checkpoints. Each embedded scientific reference carries its text, explicit version and matching SHA-256. Source edits create a new definition. Initial execution and all recovery/control operations use the existing Harness approval boundary or an explicit workbench action.
+
+Each run owns an isolated persistent worker using the chosen project interpreter. Its code runs with the actual project as working directory, while execution receipts, generated figures and namespace ownership live beneath a private run directory. It does not share in-memory objects with ad hoc cells or another Pipeline. This costs one worker per active run but prevents interleaving from silently invalidating restoration assumptions. Trusted local code still has OS-user permissions; this is not a sandbox.
+
+Definitions, mutable run records and sequenced journal events use a project-owned SQLite database. Every transition increments a revision and is journaled transactionally. Start operation IDs deduplicate unknown HTTP outcomes. Control operations require the observed revision, so a stale approval cannot approve a different stage. Running work survives window closure, while Host shutdown/restart marks nonterminal work interrupted and never restarts it automatically.
+
+A checkpoint is valid only after its step succeeds and every declared checkpoint file is hashed. Restoring verifies original inputs and checkpoint hashes, starts a fresh namespace, compares actual environment fingerprints before executing any restore code, and then executes the definition-pinned restore source. Environment changes require explicit acceptance. Failed/canceled/interrupted work requires acknowledgment of possible partial side effects. Old attempts remain visible; recovery uses new stable execution IDs and does not silently retry unknown work. A live gate may continue only with the same worker generation and unchanged declared inputs/checkpoints.
+
+The journal proves local execution/declared-file identity, not exhaustive I/O tracing or scientific validity. Large files are hashed as streams with change detection. This first executor is ordered and local, supports a single language per definition, and leaves remote Runner and broader orchestration adapters to the subsequent migration stages.

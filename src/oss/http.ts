@@ -1,3 +1,4 @@
+import { PipelineError } from './pipeline-types.js'
 import { NotebookError } from './notebooks.js'
 import type { HttpOwnerAuth } from './http-auth.js'
 import { streamScientificEvents } from './events.js'
@@ -58,7 +59,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         sendJson(response, 200, { csrf: nonce, backend: options.backend || 'oss', account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: 1 }); return
       }
       if (method !== 'GET' && request.headers['x-omicos-csrf'] !== nonce) throw new CloudError(403, 'Invalid CSRF token')
-      const data = method === 'POST' ? await body(request, /\/notebook-(create|save)$/.test(path) ? 2_100_000 : 300_000) : undefined
+      const data = method === 'POST' ? await body(request, /\/(notebook-(create|save)|pipeline-define)$/.test(path) ? 2_100_000 : 300_000) : undefined
       const cloud = runtime.cloud
       if (method === 'POST' && path.startsWith('/omicos/oss/api/') && !path.startsWith('/omicos/oss/api/project/') && path !== '/omicos/oss/api/open-session-project' && request.headers['x-omicos-account'] !== encodeURIComponent(cloud.identity())) throw new CloudError(409, 'Cloud account changed; refresh before submitting')
       let result: unknown
@@ -131,6 +132,29 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python)
+        else if (action === 'pipelines' || action?.startsWith('pipeline-')) {
+          const pipelines = await runtime.pipelines(parent.workspace)
+          const id = String(data?.runId || url.searchParams.get('run') || '')
+          if (action === 'pipelines' && method === 'GET') result = pipelines.list()
+          else if (action === 'pipeline-definition' && method === 'GET') result = pipelines.store.definition(url.searchParams.get('id') || '')
+          else if (action === 'pipeline-define' && method === 'POST') result = pipelines.define(data.definition)
+          else if (action === 'pipeline-start' && method === 'POST') {
+            if (data.confirmed !== true) throw new CloudError(400, 'Explicit Pipeline execution approval required')
+            result = pipelines.start(String(data.definitionId || ''), String(data.operationId || ''))
+          }
+          else if (action === 'pipeline-control' && method === 'POST') {
+            if (data.confirmed !== true) throw new CloudError(400, 'Explicit Pipeline control/recovery approval required')
+            result = await pipelines.control(id, data.revision, data.action, { checkpointAttemptId: data.checkpointAttemptId, sideEffectsReviewed: data.sideEffectsReviewed, allowEnvironmentChange: data.allowEnvironmentChange })
+          }
+          else if (action === 'pipeline-run' && method === 'GET') result = pipelines.get(id)
+          else if (action === 'pipeline-events' && method === 'GET') result = { events: pipelines.store.events(id, Number(url.searchParams.get('after') || 0)) }
+          else if (action === 'pipeline-execution' && method === 'GET') result = await pipelines.execution(id, url.searchParams.get('execution') || '')
+          else if (action === 'pipeline-artifact' && method === 'GET') {
+            const artifact = await pipelines.artifact(id, url.searchParams.get('execution') || '', url.searchParams.get('id') || '')
+            response.writeHead(200, { 'content-type': artifact.mime === 'image/png' ? 'image/png' : 'application/octet-stream' }); response.end(artifact.bytes); return
+          }
+          else throw new CloudError(405, 'Method not allowed')
+        }
         else if (action === 'notebooks' && method === 'GET') result = { notebooks: parent.notebooks.list() }
         else if (action === 'notebook-document' && method === 'GET') result = parent.notebooks.get(url.searchParams.get('id') || '')
         else if (action === 'notebook-create' && method === 'POST') result = await parent.notebooks.create(data.title, language, data.imported)
@@ -169,7 +193,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
       sendJson(response, 200, result)
     } catch (error) {
       if (response.writableEnded) return
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

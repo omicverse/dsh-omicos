@@ -1,3 +1,4 @@
+import { PipelineService } from './pipelines.js'
 import type { ScienceChat } from './chat.js'
 import { createHash } from 'node:crypto'
 import { mkdir, realpath } from 'node:fs/promises'
@@ -15,6 +16,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
   private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string, private envNames: readonly string[]) {}
@@ -68,6 +70,17 @@ export class OssRuntime {
     }
     return service
   }
+  async pipelines(workspace: string): Promise<PipelineService> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.pipelineProjects.get(parent.workspace)
+    if (!service) {
+      service = PipelineService.open(parent.workspace, this.python, this.rscript, this.envNames, this.sensitiveFiles)
+      this.pipelineProjects.set(parent.workspace, service)
+      service.catch(() => { if (this.pipelineProjects.get(parent.workspace) === service) this.pipelineProjects.delete(parent.workspace) })
+    }
+    return service
+  }
   async list(): Promise<ProjectReference[]> { return structuredClone([...this.known.values()]) }
   async byId(id: string): Promise<ScienceService> {
     const active = this.projects.get(id)
@@ -81,6 +94,8 @@ export class OssRuntime {
   }
   async dispose(): Promise<void> {
     this.closing = true
+    await Promise.allSettled([...this.pipelineProjects.values()].map(async service => (await service).dispose()))
+    this.pipelineProjects.clear()
     await Promise.allSettled([...this.rProjects.values()].map(async project => (await project).dispose()))
     this.rProjects.clear()
     await Promise.allSettled([...this.projects.values()].map(async project => (await project).dispose()))

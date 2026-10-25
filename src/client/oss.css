@@ -12,3 +12,10 @@ body:has(.oss){margin:0}
 .oss-notebook-cell { margin: 22px 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
 .oss-notebook-cell .oss-code { min-height: 150px; }
 .oss-notebook input[type="file"] { max-width: 100%; }
+
+.oss-pipeline { min-width: 0; }
+.oss-pipeline .oss-code { min-height: 320px; }
+.oss-pipeline label:has(input[type="checkbox"]) { display: flex; align-items: flex-start; gap: 10px; }
+.oss-pipeline label input[type="checkbox"] { margin-top: 3px; flex: 0 0 auto; }
+
+.oss-pipeline small,.oss-pipeline strong{overflow-wrap:anywhere;min-width:0}
