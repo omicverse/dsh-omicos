@@ -6,7 +6,7 @@ export interface KernelEnvironment { language: 'python' | 'r'; version: string; 
 export interface Execution {
   id: string; operationId: string; sessionId: string; language: 'python' | 'r'; code: string
   state: JobState; createdAt: string; startedAt?: string; endedAt?: string
-  output: string; error?: string; artifacts: Artifact[]; kernelGeneration?: string; environment?: KernelEnvironment
+  output: string; error?: string; artifacts: Artifact[]; expectedKernelGeneration?: string; kernelGeneration?: string; environment?: KernelEnvironment
 }
 export interface Variable { name: string; type: string; shape?: string; preview: string }
 export interface Memory { id: string; text: string; source: string; updatedAt: string }

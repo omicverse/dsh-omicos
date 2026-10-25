@@ -79,7 +79,7 @@ export class ScienceLedger {
     const previous = this.db.prepare('SELECT record_json FROM executions WHERE id=?').get(job.id)
     if (previous?.record_json === serialized) return
     const old = previous ? JSON.parse(String(previous.record_json)) as Execution : undefined
-    if (old && (old.code !== job.code || old.operationId !== job.operationId || old.sessionId !== job.sessionId || old.language !== language)) throw new Error('Execution identity/code are immutable; create a new operation instead')
+    if (old && (old.code !== job.code || old.operationId !== job.operationId || old.sessionId !== job.sessionId || old.language !== language || old.expectedKernelGeneration !== job.expectedKernelGeneration)) throw new Error('Execution identity/code are immutable; create a new operation instead')
     this.db.prepare('INSERT INTO executions(id,language,operation_id,record_json) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET record_json=excluded.record_json').run(job.id, language, job.operationId, serialized)
     this.append(old?.state === job.state ? 'execution/output' : `execution/${job.state}`, language, job.id, {
       state: job.state, environment_sha256: job.environment?.fingerprint, operation_id: job.operationId, code_sha256: hash(job.code), output_sha256: hash(job.output), artifacts: job.artifacts,

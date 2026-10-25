@@ -115,3 +115,20 @@ describe('public scientific runtime with real Python workers', () => {
     expect((await settled(service, job.id)).state).toBe('interrupted')
   })
 })
+
+it('refuses a lost Pipeline namespace without sending code or starting a replacement worker', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'science-generation-'))
+  const python = process.env.OMICOS_SCIENCE_TEST_PYTHON || 'python3'
+  let service = await ScienceService.open(directory, python)
+  try {
+    await Promise.all([service.prepare(), service.prepare()])
+    const generation = service.snapshot().kernel.generation!
+    await service.dispose(); service = await ScienceService.open(directory, python)
+    const job = await service.submit('open("should-never-run", "w").write("bad")', 'expected-old-namespace', 'pipeline', generation)
+    for (let count = 0; count < 100 && (service.get(job.id)?.state !== 'interrupted' || service.snapshot().kernel.state === 'busy'); count++) await new Promise(resolve => setTimeout(resolve, 20))
+    expect(service.get(job.id)?.state).toBe('interrupted')
+    expect(service.get(job.id)?.error).toContain('Code was not executed')
+    expect(service.snapshot().kernel.state).toBe('cold')
+    await expect(readFile(join(directory, 'should-never-run'))).rejects.toMatchObject({ code: 'ENOENT' })
+  } finally { await service.dispose(); await rm(directory, { recursive: true, force: true }) }
+})
