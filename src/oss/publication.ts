@@ -4,15 +4,17 @@ import {constants} from 'node:fs'
 import {open,readFile,realpath} from 'node:fs/promises'
 import {workspacePath} from './files.js'
 import type {FigureAssemblies} from './assemblies.js'
-import {PublicationError,type PdfPublicationProfile,type PdfFontRecord} from './publication-types.js'
+import {PublicationError,type PdfPublicationProfile,type ResolvedPdfPublicationProfile,type PdfFontRecord} from './publication-types.js'
 const assertActive=(signal:AbortSignal)=>{if(signal.aborted)throw new PublicationError(409,'PDF export canceled; no completed document is available')}
 const sha=(value:Buffer|string)=>createHash('sha256').update(value).digest('hex')
-export function publicationProfile(input:PdfPublicationProfile):PdfPublicationProfile{
+export function publicationProfile(input:PdfPublicationProfile):ResolvedPdfPublicationProfile{
   if(!input||typeof input!=='object'||!Number.isSafeInteger(input.dpi)||input.dpi<72||input.dpi>1200)throw new PublicationError(400,'Choose an integer publication DPI between 72 and 1200')
-  if(input.font===undefined)return {dpi:input.dpi}
+  if(Object.keys(input).some(key=>!['dpi','font','attachments'].includes(key))||input.attachments!==undefined&&!['provenance','none'].includes(input.attachments))throw new PublicationError(400,'Choose an explicit supported PDF attachment policy; unknown export fields are rejected')
+  const attachments=input.attachments??'provenance'
+  if(input.font===undefined)return {dpi:input.dpi,attachments}
   const font=input.font
-  if(!font||typeof font!=='object'||typeof font.path!=='string'||!font.path||font.path.length>1000||typeof font.sha256!=='string'||!/^[a-f0-9]{64}$/.test(font.sha256)||typeof font.licenseDeclaration!=='string'||!font.licenseDeclaration.trim()||font.licenseDeclaration.length>4000)throw new PublicationError(400,'Project font requires a contained path, expected SHA-256 and explicit embedding-license declaration')
-  return {dpi:input.dpi,font:{path:font.path,sha256:font.sha256,licenseDeclaration:font.licenseDeclaration}}
+  if(!font||typeof font!=='object'||Object.keys(font).some(key=>!['path','sha256','licenseDeclaration'].includes(key))||typeof font.path!=='string'||!font.path||font.path.length>1000||typeof font.sha256!=='string'||!/^[a-f0-9]{64}$/.test(font.sha256)||typeof font.licenseDeclaration!=='string'||!font.licenseDeclaration.trim()||font.licenseDeclaration.length>4000)throw new PublicationError(400,'Project font requires a contained path, expected SHA-256 and explicit embedding-license declaration')
+  return {dpi:input.dpi,attachments,font:{path:font.path,sha256:font.sha256,licenseDeclaration:font.licenseDeclaration}}
 }
 /** Static sfnt validation before invoking a font parser. This is not legal validation. */
 export function fontEmbeddingPolicy(bytes:Buffer){
@@ -52,16 +54,17 @@ export class PdfPublications{
     const profile=publicationProfile(input);const combined=signal?AbortSignal.any([signal,this.stopping.signal]):this.stopping.signal
     const task=this.perform(workspace,source,profile,sensitive,combined);this.pending.add(task);void task.then(()=>this.pending.delete(task),()=>this.pending.delete(task));return task
   }
-  private async perform(workspace:string,sourceInput:PublicationSource|(()=>Promise<PublicationSource>),profile:PdfPublicationProfile,sensitive:readonly string[],signal:AbortSignal):Promise<Buffer>{
+  private async perform(workspace:string,sourceInput:PublicationSource|(()=>Promise<PublicationSource>),profile:ResolvedPdfPublicationProfile,sensitive:readonly string[],signal:AbortSignal):Promise<Buffer>{
     assertActive(signal);const source=typeof sourceInput==='function'?await sourceInput():sourceInput;assertActive(signal);const font=profile.font?await projectFont(workspace,profile.font,sensitive):await bundledFont();assertActive(signal)
     if(font.bytes.length+source.images.reduce((total,image)=>total+image.bytes.length,0)>44000000)throw new PublicationError(413,'Combined PNG/font inputs exceed 44 MB')
-    const manifest={...source.metadata,schema:'omicos.assembly.pdf/1',exportProfile:{dpi:profile.dpi,font:font.record},exportProfileScope:'Current owner-selected font/physical size are export choices, not automatically assessed by an earlier assembly review. DPI does not upsample source images; original PNGs and this manifest are attached. PDF image drawing uses supported decoded samples, not unchanged PNG containers.'}
+    const manifest={...source.metadata,schema:'omicos.assembly.pdf/1',exportProfile:{dpi:profile.dpi,attachments:profile.attachments,font:font.record},exportProfileScope:'Current owner-selected font/attachment policy/physical size are export choices, not automatically assessed by an earlier assembly review. DPI does not upsample source images; attachment policy is explicit. Provenance mode attaches original PNGs and this manifest; page-only mode omits both. PDF image drawing uses supported decoded samples, not unchanged PNG containers.'}
     return this.worker(source,manifest,font.bytes,font.record,signal)
   }
-  private worker(source:PublicationSource,manifest:unknown,font:Buffer,fontRecord:PdfFontRecord,signal:AbortSignal):Promise<Buffer>{return new Promise((resolve,reject)=>{
+  private worker(source:PublicationSource,manifest:{exportProfile:{dpi:number;attachments?:string};exportedAt?:string},font:Buffer,fontRecord:PdfFontRecord,signal:AbortSignal):Promise<Buffer>{return new Promise((resolve,reject)=>{
     assertActive(signal);let failure:Error|undefined;let result:Buffer|undefined
     const fontData=Uint8Array.from(font);const images=source.images.map(image=>({id:image.figure.id,revision:image.figure.revision,width:image.width,height:image.height,sha256:image.figure.artifact.sha256,bytes:Uint8Array.from(image.bytes)}))
-    const worker=new Worker(this.options.workerPath||new URL('../../runtime/figure_pdf.cjs',import.meta.url),{workerData:{record:source.record,manifest,font:fontData,fontRecord,images},transferList:[fontData.buffer,...images.map(image=>image.bytes.buffer)],env:{},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:512,maxYoungGenerationSizeMb:64,stackSizeMb:4}})
+    const pageOnly=manifest.exportProfile.attachments==='none';const record=pageOnly?{layout:source.record.layout}:source.record;const workerManifest=pageOnly?{exportProfile:{dpi:manifest.exportProfile.dpi,attachments:'none'}}:manifest;const workerFontRecord=pageOnly?{kind:fontRecord.kind,subset:fontRecord.subset}:fontRecord
+    const worker=new Worker(this.options.workerPath||new URL('../../runtime/figure_pdf.cjs',import.meta.url),{workerData:{record,manifest:workerManifest,font:fontData,fontRecord:workerFontRecord,images},transferList:[fontData.buffer,...images.map(image=>image.bytes.buffer)],env:{},execArgv:[],resourceLimits:{maxOldGenerationSizeMb:512,maxYoungGenerationSizeMb:64,stackSizeMb:4}})
     const abort=()=>{failure=new PublicationError(409,'PDF export canceled; rendering worker is stopping');void worker.terminate()}
     const timer=setTimeout(()=>{failure=new PublicationError(408,'PDF rendering exceeded its deadline');void worker.terminate()},this.options.timeoutMs||45000)
     signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort()

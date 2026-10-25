@@ -98,3 +98,17 @@ it('does not replay a binary upload on unknown network outcomes or protocol reje
   await expect(apiUploadChunk('project/id/upload-chunk?id=stable&offset=0',bytes)).rejects.toThrow('Response lost');expect(fetcher).toHaveBeenCalledTimes(1)
   await expect(apiUploadChunk('project/id/upload-chunk?id=stable&offset=0',bytes)).rejects.toMatchObject({status:426});expect(fetcher).toHaveBeenCalledTimes(2)
 })
+
+it('refuses an absent or mismatched PDF attachment acknowledgement and cancels the body before any download',async()=>{
+ const cancel=vi.fn()
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(new ReadableStream({cancel}),{headers:{'content-type':'application/pdf','x-omicos-pdf-attachments':'provenance'}})))
+ const {apiPdf}=await import('../src/client/oss-api.js')
+ await expect(apiPdf('project/id/assembly-pdf',{confirmed:true,profile:{dpi:180,attachments:'none'}},new AbortController().signal)).rejects.toThrow(/attachment policy/);expect(cancel).toHaveBeenCalledTimes(1)
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response('%PDF-old-host',{headers:{'content-type':'application/pdf'}})))
+ await expect(apiPdf('project/id/assembly-pdf',{confirmed:true,profile:{dpi:180,attachments:'none'}},new AbortController().signal)).rejects.toThrow(/attachment policy/)
+})
+it('accepts a PDF only after matching the attachment acknowledgement and actual byte digest, without retrying unknown results',async()=>{
+ const bytes=Buffer.from('%PDF-fixture'),digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),byte=>byte.toString(16).padStart(2,'0')).join('')
+ const fetcher=vi.fn(async()=>new Response(bytes,{headers:{'content-type':'application/pdf','x-omicos-pdf-attachments':'none','x-omicos-export-sha256':digest}}));vi.stubGlobal('fetch',fetcher)
+ const {apiPdf}=await import('../src/client/oss-api.js');const result=await apiPdf('project/id/assembly-pdf',{confirmed:true,profile:{dpi:180,attachments:'none'}},new AbortController().signal);expect(result.sha256).toBe(digest);expect(Buffer.from(await result.blob.arrayBuffer())).toEqual(bytes);expect(fetcher).toHaveBeenCalledTimes(1)
+})

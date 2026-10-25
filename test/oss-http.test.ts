@@ -1,3 +1,4 @@
+import {pdfAttachments} from './pdf-helpers.js'
 import { ScienceLedger } from '../src/oss/ledger.js'
 import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -77,7 +78,9 @@ describe('scientific workbench and commerce boundary', () => {
     const svg=await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-svg?id=${saved.id}&revision=2`);expect(svg.headers.get('content-type')).toBe('application/octet-stream');expect(svg.headers.get('content-disposition')).toContain('.svg');expect(await svg.text()).toContain(bytes.toString('base64'))
     expect((await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{profile:{dpi:180}})).status).toBe(400)
     expect((await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{confirmed:true,profile:{dpi:180}},{'x-omicos-csrf':''})).status).toBe(403)
-    const pdf=await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{confirmed:true,profile:{dpi:180}});expect(pdf.status).toBe(200);expect(pdf.headers.get('content-type')).toBe('application/pdf');const pdfBytes=Buffer.from(await pdf.arrayBuffer());expect(pdfBytes.subarray(0,5).toString()).toBe('%PDF-');expect(pdf.headers.get('x-omicos-export-sha256')).toBe(createHash('sha256').update(pdfBytes).digest('hex'))
+    const pdf=await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{confirmed:true,profile:{dpi:180}});expect(pdf.status).toBe(200);expect(pdf.headers.get('x-omicos-pdf-attachments')).toBe('provenance');expect(pdf.headers.get('content-type')).toBe('application/pdf');const pdfBytes=Buffer.from(await pdf.arrayBuffer());expect(pdfBytes.subarray(0,5).toString()).toBe('%PDF-');expect(pdf.headers.get('x-omicos-export-sha256')).toBe(createHash('sha256').update(pdfBytes).digest('hex'))
+    const plain=await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{confirmed:true,profile:{dpi:180,attachments:'none'}});expect(plain.status).toBe(200);expect(plain.headers.get('x-omicos-pdf-attachments')).toBe('none');expect((await pdfAttachments(Buffer.from(await plain.arrayBuffer()))).files.size).toBe(0)
+    expect((await post(`${prefix}assembly-pdf?id=${saved.id}`,{confirmed:true,profile:{dpi:180,attachSources:false}})).status).toBe(400)
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}assembly-svg?id=${saved.id}`)).status).toBe(401)
     const old=await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-document?id=${saved.id}&revision=1`)).json() as any;expect(old.review.state).toBe('draft')
     expect((await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-integrity?id=${saved.id}`)).json() as any).state).toBe('verified')

@@ -13,3 +13,5 @@ Verify real PDF parser/page geometry, embedded fonts, missing-glyph rejection, e
 Follow-up implemented: direct exact 16-bit grayscale/RGB/alpha PDF image streams, bounded independent PNG decoding with all filters/Adam7, literal PDF sample tests. Color management remains pending; original starting scope above describes the initial checkpoint.
 
 Color follow-up implemented in ADR 0019: ICC/sRGB/gAMA/cHRM PDF spaces, independent all-depth PNG decoding, declared missing-primary assumptions and output-level sample/profile tests. HDR, animation, broader proofing and journal profiles remain pending.
+
+Attachment follow-up implemented in ADR 0020: explicit provenance/page-only output, strict unknown-field rejection, response policy acknowledgement, no source attachment/document metadata in page-only mode, unchanged rendering checks. Reusable named profiles and broader content redaction remain pending.
