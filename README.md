@@ -26,7 +26,7 @@ Open `http://127.0.0.1:18620/omicos/oss`. The store has its own window at
 `http://127.0.0.1:18620/omicos/oss/store`.
 
 Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
-`--rscript /path/to/Rscript`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
+`--rscript /path/to/Rscript`, `--pass-env NCBI_API_KEY,CUSTOM_DATA_VAR`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
 The service binds only to loopback; exposing it as a public server is unsupported.
 
 The standalone CLI runs explicit Python cells without Harness. When this same
@@ -56,6 +56,7 @@ precedence. An initial project also follows the Host working directory.
     backend: oss
     workspace: /absolute/path/to/research-project
     python: /absolute/path/to/venv/bin/python
+    workerEnvNames: []
     upstreamBaseUrl: https://auth.omicos.cn
 ```
 
@@ -79,7 +80,11 @@ The OSS tool surface is:
 
 Python and memory-write tools use Harness's pre-execution approval mechanism.
 Without an approval service/channel they fail closed. Other tool-policy denials
-are preserved. Python runs with your operating-system permissions; this is a
+are preserved. Workers receive a deliberate OS/scientific runtime environment instead of the
+Host’s whole environment. Arbitrary model keys/tokens are not inherited by default.
+Use `workerEnvNames` (or CLI `--pass-env`) to explicitly forward additional variable
+names required by a scientific integration; their values are not logged.
+Python runs with your operating-system permissions; this is a
 trusted research environment, **not a Python security sandbox**.
 
 ## Scientific state and recovery

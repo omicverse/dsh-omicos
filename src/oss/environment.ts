@@ -1,3 +1,4 @@
+import { workerEnvironment } from './worker-environment.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 const execute = promisify(execFile)
@@ -10,7 +11,7 @@ for name in ['numpy','pandas','anndata','scipy','scanpy','omicverse','matplotlib
  try: result[name]=m.version(name)
  except m.PackageNotFoundError: result[name]=None
 print(json.dumps({'python':sys.version.split()[0],'executable':sys.executable,'platform':platform.platform(),'packages':result}))`
-  const { stdout } = await execute(python, ['-c', code], { timeout: 15000, maxBuffer: 128000 })
+  const { stdout } = await execute(python, ['-c', code], { timeout: 15000, maxBuffer: 128000, env: workerEnvironment(process.env) })
   return JSON.parse(stdout) as EnvironmentInfo
 }
 
@@ -21,6 +22,6 @@ names <- c('jsonlite','Seurat','SingleCellExperiment','DESeq2','edgeR','ggplot2'
 installed <- utils::installed.packages()
 packages <- setNames(lapply(names,function(name) if (name %in% rownames(installed)) unname(installed[name,'Version']) else NULL), names)
 cat(jsonlite::toJSON(list(language='r',version=R.version.string,packages=packages),auto_unbox=TRUE,null='null'))`
-  const { stdout } = await execute(rscript, ['--vanilla', '-e', code], { timeout: 30000, maxBuffer: 128000 })
+  const { stdout } = await execute(rscript, ['--vanilla', '-e', code], { timeout: 30000, maxBuffer: 128000, env: workerEnvironment(process.env) })
   return JSON.parse(stdout) as REnvironmentInfo
 }

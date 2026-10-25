@@ -21,6 +21,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - DSH entry resolves the active session workspace through the formal Host controller instead of silently opening the Host process working directory.
 - Cloud credentials are bound to their origin; changing cloud bases never forwards previously saved tokens.
 - Durable SSE scientific events with Last-Event-ID replay, slow-reader backpressure and snapshot recovery; frontend retry is restricted to pre-dispatch CSRF rejection and preserves operation IDs.
+- Python/R workers and environment probes inherit a deliberate runtime variable projection; additional scientific variables require explicit name allowlisting. A real Python test verifies a synthetic Host secret is absent.
 - Execution receipts and notebooks include actual interpreter/package versions and environment fingerprints without process environment variables or credentials.
 - License notices are generated from actual esbuild inputs for every inlined npm dependency and shipped with source/build/test scripts.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
@@ -31,7 +32,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed; Node 22.13.1 and current local Node runtime exercised.
-- 129 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 131 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.

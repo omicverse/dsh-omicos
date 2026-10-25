@@ -17,10 +17,10 @@ export class OssRuntime {
   private registryWrites: Promise<void> = Promise.resolve()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
-  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string) {}
-  static async open(options: { cloudBase?: string; stateDir?: string; python?: string; rscript?: string } = {}): Promise<OssRuntime> {
+  private constructor(readonly cloud: CloudService, readonly python: string, readonly rscript: string, private stateDir: string, private envNames: readonly string[]) {}
+  static async open(options: { cloudBase?: string; stateDir?: string; python?: string; rscript?: string; workerEnvNames?: readonly string[] } = {}): Promise<OssRuntime> {
     const stateDir = resolve(options.stateDir || join(homedir(), '.omicos-oss'))
-    const runtime = new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(stateDir, 'cloud.json')), options.python || 'python3', options.rscript || 'Rscript', stateDir)
+    const runtime = new OssRuntime(await CloudService.open(options.cloudBase || 'https://auth.omicos.cn', join(stateDir, 'cloud.json')), options.python || 'python3', options.rscript || 'Rscript', stateDir, options.workerEnvNames || [])
     const registry = await readJson<{ protocol: number; projects: ProjectReference[] }>(join(stateDir, 'projects.json'), { protocol: 1, projects: [] })
     if (registry.protocol !== 1 || !Array.isArray(registry.projects)) throw new Error('Unsupported project registry; preserve the file and use a compatible runtime')
     for (const entry of registry.projects) {
@@ -43,7 +43,7 @@ export class OssRuntime {
     const id = projectId(path)
     let service = this.projects.get(id)
     if (!service) {
-      service = ScienceService.open(path, this.python).then(async service => {
+      service = ScienceService.open(path, this.python, 'python', this.envNames).then(async service => {
         try {
           this.known.set(id, { id, workspace: service.workspace })
           await this.saveRegistry()
@@ -60,7 +60,7 @@ export class OssRuntime {
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
     let service = this.rProjects.get(parent.workspace)
     if (!service) {
-      service = ScienceService.open(parent.workspace, this.rscript, 'r')
+      service = ScienceService.open(parent.workspace, this.rscript, 'r', this.envNames)
       this.rProjects.set(parent.workspace, service)
       service.catch(() => { if (this.rProjects.get(parent.workspace) === service) this.rProjects.delete(parent.workspace) })
     }

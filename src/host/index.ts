@@ -29,6 +29,7 @@ export interface Config {
   backend: 'oss' | 'core'
   python: string
   rscript: string
+  workerEnvNames: string[]
   stateDir: string
   /** Explicit workspace override; empty = follow each dsh session's own workspace (`session.header.cwd`). */
   workspace: string
@@ -46,6 +47,7 @@ export const Config = Schema.object({
   backend: Schema.union(['oss', 'core']).default('oss'),
   python: Schema.string().default('python3'),
   rscript: Schema.string().default('Rscript'),
+  workerEnvNames: Schema.array(Schema.string()).default([]),
   stateDir: Schema.string().default(''),
   workspace: Schema.string().default(''),
   autoStart: Schema.boolean().default(true),
@@ -55,7 +57,7 @@ export const Config = Schema.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
-  const runtime = OssRuntime.open({ python: config.python, rscript: config.rscript, stateDir: config.stateDir || undefined, cloudBase: config.upstreamBaseUrl }).then(async service => {
+  const runtime = OssRuntime.open({ python: config.python, rscript: config.rscript, workerEnvNames: config.workerEnvNames, stateDir: config.stateDir || undefined, cloudBase: config.upstreamBaseUrl }).then(async service => {
     try { await service.project(config.workspace || process.cwd()); return service }
     catch (error) { await service.dispose(); throw error }
   })

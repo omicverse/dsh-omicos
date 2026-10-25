@@ -1,3 +1,4 @@
+import { workerEnvironment } from './worker-environment.js'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { EventEmitter } from 'node:events'
@@ -27,11 +28,11 @@ export class ScienceService extends EventEmitter {
   private releaseLock?: () => Promise<void>
   private lockFailure?: string
   private cancelTimer?: ReturnType<typeof setTimeout>
-  private constructor(readonly workspace: string, readonly interpreter: string, readonly language: 'python' | 'r') { super() }
+  private constructor(readonly workspace: string, readonly interpreter: string, readonly language: 'python' | 'r', private envNames: readonly string[]) { super() }
 
-  static async open(workspace: string, python = 'python3', language: 'python' | 'r' = 'python'): Promise<ScienceService> {
+  static async open(workspace: string, python = 'python3', language: 'python' | 'r' = 'python', envNames: readonly string[] = []): Promise<ScienceService> {
     await mkdir(workspace, { recursive: true })
-    const service = new ScienceService(await realpath(workspace), python, language)
+    const service = new ScienceService(await realpath(workspace), python, language, envNames)
     await mkdir(service.directory, { recursive: true, mode: 0o700 })
     service.releaseLock = await lockfile.lock(service.directory, { realpath: true, lockfilePath: join(service.directory, 'runtime.lock'), stale: 10000, update: 2000, retries: 0, onCompromised: error => {
       service.lockFailure = `Project runtime lock lost: ${error.message}`
@@ -82,7 +83,7 @@ export class ScienceService extends EventEmitter {
   }
   private async start(): Promise<void> {
     if (this.child) return
-    const child = spawn(this.interpreter, this.language === 'python' ? ['-u', workerPaths.python, this.workspace] : ['--vanilla', workerPaths.r, this.workspace], { cwd: this.workspace, stdio: ['pipe', this.language === 'python' ? 'ignore' : 'pipe', 'pipe', 'pipe'], env: { ...process.env, MPLBACKEND: 'Agg' } })
+    const child = spawn(this.interpreter, this.language === 'python' ? ['-u', workerPaths.python, this.workspace] : ['--vanilla', workerPaths.r, this.workspace], { cwd: this.workspace, stdio: ['pipe', this.language === 'python' ? 'ignore' : 'pipe', 'pipe', 'pipe'], env: workerEnvironment(process.env, this.envNames) })
     child.stdin?.on('error', error => { if (this.child === child) { this.child = undefined; this.failWorker(`Worker input failed: ${error.message}`); child.kill('SIGKILL') } })
     this.child = child; this.generation = randomUUID()
     const lines = createInterface({ input: child.stdio[3]! as NodeJS.ReadableStream })
