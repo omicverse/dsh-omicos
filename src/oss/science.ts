@@ -1,3 +1,4 @@
+import { NotebookStore } from './notebooks.js'
 import { workerEnvironment } from './worker-environment.js'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
@@ -19,6 +20,8 @@ export class ScienceService extends EventEmitter {
   private executions: Execution[] = []
   private variables: Variable[] = []
   private ledger!: ScienceLedger
+  private notebookStore?: NotebookStore
+  get notebooks(): NotebookStore { if (!this.notebookStore) throw new Error('Notebook documents are owned by the parent project service'); return this.notebookStore }
   private lastOutputPersist = 0
   private active?: Execution
   private finishing?: Execution
@@ -40,6 +43,7 @@ export class ScienceService extends EventEmitter {
     } })
     try {
     service.ledger = await ScienceLedger.open(service.workspace)
+    if (language === 'python') service.notebookStore = await NotebookStore.open(service.workspace)
     service.executions = service.ledger.executions(service.language)
     for (const job of service.executions) if (!terminal.has(job.state)) {
       job.state = 'interrupted'; job.endedAt = new Date().toISOString(); job.error = 'Host stopped; execution outcome is unknown. Inspect data before rerunning.'
@@ -209,6 +213,7 @@ export class ScienceService extends EventEmitter {
       const timer = setTimeout(() => child.kill('SIGKILL'), 2000)
       child.once('exit', () => { clearTimeout(timer); resolve() }); child.once('error', () => { clearTimeout(timer); resolve() }); child.kill('SIGTERM')
     })
+    await this.notebookStore?.dispose()
     await this.saving
     this.ledger.close()
     const release = this.releaseLock; this.releaseLock = undefined

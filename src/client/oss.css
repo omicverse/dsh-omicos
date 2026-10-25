@@ -8,3 +8,7 @@ body:has(.oss){margin:0}
 .oss-data-files{max-height:320px;overflow:auto;margin:14px 0}.oss-data-file{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:8px 0}.oss-data-file .oss-file-name{flex:1;text-align:left;background:transparent;border-color:transparent;overflow-wrap:anywhere;min-width:100px}.oss-data-file small{min-width:65px}
 
 .oss-section-head{flex-wrap:wrap}.oss-section-head>div{min-width:0;overflow-wrap:anywhere}.oss code{overflow-wrap:anywhere}.oss-account{min-width:0;max-width:100%;flex-wrap:wrap}.oss-account span{min-width:0;overflow-wrap:anywhere}
+
+.oss-notebook-cell { margin: 22px 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.oss-notebook-cell .oss-code { min-height: 150px; }
+.oss-notebook input[type="file"] { max-width: 100%; }

@@ -27,6 +27,14 @@ owner credential that is exchanged for an HttpOnly browser cookie and removed fr
 the address bar. Keep this link private. The store opens from the workbench.
 When hosted by Harness, both windows use its existing local owner authentication.
 
+Notebook documents are stored in each project's private runtime directory. Create or
+import an `.ipynb`, edit/reorder cells, save and explicitly approve individual runs.
+Imports never execute. Python and R use their respective shared project kernels;
+changing a cell invalidates its displayed/exported execution output. Revision
+conflicts require reloading and merging, so another window's edits are not overwritten.
+Imported rich outputs are retained for export with an unverified marker and are
+never executed as browser HTML. The current import limit is 2 MB / 500 cells.
+
 Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
 `--rscript /path/to/Rscript`, `--pass-env NCBI_API_KEY,CUSTOM_DATA_VAR`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
 The service binds only to loopback; exposing it as a public server is unsupported.

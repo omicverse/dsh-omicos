@@ -32,7 +32,7 @@ export function registerOssTools(ctx: Context, runtime: Promise<OssRuntime>, wor
     ctx.on('tools/pre-execute', async (exec, next) => {
       const decision = await next()
       if (decision.kind !== 'allow') return decision
-      if (['omicos_run_python', 'omicos_run_r', 'omicos_inspect_anndata', 'omicos_project_memory_write'].includes(exec.name)) {
+      if (['omicos_run_python', 'omicos_run_r', 'omicos_inspect_anndata', 'omicos_project_memory_write', 'omicos_notebook_update', 'omicos_notebook_run'].includes(exec.name)) {
         return { kind: 'ask', reason: `OmicOS scientific operation requires approval: ${exec.name}\n${JSON.stringify(exec.arguments).slice(0, 4000)}` }
       }
       return decision
@@ -67,6 +67,28 @@ export function registerOssTools(ctx: Context, runtime: Promise<OssRuntime>, wor
       async execute(args) { return response(scientificSkill(args.id)) } })),
     ctx.tools.register(defineTool({ name: 'omicos_environment', description: 'Inspect the selected Python or R interpreter and scientific package versions without installing anything. Missing packages are reported as null.', parameters: { language: { type: 'string', enum: ['python', 'r'] } }, output, isConcurrencySafe: () => true,
       async execute(args, exec) { return response(args.language === 'r' ? await inspectREnvironment((await runtime).rscript) : await inspectEnvironment((await project(exec)).python)) } })),
+    ctx.tools.register(defineTool({ name: 'omicos_notebook_state', description: 'List persistent project Notebooks, read one document, or export nbformat 4 JSON with verifiable execution references. Imported outputs are unverified; edited source invalidates previous outputs. This never executes code.', parameters: { id: { type: 'string' }, export: { type: 'boolean' } }, output, isConcurrencySafe: () => true,
+      async execute(args, exec) {
+        const parent = await project(exec)
+        if (!args.id) return response(parent.notebooks.list())
+        const document = parent.notebooks.get(args.id)
+        if (!args.export) return response(document)
+        const kernel = document.language === 'r' ? await project(exec, 'r') : parent
+        return response(parent.notebooks.export(document.id, (_language, id) => kernel.get(id)))
+      } })),
+    ctx.tools.register(defineTool({ name: 'omicos_notebook_update', description: 'Create/import or save a persistent project Notebook without executing its cells. Approval required. Save requires the exact current revision and cells_json containing [{id,kind,source}]; keep existing IDs for retained cells. Conflicts must be read and merged, never overwritten blindly. imported_json optionally contains nbformat 4 for create.', parameters: { action: { type: 'string', enum: ['create', 'save'], required: true }, id: { type: 'string' }, revision: { type: 'integer' }, title: { type: 'string', required: true }, language: { type: 'string', enum: ['python', 'r'] }, cells_json: { type: 'string' }, imported_json: { type: 'string' } }, output, isConcurrencySafe: () => false,
+      async execute(args, exec) {
+        exec.signal.throwIfAborted(); const parent = await project(exec); exec.signal.throwIfAborted()
+        if (args.action === 'create') return response(await parent.notebooks.create(args.title, args.language || 'python', args.imported_json === undefined ? undefined : JSON.parse(args.imported_json)))
+        return response(await parent.notebooks.save(args.id || '', args.revision ?? -1, args.title, JSON.parse(args.cells_json || 'null')))
+      } })),
+    ctx.tools.register(defineTool({ name: 'omicos_notebook_run', description: 'Run one saved Notebook code cell in its project persistent Python/R kernel with explicit approval. Requires current revision and stable operation_id for retries. Returns immutable execution ID and updated document; never rerun interrupted analysis blindly.', parameters: { id: { type: 'string', required: true }, revision: { type: 'integer', required: true }, cell_id: { type: 'string', required: true }, operation_id: { type: 'string', required: true }, background: { type: 'boolean' } }, output, isConcurrencySafe: () => false,
+      async execute(args, exec) {
+        exec.signal.throwIfAborted(); const parent = await project(exec)
+        const result = await parent.notebooks.run(args.id, args.revision, args.cell_id, args.operation_id, async (language, source, operation, session) => { exec.signal.throwIfAborted(); return (await project(exec, language)).submit(source, operation, session) })
+        const kernel = await project(exec, result.document.language)
+        return response({ ...result, execution: args.background ? result.execution : await waitFor(kernel, result.execution.id, exec.signal) })
+      } })),
     ctx.tools.register(defineTool({ name: 'omicos_cloud_store', description: 'Read OmicOS cloud account and workbench/store URLs. Purchases require the user to open the store and confirm; no payment or subscription mutation is exposed as an agent tool.', parameters: {}, output, isConcurrencySafe: () => true,
       async execute() { return response({ account: (await runtime).cloud.snapshot(), workbench: '/omicos/oss', store: '/omicos/oss/store' }) } })),
   ]

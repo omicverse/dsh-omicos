@@ -27,6 +27,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
 - Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
+- Persistent nbformat-4 Notebook documents with code/Markdown/raw cells, reorder/edit/save/import/export, optimistic revision conflicts and stable retry IDs. Cell execution uses the existing project Python/R kernel, preserves immutable execution links, invalidates edited outputs and never runs imports automatically. Agent read/update/run tools honor the existing approval boundary. Imported rich outputs and attachments are preserved on export and marked unverified, never rendered as executable browser HTML.
 - Scoped OmicOS Scientist preset and four original public scientific checklists; real Loader/preset mounting tested.
 
 - Workbench pages, APIs, assets and SSE require owner authentication before exposing state. Harness uses its connection service; standalone launch links establish origin-bound signed HttpOnly cookies using private persisted signing state.
@@ -34,8 +35,9 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed; Node 22.13.1 and current local Node runtime exercised.
-- 135 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 139 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
+- Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Actual isolated Harness Web rc.3 profile: unauthenticated workbench/page/assets/session return 401; after Harness cookie bootstrap all return 200. Full model/approval UI flows remain unverified.
@@ -60,7 +62,7 @@ Verification at this checkpoint:
 ### M2–M4 capability migration
 
 - Richer dataset/AnnData charts, upload/import workflows and broader R environment provisioning/platform matrix.
-- Notebook cell editing/re-execution semantics, richer figure review/Studio.
+- Richer Notebook figure rendering/review and Figure Studio; basic persistent cell editing/import/export/re-execution is implemented.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
 - Agent delegation constraints, scientific plans/approvals, session and long-term memory tree/consolidation.
 - Immutable Pipeline definitions and checkpointed/resumable execution.

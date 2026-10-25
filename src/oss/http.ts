@@ -1,3 +1,4 @@
+import { NotebookError } from './notebooks.js'
 import type { HttpOwnerAuth } from './http-auth.js'
 import { streamScientificEvents } from './events.js'
 import { listWorkspace, previewWorkspaceFile } from './files.js'
@@ -16,10 +17,10 @@ export function sendJson(response: ServerResponse, status: number, body: unknown
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
   response.end(JSON.stringify(body))
 }
-async function body(request: IncomingMessage): Promise<any> {
+async function body(request: IncomingMessage, limit = 300_000): Promise<any> {
   if (!request.headers['content-type']?.startsWith('application/json')) throw new CloudError(415, 'JSON content type required')
   let size = 0; const chunks: Buffer[] = []
-  for await (const chunk of request) { size += chunk.length; if (size > 300_000) throw new CloudError(413, 'Request too large'); chunks.push(Buffer.from(chunk)) }
+  for await (const chunk of request) { size += chunk.length; if (size > limit) throw new CloudError(413, 'Request too large'); chunks.push(Buffer.from(chunk)) }
   let parsed: unknown
   try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') } catch { throw new CloudError(400, 'Invalid JSON') }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new CloudError(400, 'JSON object required')
@@ -57,7 +58,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req
         sendJson(response, 200, { csrf: nonce, account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: 1 }); return
       }
       if (method !== 'GET' && request.headers['x-omicos-csrf'] !== nonce) throw new CloudError(403, 'Invalid CSRF token')
-      const data = method === 'POST' ? await body(request) : undefined
+      const data = method === 'POST' ? await body(request, /\/notebook-(create|save)$/.test(path) ? 2_100_000 : 300_000) : undefined
       const cloud = runtime.cloud
       let result: unknown
       if (path === '/omicos/oss/api/open-session-project' && method === 'POST') {
@@ -127,6 +128,23 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python)
+        else if (action === 'notebooks' && method === 'GET') result = { notebooks: parent.notebooks.list() }
+        else if (action === 'notebook-document' && method === 'GET') result = parent.notebooks.get(url.searchParams.get('id') || '')
+        else if (action === 'notebook-create' && method === 'POST') result = await parent.notebooks.create(data.title, language, data.imported)
+        else if (action === 'notebook-save' && method === 'POST') result = await parent.notebooks.save(data.id, data.revision, data.title, data.cells)
+        else if (action === 'notebook-run' && method === 'POST') {
+          if (data.confirmed !== true) throw new CloudError(400, 'Explicit cell execution approval required')
+          result = await parent.notebooks.run(data.id, data.revision, data.cellId, String(data.operationId || ''), async (language, source, operation, session) => {
+            const kernel = language === 'r' ? await runtime.rProject(parent.workspace) : parent
+            return kernel.submit(source, operation, session)
+          })
+        }
+        else if (action === 'notebook-download' && method === 'GET') {
+          const document = parent.notebooks.get(url.searchParams.get('id') || '')
+          const kernel = document.language === 'r' ? await runtime.rProject(parent.workspace) : parent
+          response.setHeader('content-disposition', 'attachment; filename="omicos-notebook.ipynb"')
+          result = parent.notebooks.export(document.id, (_language, id) => kernel.get(id))
+        }
         else if (action === 'snapshot' && method === 'GET') result = { ...project.snapshot(), memories: parent.snapshot().memories }
         else if (action === 'execute' && method === 'POST') {
           if (data.confirmed !== true || typeof data.code !== 'string') throw new CloudError(400, 'Explicit execution approval required')
@@ -148,7 +166,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req
       sendJson(response, 200, result)
     } catch (error) {
       if (response.writableEnded) return
-      sendJson(response, error instanceof CloudError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

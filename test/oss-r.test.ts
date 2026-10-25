@@ -31,6 +31,13 @@ describe.skipIf(!rAvailable)('real persistent R worker', () => {
       for (const artifact of figure.artifacts) { expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/); expect((await readFile(join(workspace, artifact.path))).length).toBe(artifact.bytes) }
       expect(r.snapshot().variables.find(variable => variable.name === 'values')).toBeTruthy()
       const py = await runtime.project(workspace)
+      const book = await py.notebooks.create('R notebook', 'r')
+      const saved = await py.notebooks.save(book.id, book.revision, book.title, [{ ...book.cells[0], source: 'print(sum(values))' }])
+      const cell = await py.notebooks.run(saved.id, saved.revision, saved.cells[0].id, 'r-notebook', (language, source, operation, session) => { expect(language).toBe('r'); return r.submit(source, operation, session) })
+      expect((await settled(r, cell.execution.id)).output).toContain('10')
+      const exported = py.notebooks.export(book.id, (_language, id) => r.get(id)) as any
+      expect(exported.metadata.kernelspec.name).toBe('ir')
+      expect(exported.cells[0].metadata.omicos.environment.language).toBe('r')
       const check = await py.submit('print("values" in globals())', 'check', 'session')
       expect((await settled(py, check.id)).output).toContain('False')
       expect((r.notebook() as any).metadata.kernelspec.language).toBe('r')

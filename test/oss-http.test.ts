@@ -163,6 +163,25 @@ describe('scientific workbench and commerce boundary', () => {
     expect(resumedText).toContain('stream-fact')
     reconnectAbort.abort()
   }, 15000)
+  it('requires explicit approval for Notebook cells and returns conflicts instead of overwriting edits', async () => {
+    const id = (await runtime.list())[0].id
+    const created = await (await post(`project/${id}/notebook-create`, { title: 'HTTP analysis', language: 'python' })).json() as any
+    const saved = await (await post(`project/${id}/notebook-save`, { id: created.id, revision: created.revision, title: 'Saved', cells: [{ ...created.cells[0], source: 'print(17)' }] })).json() as any
+    expect((await post(`project/${id}/notebook-save`, { id: created.id, revision: 1, title: 'Stale', cells: created.cells })).status).toBe(409)
+    const operation = { id: saved.id, revision: saved.revision, cellId: saved.cells[0].id, operationId: 'http-notebook' }
+    expect((await post(`project/${id}/notebook-run`, operation)).status).toBe(400)
+    const service = await runtime.byId(id)
+    expect(service.snapshot().executions).toHaveLength(0)
+    const result = await (await post(`project/${id}/notebook-run`, { ...operation, confirmed: true })).json() as any
+    const retried = await (await post(`project/${id}/notebook-run`, { ...operation, confirmed: true })).json() as any
+    expect(retried.execution.id).toBe(result.execution.id)
+    for (let count = 0; count < 100 && service.get(result.execution.id)?.state !== 'succeeded'; count++) await new Promise(resolve => setTimeout(resolve, 20))
+    const download = await fetchHost(`${base}/omicos/oss/api/project/${id}/notebook-download?id=${saved.id}`)
+    expect(download.headers.get('content-disposition')).toContain('.ipynb')
+    const exported = await download.json() as any
+    expect(exported.cells[0].outputs[0].text.trim()).toBe('17')
+    expect((await (await fetchHost(`${base}/omicos/oss/api/project/${id}/notebooks`)).json() as any).notebooks[0].revision).toBe(3)
+  })
   it('executes only registered workspaces and exports a real notebook', async () => {
     const id = (await runtime.list())[0].id
     expect((await post('project/not-registered/execute', { code: '1', confirmed: true })).status).not.toBe(200)
