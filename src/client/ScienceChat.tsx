@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {ChatHistory} from './ChatHistory.js'
 import { api } from './oss-api.js'
 import type { ChatSnapshot } from '../oss/chat.js'
 
-type ChatView=Partial<ChatSnapshot>&{available?:boolean;reason?:string;streaming?:boolean}
+type ChatView=Partial<ChatSnapshot>&{available?:boolean;reason?:string;streaming?:boolean;history?:boolean}
 export function ScienceChat({ projectId }: { projectId: string }): JSX.Element {
   const [snapshot, setSnapshot] = useState<ChatView>()
   const [draft, setDraft] = useState('')
@@ -25,7 +26,7 @@ export function ScienceChat({ projectId }: { projectId: string }): JSX.Element {
     if(!snapshot?.sessionId||!snapshot.streaming){setConnection(snapshot?.available===false?'unavailable':'polling');return}
     let closed=false;const sessionId=snapshot.sessionId,source=new EventSource(`/omicos/oss/api/${prefix}chat-events`)
     source.onopen=()=>{if(closed)return;live.current=true;setConnection('live')};source.onerror=()=>{if(closed)return;live.current=false;setSnapshot(value=>value?{...value,live:undefined}:value);setConnection('reconnecting')}
-    source.addEventListener('chat',event=>{if(closed)return;try{const value=JSON.parse((event as MessageEvent).data) as ChatSnapshot;if(value.sessionId!==sessionId||identity.current!==projectId)return;setSnapshot({...value,streaming:true});setError('')}catch{live.current=false;source.close();setConnection('polling')}})
+    source.addEventListener('chat',event=>{if(closed)return;try{const value=JSON.parse((event as MessageEvent).data) as ChatSnapshot;if(value.sessionId!==sessionId||identity.current!==projectId)return;setSnapshot(previous=>({...value,streaming:true,history:previous?.history}));setError('')}catch{live.current=false;source.close();setConnection('polling')}})
     return()=>{closed=true;live.current=false;source.close()}
   },[prefix,projectId,snapshot?.sessionId,snapshot?.streaming,snapshot?.available])
   const send = async () => {
@@ -44,6 +45,7 @@ export function ScienceChat({ projectId }: { projectId: string }): JSX.Element {
     {error && <p role="status" className="oss-error">{error}</p>}
     {snapshot?.sessionId && <details><summary>会话与权限</summary><code>{snapshot.sessionId}</code><p>需要批准科研工具时，请在 Harness 主窗口完成审批。此窗口不跳过权限检查。</p></details>}
     <div className="oss-chat-history" role="log" aria-live="polite">{snapshot?.messages?.map(item => <div className={`oss-chat-message oss-chat-${item.role}`} key={item.seq}><small>{item.role === 'user' ? '你' : 'OmicOS Scientist'}{item.interrupted ? ' · 已中断' : ''}{item.truncated?' · 窗口内容已截短':''}</small><p>{item.text}</p></div>)}{snapshot?.live&&<div className="oss-chat-message oss-chat-assistant" data-chat-live><small>OmicOS Scientist · 正在回复{snapshot.live.truncated?' · 实时窗口已截短':''}</small><p aria-live="off">{snapshot.live.text}</p></div>}{snapshot?.available !== false && snapshot?.messages?.length === 0 && <p>从一个科研问题开始。发送后将创建并绑定此项目的专属会话。</p>}{snapshot?.sessionId&&<p>这里只显示近期会话文本；完整历史由 Harness 保存。</p>}</div>
+    {snapshot?.sessionId&&snapshot.history&&<ChatHistory key={`${projectId}:${snapshot.sessionId}`} projectId={projectId} sessionId={snapshot.sessionId}/>}
     {snapshot?.available !== false && <form onSubmit={event => { event.preventDefault(); void send() }}><label htmlFor={`oss-chat-${projectId}`}>科研问题<textarea id={`oss-chat-${projectId}`} value={draft} onChange={event => setDraft(event.target.value)} maxLength={20000} placeholder="例如：先检查当前 adata 的状态，再规划下一步分析。" /></label><div className="oss-row"><button type="button" disabled={!snapshot?.sessionId} onClick={() => void api(`${prefix}chat-cancel`, {}).then(() => refresh()).catch(error => setError(String(error)))}>请求停止当前回复</button><button className="oss-primary" type="submit" disabled={busy || !draft.trim()}>{busy ? '正在发送…' : '发送给科研 Agent'}</button></div></form>}
   </article>
 }

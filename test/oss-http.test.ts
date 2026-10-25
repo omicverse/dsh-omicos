@@ -53,6 +53,15 @@ describe('scientific workbench and commerce boundary', () => {
     runtime.chat={read:async()=>({sessionId:'fixed',messages:[],busy:false,cursor:0,hasMore:false}),send:async()=>({sessionId:'fixed',accepted:true}),cancel:async()=>{canceled++},async *follow(_workspace,signal){try{yield {sessionId:'fixed',messages:[],busy:true,cursor:0,hasMore:false,live:{attemptId:'a',text:'Public partial',truncated:false}};await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}))}finally{closed++}}}
     const path=`${base}/omicos/oss/api/project/${id}/chat-events`;expect((await fetch(path)).status).toBe(401);const controller=new AbortController();const response=await fetchHost(path,{signal:controller.signal});expect(response.headers.get('content-type')).toContain('text/event-stream');const reader=response.body!.getReader();expect(new TextDecoder().decode((await reader.read()).value)).toContain('Public partial');controller.abort();await reader.cancel().catch(()=>{});for(let i=0;i<100&&!closed;i++)await new Promise(resolve=>setTimeout(resolve,5));expect(closed).toBe(1);expect(canceled).toBe(0);expect((await (await fetchHost(`${base}/omicos/oss/api/project/${id}/chat`)).json() as any).streaming).toBe(true)
   })
+  it('protects fixed chat history with owner identity and validates cursors before dispatch',async()=>{
+    const project=await runtime.project(join(directory,'history-project'));const id=(await runtime.list()).find(entry=>entry.workspace===project.workspace)!.id;const calls:unknown[]=[]
+    runtime.chat={read:async()=>({messages:[],available:true}),send:async()=>({sessionId:'fixed',accepted:true}),cancel:async()=>{},history:async(workspace,options)=>{calls.push({workspace,options});return {sessionId:'fixed',throughSeq:50,nextBefore:10,hasMore:true,messages:[]}}}
+    const path=`${base}/omicos/oss/api/project/${id}/chat-history`
+    expect((await fetch(path)).status).toBe(401)
+    for(const query of ['before=-1','before=','through=1.5','through=9007199254740992'])expect((await fetchHost(`${path}?${query}`)).status).toBe(400)
+    expect(calls).toHaveLength(0);expect(await (await fetchHost(`${path}?through=50&before=20`)).json()).toMatchObject({throughSeq:50,nextBefore:10})
+    expect(calls).toEqual([{workspace:project.workspace,options:{throughSeq:50,beforeSeq:20}}]);expect((await (await fetchHost(`${base}/omicos/oss/api/project/${id}/chat`)).json() as any).history).toBe(true)
+  })
   it('denies unauthenticated pages, assets, API snapshots, writes and event streams before exposing state', async () => {
     const project = (await runtime.project(directory)).id
     for (const path of ['', '/store', '/workbench.js', '/api/session', `/api/project/${project}/snapshot`, `/api/project/${project}/events`]) {

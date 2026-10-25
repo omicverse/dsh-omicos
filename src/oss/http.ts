@@ -160,14 +160,15 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
         }
         else if (action === 'executions' && method === 'GET') result = parent.historyFor(language, { before: url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined, state: url.searchParams.get('state') || undefined, search: url.searchParams.get('q') || undefined })
         else if (action === 'execution' && method === 'GET') { const job = parent.receipt(url.searchParams.get('id') || ''); if (!job || job.language !== language) throw new AnnDataError(404, 'Project execution receipt not found'); result = job }
-        else if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel' || action === 'chat-events') {
+        else if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel' || action === 'chat-events' || action === 'chat-history') {
           if (!runtime.chat) {
             if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: options.backend === 'core' ? '当前为 Core 兼容后端，请在 Harness 对话中使用原有委派工具；启用 OSS 后端后可连接项目专属 Scientist 会话。' : '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
             throw new CloudError(503, '此工作台未连接 Harness 对话服务。请从 DSH 的 OmicOS 入口打开工作台；本地 Python 不受影响。')
           }
           if(action==='chat-events'&&method==='GET'){await streamChat(request,response,runtime.chat,project.workspace);return}
           const signal = AbortSignal.timeout(30000)
-          if (action === 'chat' && method === 'GET') result = {...await runtime.chat.read(project.workspace, signal),streaming:!!runtime.chat.follow}
+          if (action === 'chat' && method === 'GET') result = {...await runtime.chat.read(project.workspace, signal),streaming:!!runtime.chat.follow,history:!!runtime.chat.history}
+          else if(action==='chat-history'&&method==='GET'){if(!runtime.chat.history)throw new CloudError(503,'Conversation history is unavailable');for(const key of ['through','before'])if(url.searchParams.has(key)&&(!/^\d+$/.test(url.searchParams.get(key)!)||!Number.isSafeInteger(Number(url.searchParams.get(key)))))throw new CloudError(400,'Invalid conversation history cursor');result=await runtime.chat.history(project.workspace,{throughSeq:url.searchParams.has('through')?Number(url.searchParams.get('through')):undefined,beforeSeq:url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined},signal)}
           else if (action === 'chat-send' && method === 'POST') result = await runtime.chat.send(project.workspace, String(data.text || ''), String(data.requestId || ''), signal)
           else if (action === 'chat-cancel' && method === 'POST') { await runtime.chat.cancel(project.workspace); result = { ok: true } }
           else throw new CloudError(405, 'Method not allowed')

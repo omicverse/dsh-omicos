@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import type { SessionController, SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { ChatSnapshot, ScienceChat } from '../oss/chat.js'
+import type { ChatHistory, ChatSnapshot, ScienceChat } from '../oss/chat.js'
 import { readJson, writeJson } from '../oss/storage.js'
 
 export {publicChatRecords as projectChatRecords} from '../oss/chat-projection.js'
-import {ChatProjection} from '../oss/chat-projection.js'
+import {publicChatRecords,ChatProjection} from '../oss/chat-projection.js'
 
 export class HarnessScienceChat implements ScienceChat {
   private stopping=new AbortController();private followers=new Set<AsyncGenerator<ChatSnapshot|{messages:[];available:true}>>();private disposing?:Promise<void>
@@ -69,6 +69,18 @@ export class HarnessScienceChat implements ScienceChat {
     if (!sessionId) return { messages: [], available: true }
     const snapshot = await this.opening(sessionId, workspace, signal)
     return new ChatProjection(sessionId).accept(snapshot)
+  }
+  async history(workspace:string,options:{throughSeq?:number;beforeSeq?:number},signal:AbortSignal):Promise<ChatHistory>{
+    signal=AbortSignal.any([signal,this.stopping.signal]);signal.throwIfAborted()
+    for(const value of [options.throughSeq,options.beforeSeq])if(value!==undefined&&(!Number.isSafeInteger(value)||value<0))throw Error('Invalid conversation history cursor')
+    const sessionId=await this.bound(workspace);if(!sessionId)throw Error('No fixed conversation has been created')
+    const opening=await this.opening(sessionId,workspace,signal),throughSeq=options.throughSeq??opening.cursor
+    if(throughSeq>opening.cursor||options.beforeSeq!==undefined&&options.beforeSeq>throughSeq+1)throw Error('Conversation history cursor exceeds its durable boundary')
+    const page=await this.controller.page({address:{kind:'session',sessionId:SessionId(sessionId)},throughSeq,beforeSeq:options.beforeSeq,maxMessages:50},signal)
+    signal.throwIfAborted()
+    const first=page.records[0]?.event.seq
+    if(page.hasMore&&(first===undefined||first>=(options.beforeSeq??throughSeq+1)))throw Error('Harness history page did not advance')
+    return {sessionId,throughSeq,beforeSeq:options.beforeSeq,messages:publicChatRecords(page.records),hasMore:page.hasMore,...page.hasMore?{nextBefore:first}:{}}
   }
   async send(workspace: string, text: string, requestId: string, signal: AbortSignal): Promise<{ sessionId: string; accepted: true }> {
     signal=AbortSignal.any([signal,this.stopping.signal]);signal.throwIfAborted()

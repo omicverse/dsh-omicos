@@ -97,7 +97,7 @@ Verification at this checkpoint:
 - Cross-process runtime sharing: current safe behavior is exclusive ownership, not two local servers sharing a worker.
 - Base Python/runtime binary installer/downloader, R provisioning and public multi-platform scientific lock catalogs. Explicit managed Python venv/wheel provisioning, next-Host selection and rollback are implemented with POSIX coverage.
 - Broader event-ledger provenance coverage, retention/deletion policies and large individual Pipeline attempt/checkpoint paging. Ad hoc and Pipeline collection paging, bounded recent execution windows, old-receipt lookup and complete streamed legacy export are implemented.
-- Broader rich/multimodal chat presentation and full-history paging. Public text streaming now follows the fixed Harness session directly, with compact partial reconnect baselines, bounded windows, coalesced owner-authenticated SSE and observer-only cleanup; no second model loop or prompt replay. Reasoning/tool arguments/injected context are not forwarded. Pending client responses are fenced across project generations; see ADR 0024.
+- Broader rich/multimodal chat presentation and globally reconstructed cross-page conversation revisions. Bounded fixed-session historical public-text paging is implemented (ADR 0025). Public text streaming now follows the fixed Harness session directly, with compact partial reconnect baselines, bounded windows, coalesced owner-authenticated SSE and observer-only cleanup; no second model loop or prompt replay. Reasoning/tool arguments/injected context are not forwarded. Pending client responses are fenced across project generations; see ADR 0024.
 - OS keychain integration; current credentials are restricted local files.
 
 ### M2–M4 capability migration
@@ -121,3 +121,9 @@ Do not mark the overall goal complete when only this checkpoint passes.
 - Published Harness 0.2.1-rc.3 browser regression passed: visible partial reply, mid-reply reload restores partial baseline, exactly three expected scientific model requests, one committed reply, and no page errors.
 - Clean package install passed independent Python execution (`42`) and publication worker checks, without requiring private Core or Harness for standalone execution.
 - Production providers, remote CI, Windows and Electron remain unverified.
+
+### Fixed-conversation historical text (2026-10-25)
+
+- Added optional cold-safe Harness history paging, exact session/workspace validation, stable through/before cursors, bounded public text and no Agent/model creation.
+- Added separate workbench history page with explicit newest/older controls, request cancellation and project/session fences; internal-only pages can advance. Historical event text may retain cross-page superseded versions, explicitly labeled in the UI.
+- Actual published Harness browser fixture passed historical display and unchanged model-request count, alongside streaming/reconnect, Python/MCP approval and no page errors. Typecheck and build passed; 39 focused chat/HTTP/capability tests passed on Node 22.13.1.

@@ -466,3 +466,7 @@ its observer; explicit Stop retains the existing cancel path. Reasoning, tool
 arguments and injected context are not relayed to this chat surface. Text windows
 are bounded and full history remains Harness-owned. See [stream protocol, limits
 and verification](docs/adr/0024-fixed-conversation-stream.md).
+
+固定科研会话支持“浏览固定会话历史”：按页读取 Harness 已保存的公开文本，
+不会创建 Agent 或发起模型调用。每页最多 50 条消息，采用固定历史边界；
+历史面板独立于实时回复。跨页修订可能保留旧版本，工具参数、推理和注入上下文不显示。

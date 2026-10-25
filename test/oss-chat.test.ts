@@ -25,6 +25,18 @@ describe('Harness fixed scientific conversation bridge', () => {
     expect(await chat.read(workspace, new AbortController().signal)).toEqual({ messages: [], available: true })
     expect(host.count().created).toBe(0)
   })
+  it('pages cold fixed-session history at a stable boundary without creating or prompting an Agent',async()=>{
+    const host=fake(),chat=new HarnessScienceChat(host.controller),signal=new AbortController().signal
+    await writeFile(join(workspace,'.omicos-oss','chat.json'),JSON.stringify({sessionId:'fixed'}))
+    host.controller.follow=async function*(){yield {type:'snapshot',header:{id:'fixed',cwd:workspace},records:[],cursor:100,hasMore:true} as any}
+    const calls:any[]=[];host.controller.page=async request=>{calls.push(request);return {hasMore:true,records:[{type:'event',event:{seq:20,type:'user/message',data:{source:{kind:'user'},content:[{type:'text',text:'Older question'}]}}},{type:'event',event:{seq:21,type:'user/message',data:{source:{kind:'context'},content:[{type:'text',text:'Private context'}]}}}]} as any}
+    const page=await chat.history(workspace,{},signal);expect(page).toMatchObject({sessionId:'fixed',throughSeq:100,nextBefore:20,hasMore:true,messages:[{seq:20,text:'Older question'}]})
+    await expect(chat.history(workspace,{throughSeq:100,beforeSeq:20},signal)).rejects.toThrow('did not advance')
+    expect(calls[0]).toMatchObject({throughSeq:100,maxMessages:50});expect(host.count()).toMatchObject({created:0,sent:[]})
+    await expect(chat.history(workspace,{throughSeq:101},signal)).rejects.toThrow('boundary')
+    await expect(chat.history(workspace,{beforeSeq:-1},signal)).rejects.toThrow('cursor')
+    await chat.dispose();await expect(chat.history(workspace,{},signal)).rejects.toThrow()
+  })
   it('creates one project-specific scientist session, binds durably and preserves request IDs on retries', async () => {
     const host = fake(); const chat = new HarnessScienceChat(host.controller); const signal = new AbortController().signal
     const first = await chat.send(workspace, 'Inspect my dataset', 'request-1', signal)

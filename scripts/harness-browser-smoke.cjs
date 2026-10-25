@@ -122,6 +122,7 @@ function run(arguments_, env, cwd) {
     await page.locator('[data-chat-live]').filter({hasText:'OmicOS mock Scientist'}).waitFor({timeout:25000});await page.locator('[data-chat-connection]').filter({hasText:'实时连接'}).waitFor();await page.reload();await page.locator('[data-chat-live]').filter({hasText:'OmicOS mock Scientist'}).waitFor({timeout:15000});
     await page.locator('.oss-chat-message:not([data-chat-live])').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor({ timeout: 25000 });
     await page.locator('[data-chat-live]').waitFor({state:'detached'});assert.equal(requests.filter(body=>body.tools?.some(tool=>tool.name==='omicos_run_python')).length,3,'Observer reconnect must not repeat model requests');
+    await page.getByRole('button',{name:'浏览固定会话历史',exact:true}).click();await page.getByText('已到历史起点',{exact:false}).waitFor();assert.equal(await page.locator('.oss-chat-message').filter({hasText:'OmicOS mock Scientist connected.'}).count(),2);assert.equal(requests.filter(body=>body.tools?.some(tool=>tool.name==='omicos_run_python')).length,3,'Reading history must not invoke the model');
     assert.equal(await fs.readFile(marker, 'utf8'), '42');
     assert(issuedMcp); assert((await fs.readFile(path.join(workspace,'mcp-events.jsonl'),'utf8')).includes('Browser MCP approved'));
     assert(requests.some(body=>body.messages?.some(message=>message.content?.some(block=>block.type==='tool_result'&&JSON.stringify(block).includes('Browser MCP approved; credential=false')))));
