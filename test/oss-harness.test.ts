@@ -35,6 +35,12 @@ it('cold-loads in real rc.3 Cordis/ToolRuntime; exposes scientific tools and fai
     const figureDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('figure-denied'), name: 'omicos_figure_save', arguments: { figure_json: '{}' } })
     expect(JSON.stringify(figureDenied)).toMatch(/denied|approval/i)
 
+    expect(names).toContain('omicos_research_plan_state'); expect(names).toContain('omicos_research_plan_propose')
+    expect(names).not.toContain('omicos_research_plan_decide'); expect(names).not.toContain('omicos_research_plan_approve')
+    const planDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('plan-denied'), name: 'omicos_research_plan_propose', arguments: { plan_json: '{}' } })
+    expect(JSON.stringify(planDenied)).toMatch(/denied|approval/i)
+    const plans = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('plan-list'), name: 'omicos_research_plan_state', arguments: {} })
+    expect(JSON.stringify(plans)).toContain('entries')
     expect(names).not.toContain('omicos_analyze')
     const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('context'), name: 'omicos_science_context', arguments: {} })
     expect(JSON.stringify(result)).toContain('scientific')

@@ -1,3 +1,4 @@
+import { ResearchPlanPane } from './ResearchPlanPane.js'
 import { ExecutionHistory } from './ExecutionHistory.js'
 import { AnnDataExplorer } from './AnnDataExplorer.js'
 import { RuntimeCapabilities } from './RuntimeCapabilities.js'
@@ -168,6 +169,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
     <AnnDataExplorer projectId={project.id} visible={visible} variables={language === 'python' ? snapshot?.variables || [] : []} />
     <FigureStudioPane key={`figures:${project.id}`} projectId={project.id} visible={visible} />
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />
+    <ResearchPlanPane key={`plan:${project.id}`} projectId={project.id} visible={visible} executions={snapshot?.executions || []} />
     <PipelinePane projectId={project.id} visible={visible} />
     <ExecutionHistory projectId={project.id} language={language} visible={visible} />
     <NotebookPane projectId={project.id} language={language} executions={snapshot?.executions || []} onLanguage={setLanguage} refresh={reload} />

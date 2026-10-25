@@ -1,3 +1,5 @@
+import { ResearchPlans } from './research-plans.js'
+import { ResearchPlanError } from './research-plan-types.js'
 import { FigureStudio } from './figures.js'
 import { FigureError, type FigureSource } from './figure-types.js'
 import { artifactBytes } from './artifact-bytes.js'
@@ -19,6 +21,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private planProjects = new Map<string, Promise<ResearchPlans>>()
   private figureProjects = new Map<string, Promise<FigureStudio>>()
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
@@ -85,6 +88,21 @@ export class OssRuntime {
     }
     return service
   }
+  async researchPlans(workspace: string): Promise<ResearchPlans> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.planProjects.get(parent.workspace)
+    if (!service) {
+      service = ResearchPlans.open(parent.workspace, async source => {
+        if (source.kind === 'pipeline') return (await this.pipelines(parent.workspace)).execution(source.runId!, source.executionId, true)
+        const execution = parent.receipt(source.executionId)
+        if (!execution) throw new ResearchPlanError(404, 'Project execution receipt not found')
+        return execution
+      })
+      this.planProjects.set(parent.workspace, service); service.catch(() => { if (this.planProjects.get(parent.workspace) === service) this.planProjects.delete(parent.workspace) })
+    }
+    return service
+  }
   async figures(workspace: string): Promise<FigureStudio> {
     const parent = await this.project(workspace)
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
@@ -119,6 +137,8 @@ export class OssRuntime {
   }
   async dispose(): Promise<void> {
     this.closing = true
+    await Promise.allSettled([...this.planProjects.values()].map(async service => (await service).dispose()))
+    this.planProjects.clear()
     await Promise.allSettled([...this.figureProjects.values()].map(async service => (await service).dispose()))
     this.figureProjects.clear()
     await Promise.allSettled([...this.pipelineProjects.values()].map(async service => (await service).dispose()))

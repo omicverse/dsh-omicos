@@ -1,3 +1,4 @@
+import { ResearchPlanError } from './research-plan-types.js'
 import { runtimeCapabilities } from './capabilities.js'
 import { HistoryError, PROTOCOL_VERSION } from './types.js'
 import { FigureError } from './figure-types.js'
@@ -153,6 +154,16 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python)
+        else if (action?.startsWith('research-plan-')) {
+          const plans = await runtime.researchPlans(parent.workspace); const id = url.searchParams.get('id') || ''
+          const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined
+          if (action === 'research-plan-list' && method === 'GET') result = plans.list(url.searchParams.get('q') || '', before)
+          else if (action === 'research-plan-document' && method === 'GET') result = plans.get(id, url.searchParams.has('revision') ? Number(url.searchParams.get('revision')) : undefined)
+          else if (action === 'research-plan-history' && method === 'GET') result = plans.history(id, before)
+          else if (action === 'research-plan-propose' && method === 'POST') result = await plans.propose(data.plan, 'user:workbench')
+          else if (action === 'research-plan-decide' && method === 'POST') { if (data.confirmed !== true) throw new ResearchPlanError(400, 'Explicit human plan decision required'); result = await plans.decide(data.decision) }
+          else throw new CloudError(405, 'Method not allowed')
+        }
         else if (action === 'pipelines' || action?.startsWith('pipeline-')) {
           const pipelines = await runtime.pipelines(parent.workspace)
           const id = String(data?.runId || url.searchParams.get('run') || '')
@@ -248,7 +259,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

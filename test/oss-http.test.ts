@@ -368,6 +368,30 @@ describe('scientific workbench and commerce boundary', () => {
     expect(journal.events.some((event: any) => event.type === 'run/succeeded')).toBe(true)
     expect(seen).toHaveLength(0)
   })
+  it('requires owner/CSRF and explicit confirmation for versioned human plan decisions without implicit execution', async () => {
+    const id = (await runtime.list())[0].id; const prefix = `project/${id}/research-plan-`
+    const definition = { title: 'HTTP research plan', objective: 'Inspect sources before analysis', steps: [{ id: 'inspect', title: 'Inspect', inputs: ['declared input'], outputs: ['report'], methods: ['method v1'], risk: 'Do not transform data', acceptance: 'Actual receipt and human assessment' }] }
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}list`)).status).toBe(401)
+    expect((await post(`${prefix}propose`,{plan:{definition,operationId:'create'}},{'x-omicos-csrf':'wrong'})).status).toBe(403)
+    const draft = await (await post(`${prefix}propose`,{plan:{definition,operationId:'create'}})).json() as any
+    expect(draft.status).toBe('draft')
+    const decision = {id:draft.id,revision:draft.revision,action:'approve',note:'Reviewed exact definition',operationId:'approve'}
+    expect((await post(`${prefix}decide`,{decision})).status).toBe(400)
+    const approved = await (await post(`${prefix}decide`,{confirmed:true,decision})).json() as any
+    expect(approved.status).toBe('approved')
+    expect((await post(`${prefix}decide`,{confirmed:true,decision:{...decision,action:'reject',operationId:'stale'}})).status).toBe(409)
+    expect((await post(`${prefix}decide`,{confirmed:true,decision:{...decision,revision:approved.revision,action:'complete',stepId:'inspect',operationId:'no-receipt'}})).status).toBe(400)
+    const service = await runtime.byId(id); expect(service.kernelState().state).toBe('cold'); expect(service.snapshot().executions).toEqual([])
+    const receipt = await service.submit('print(42)','http-plan-execution','plan')
+    for (let i=0; i<150 && ['queued','running'].includes(service.get(receipt.id)!.state); i++) await new Promise(resolve=>setTimeout(resolve,20))
+    expect(service.get(receipt.id)?.state).toBe('succeeded')
+    const completed = await (await post(`${prefix}decide`,{confirmed:true,decision:{...decision,revision:approved.revision,action:'complete',stepId:'inspect',evidence:[{kind:'project',executionId:receipt.id}],operationId:'complete'}})).json() as any
+    expect(completed.assessments[0].evidence[0].executionId).toBe(receipt.id)
+    const history = await (await fetchHost(`${base}/omicos/oss/api/${prefix}history?id=${draft.id}`)).json() as any
+    expect(history.revisions.map((revision:any)=>revision.action)).toEqual(['complete','approve','propose'])
+    const revised = await (await post(`${prefix}propose`,{plan:{id:draft.id,revision:completed.revision,definition:{...definition,title:'Changed analysis'},operationId:'edit'}})).json() as any
+    expect(revised.status).toBe('draft'); expect(revised.assessments).toEqual([]); expect(service.snapshot().executions).toHaveLength(1); expect(seen).toHaveLength(0)
+  })
   it('executes only registered workspaces and exports a real notebook', async () => {
     const id = (await runtime.list())[0].id
     expect((await post('project/not-registered/execute', { code: '1', confirmed: true })).status).not.toBe(200)

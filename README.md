@@ -60,6 +60,15 @@ plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actu
 outputs. Vector files are downloads, not executable inline documents. See
 [Figure Studio architecture](docs/adr/0005-figure-studio.md).
 
+Scientific plans now retain a pinned objective, ordered steps, inputs/outputs,
+method references, risks and acceptance criteria. The Agent can read/propose; you
+approve/reject in the workbench. Task completion needs your assessment and an actual
+successful project or Pipeline execution receipt. Editing resets approval and current
+assessments; reopening a step clears downstream assessments while preserving history.
+Plan approval never executes code or bypasses tool approval, and declared methods and
+human acceptance are not independent scientific validation. See
+[research plan decisions](docs/adr/0011-human-governed-research-plans.md).
+
 Research memory now has a topic tree with sourced facts, session-private notes and
 project-local long-term entries. Save a proposal, review its sources and explicitly
 confirm its version before the Scientist can use it. Summaries pin source revisions;
