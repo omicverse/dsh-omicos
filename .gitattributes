@@ -1,0 +1,4 @@
+
+# Keep checksummed, unmodified upstream font assets portable.
+runtime/fonts/*.ttf -text
+runtime/fonts/*LICENSE.md text eol=lf

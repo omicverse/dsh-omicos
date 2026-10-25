@@ -1,0 +1,1 @@
+const {workerData,parentPort}=require('node:worker_threads');require('node:fs').writeFileSync(workerData.manifest.fixtureMarker,'actual worker started');parentPort.postMessage({ready:true});while(true){}

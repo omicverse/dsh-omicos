@@ -61,7 +61,7 @@ describe('scientific workbench and commerce boundary', () => {
   const login = async () => { approvals = true; expect((await post('login', {})).status).toBe(200); expect((await post('login/poll', {})).status).toBe(200) }
   it('protects assembly source capture, human review and SVG downloads with owner/CSRF and exact revisions without execution',async()=>{
     const reference=(await runtime.list())[0];const project=await runtime.byId(reference.id);const prefix=`project/${reference.id}/`
-    const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=','base64');const artifact={id:'assembly-png',path:'.omicos-oss/http-assembly.png',mime:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length}
+    const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=','base64');const artifact={id:'assembly-png',path:'.omicos-oss/http-assembly.png',mime:'image/png',sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length}
     await writeFile(join(project.workspace,artifact.path),bytes)
     const ledger=await ScienceLedger.open(project.workspace);try{ledger.saveExecutions('python',[{id:'assembly-receipt',operationId:'assembly-fixture',sessionId:'fixture',language:'python',state:'succeeded',code:'fixture_plot()',output:'',artifacts:[artifact],createdAt:'2026-10-25'}])}finally{ledger.close()}
     const figure=await (await post(`${prefix}figure-save`,{figure:{title:'Original PNG',caption:'Fixture receipt',source:{kind:'project',language:'python',executionId:'assembly-receipt',artifactId:artifact.id},methods:[],dataReferences:[],operationId:'curate-assembly'}})).json() as any
@@ -75,6 +75,9 @@ describe('scientific workbench and commerce boundary', () => {
     expect((await post(`${prefix}assembly-review`,{review})).status).toBe(400)
     expect((await post(`${prefix}assembly-review`,{review,confirmed:true})).status).toBe(200)
     const svg=await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-svg?id=${saved.id}&revision=2`);expect(svg.headers.get('content-type')).toBe('application/octet-stream');expect(svg.headers.get('content-disposition')).toContain('.svg');expect(await svg.text()).toContain(bytes.toString('base64'))
+    expect((await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{profile:{dpi:180}})).status).toBe(400)
+    expect((await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{confirmed:true,profile:{dpi:180}},{'x-omicos-csrf':''})).status).toBe(403)
+    const pdf=await post(`${prefix}assembly-pdf?id=${saved.id}&revision=2`,{confirmed:true,profile:{dpi:180}});expect(pdf.status).toBe(200);expect(pdf.headers.get('content-type')).toBe('application/pdf');const pdfBytes=Buffer.from(await pdf.arrayBuffer());expect(pdfBytes.subarray(0,5).toString()).toBe('%PDF-');expect(pdf.headers.get('x-omicos-export-sha256')).toBe(createHash('sha256').update(pdfBytes).digest('hex'))
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}assembly-svg?id=${saved.id}`)).status).toBe(401)
     const old=await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-document?id=${saved.id}&revision=1`)).json() as any;expect(old.review.state).toBe('draft')
     expect((await (await fetchHost(`${base}/omicos/oss/api/${prefix}assembly-integrity?id=${saved.id}`)).json() as any).state).toBe('verified')

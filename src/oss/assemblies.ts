@@ -68,10 +68,14 @@ export class FigureAssemblies{
     const assessedDigest=record.digest;record.revision++;record.updatedAt=new Date().toISOString();record.author='user:workbench';record.review={state:input.decision,note,at:record.updatedAt,assessedDigest};return this.commit(record,input.operationId,request)
   })}
   manifest(id:string,revision?:number){return {schema:'omicos.assembly/1',assembly:this.get(id,revision),scope:'Saved layout and source figure versions, original PNG identities, execution provenance and historical human review. No source-data embedding, automatic secret redaction, scientific validation or publication upload. Current source integrity is separate.'}}
-  async svg(id:string,revision?:number):Promise<Buffer>{
+  async publicationSource(id:string,revision?:number){
     const record=this.get(id,revision);const images:Array<Awaited<ReturnType<FigureAssemblies['image']>>>=[];for(const saved of record.sources){const image=await this.image(saved.figure.id,saved.figure.revision);if(image.figure.digest!==saved.figure.digest||hash(image.bytes)!==saved.figure.artifact.sha256)throw new AssemblyError(409,'Pinned assembly source changed');images.push(image);this.budgets(images)}
     this.panelBudgets(record.layout,images)
     const integrity=await this.integrity(id,record.revision);const metadata={...this.manifest(id,record.revision),currentSourceIntegrity:integrity,exportedAt:new Date().toISOString()}
+    return {record,images,metadata}
+  }
+  async svg(id:string,revision?:number):Promise<Buffer>{
+    const {record,images,metadata}=await this.publicationSource(id,revision)
     const panels=record.layout.panels.map(panel=>{const image=images.find(source=>key(source.figure.id,source.figure.revision)===key(panel.figureId,panel.figureRevision))!;const labelHeight=panel.label?32:0;return `<g><image x="${panel.x}" y="${panel.y+labelHeight}" width="${panel.width}" height="${panel.height-labelHeight}" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,${image.bytes.toString('base64')}"/>${panel.label?`<text x="${panel.x}" y="${panel.y+24}" font-family="sans-serif" font-size="22" font-weight="bold" fill="#000000">${xml(panel.label)}</text>`:''}</g>`}).join('')
     const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${record.layout.width}" height="${record.layout.height}" viewBox="0 0 ${record.layout.width} ${record.layout.height}"><title>${xml(record.title)}</title><desc>${xml(record.caption)}</desc><metadata>${xml(JSON.stringify(metadata))}</metadata><rect width="100%" height="100%" fill="#ffffff"/>${panels}</svg>`
     if(Buffer.byteLength(svg)>64000000)throw new AssemblyError(413,'SVG assembly export exceeds 64 MB; use fewer panels')

@@ -1,0 +1,11 @@
+{
+  "name": "Source Sans 3 Bold",
+  "file": "SourceSans3-Bold.ttf",
+  "licenseFile": "SourceSans3-LICENSE.md",
+  "license": "OFL-1.1",
+  "upstream": "https://github.com/adobe-fonts/source-sans",
+  "commit": "87b37a2daaed80fcb8e8ccb0085c4d72ddade12e",
+  "sha256": "9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a",
+  "modifications": "none; original upstream TTF",
+  "licenseSha256": "56af9b9c6715597e458284a474dc118a50a4150e9d547c70f7b4a33c3e6a9328"
+}

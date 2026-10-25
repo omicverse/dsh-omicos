@@ -1,5 +1,7 @@
 import { DossierError } from './dossier-types.js'
 import { AssemblyError } from './assembly-types.js'
+import { PublicationError } from './publication-types.js'
+import { createHash } from 'node:crypto'
 import { McpConnectionError } from './mcp-types.js'
 import { builtinMethodPack } from './methods.js'
 import { MethodError } from './method-types.js'
@@ -179,6 +181,11 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else if(action==='assembly-manifest'&&method==='GET')result=assemblies.manifest(id,revision)
           else if(action==='assembly-save'&&method==='POST'){if(data.confirmed!==true)throw new AssemblyError(400,'Explicit figure layout/source capture required');result=await assemblies.save(data.assembly,'user:workbench')}
           else if(action==='assembly-review'&&method==='POST'){if(data.confirmed!==true)throw new AssemblyError(400,'Explicit human assembly review required');result=await assemblies.review(data.review)}
+          else if(action==='assembly-pdf'&&method==='POST'){
+            if(data.confirmed!==true)throw new PublicationError(400,'Explicit PDF font/physical-size/attachment export confirmation required')
+            const cancel=new AbortController();const abort=()=>cancel.abort();response.once('close',abort)
+            try{const bytes=await runtime.assemblyPdf(parent.workspace,id,revision,data.profile,cancel.signal);response.writeHead(200,{'content-type':'application/pdf','x-content-type-options':'nosniff','content-disposition':'attachment; filename="omicos-assembly.pdf"','x-omicos-export-sha256':createHash('sha256').update(bytes).digest('hex')});response.end(bytes);return}finally{response.removeListener('close',abort)}
+          }
           else if(action==='assembly-svg'&&method==='GET'){const bytes=await assemblies.svg(id,revision);response.writeHead(200,{'content-type':'application/octet-stream','x-content-type-options':'nosniff','content-disposition':'attachment; filename="omicos-assembly.svg"'});response.end(bytes);return}
           else throw new CloudError(405,'Method not allowed')
         }
@@ -348,7 +355,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof AssemblyError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof AssemblyError || error instanceof PublicationError || error instanceof McpConnectionError || error instanceof DossierError || error instanceof MethodError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

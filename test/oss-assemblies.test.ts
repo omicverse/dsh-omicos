@@ -1,4 +1,5 @@
 import {expect,it} from 'vitest'
+import {pdfAttachments} from './pdf-helpers.js'
 import {mkdtemp,mkdir,rm,readFile,writeFile} from 'node:fs/promises'
 import {createHash} from 'node:crypto'
 import {tmpdir} from 'node:os'
@@ -8,7 +9,7 @@ import {FigureAssemblies,assemblyLayout,pngDimensions} from '../src/oss/assembli
 import {OssRuntime} from '../src/oss/runtime.js'
 import type {AssemblyDraft,AssemblyLayout} from '../src/oss/assembly-types.js'
 import type {Execution,Artifact} from '../src/oss/types.js'
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=','base64')
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=','base64')
 const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex')
 async function fixture(){
   const directory=await mkdtemp(join(tmpdir(),'oss-assemblies-'));await mkdir(join(directory,'.omicos-oss'))
@@ -97,6 +98,7 @@ it.skipIf(!process.env.OMICOS_SCIENCE_TEST_PYTHON)('assembles real Python PNGs, 
     const svg=(await assemblies.svg(board.id)).toString();expect(Buffer.from(svg.match(/base64,([^"]+)/)![1],'base64')).toEqual(original)
     expect(svg).toContain(secondBytes.toString('base64'));expect((svg.match(/<image /g)||[]).length).toBe(2)
     expect(svg).toContain(receipt.environment!.fingerprint);expect(svg).toContain(job.id)
+    const pdf=await pdfAttachments(await runtime.assemblyPdf(project.workspace,board.id,2,{dpi:180}));const pdfInfo=JSON.parse(pdf.files.get('omicos-assembly-provenance.json')!.toString());expect(pdfInfo.assembly.sources).toHaveLength(2);expect(pdf.files.get(`original-${approved.id}-r${approved.revision}.png`)).toEqual(original);expect(pdfInfo.assembly.sources[0].figure.execution.environment.fingerprint).toBe(receipt.environment!.fingerprint)
     await runtime.dispose();runtime=await OssRuntime.open({stateDir:join(directory,'state'),python:process.env.OMICOS_SCIENCE_TEST_PYTHON});project=await runtime.project(join(directory,'project'));assemblies=await runtime.assemblies(project.workspace)
     expect(assemblies.get(board.id).review.state).toBe('approved');expect((await assemblies.svg(board.id)).length).toBeGreaterThan(original.length)
     expect(project.snapshot().executions).toHaveLength(1);expect(project.snapshot().kernel.state).toBe('cold')

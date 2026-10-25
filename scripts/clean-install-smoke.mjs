@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
+import {Worker} from 'node:worker_threads'
+import {createHash} from 'node:crypto'
 
 const execute = promisify(execFile)
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -21,6 +23,9 @@ try {
   await access(join(installation, 'lib', 'workbench.css'))
   await access(join(installation, 'lib', 'third-party-standalone.txt'))
   await access(join(installation, 'lib', 'third-party-workbench.txt'))
+  const font=await readFile(join(installation,'runtime','fonts','SourceSans3-Bold.ttf'));assert.equal(createHash('sha256').update(font).digest('hex'),'9214b9d95e4231c609802815c2646c98174e2102d0d37f88978a7f8e71006e6a');const license=await readFile(join(installation,'runtime','fonts','SourceSans3-LICENSE.md'),'utf8');assert(license.includes('SIL OPEN FONT LICENSE'))
+  const original=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=','base64');const digest=createHash('sha256').update(original).digest('hex')
+  const publication=await new Promise((resolve,reject)=>{let result;const worker=new Worker(join(installation,'runtime','figure_pdf.cjs'),{env:{},workerData:{record:{title:'Packed PDF',caption:'No Core or Harness needed',layout:{width:600,height:400,panels:[{figureId:'source',figureRevision:1,x:10,y:10,width:580,height:380,label:'A'}]}},manifest:{schema:'omicos.assembly.pdf/1',exportedAt:new Date().toISOString(),exportProfile:{dpi:180}},font,fontRecord:{kind:'bundled',sha256:createHash('sha256').update(font).digest('hex'),subset:true,licenseDeclaration:license},images:[{id:'source',revision:1,width:1,height:1,sha256:digest,bytes:original}]}});const timer=setTimeout(()=>{void worker.terminate();reject(Error('Packed PDF worker timed out'))},15000);worker.on('message',message=>{if(!message.ok)reject(Error(message.error));else result=Buffer.from(message.pdf)});worker.once('error',reject);worker.once('exit',code=>{clearTimeout(timer);if(code!==0||!result)reject(Error('Packed PDF worker did not finish'));else resolve(result)})});assert.equal(publication.subarray(0,5).toString(),'%PDF-')
   const manifest = JSON.parse(await readFile(join(installation, 'package.json'), 'utf8'))
   const version = await execute(process.execPath, [join(installation, 'lib', 'oss', 'cli.js'), '--version'], { cwd: directory })
   assert.equal(version.stdout.trim(), manifest.version)
@@ -57,7 +62,7 @@ try {
   }
   assert.equal(result?.state, 'succeeded'); assert.match(result.output, /42/)
   assert.equal((await fetchHost(`${base}/omicos/oss/workbench.js`)).status, 200)
-  console.log(JSON.stringify({ packed: info.filename, privateCoreRequired: false, harnessRequiredForStandalone: false, execution: result.state, output: result.output.trim() }))
+  console.log(JSON.stringify({ packed: info.filename, privateCoreRequired: false, harnessRequiredForStandalone: false, pdf: 'embedded-font worker and bundled font usable in clean install', execution: result.state, output: result.output.trim() }))
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
     const exited = new Promise(resolve => child.once('exit', resolve))

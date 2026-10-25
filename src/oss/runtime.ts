@@ -1,5 +1,7 @@
 import { ProjectDossier } from './dossier.js'
 import { FigureAssemblies } from './assemblies.js'
+import { PdfPublications } from './publication.js'
+import type { PdfPublicationProfile } from './publication-types.js'
 import { ProjectMcpConnections } from './mcp.js'
 import { McpAuthorization } from './mcp-authorization.js'
 import type { McpHostBridge } from './mcp-types.js'
@@ -40,6 +42,7 @@ export class OssRuntime {
   private planProjects = new Map<string, Promise<ResearchPlans>>()
   private figureProjects = new Map<string, Promise<FigureStudio>>()
   private assemblyProjects = new Map<string, Promise<FigureAssemblies>>()
+  private pdfPublications=new PdfPublications()
   private pipelineProjects = new Map<string, Promise<PipelineService>>()
   private rProjects = new Map<string, Promise<ScienceService>>()
   private projects = new Map<string, Promise<ScienceService>>()
@@ -215,6 +218,11 @@ export class OssRuntime {
     if(!service){service=this.figures(parent.workspace).then(figures=>FigureAssemblies.open(parent.workspace,figures));this.assemblyProjects.set(parent.workspace,service);service.catch(()=>{if(this.assemblyProjects.get(parent.workspace)===service)this.assemblyProjects.delete(parent.workspace)})}
     return service
   }
+  async assemblyPdf(workspace:string,id:string,revision:number|undefined,profile:PdfPublicationProfile,signal?:AbortSignal):Promise<Buffer>{
+    const parent=await this.project(workspace)
+    if(this.closing)throw new Error('OmicOS OSS runtime is shutting down')
+    return this.pdfPublications.render(parent.workspace,async()=>{const source=await (await this.assemblies(parent.workspace)).publicationSource(id,revision);if(this.closing)throw new Error('OmicOS OSS runtime is shutting down');return source},profile,this.sensitiveFiles,signal)
+  }
   async list(): Promise<ProjectReference[]> { return structuredClone([...this.known.values()]) }
   async byId(id: string): Promise<ScienceService> {
     const active = this.projects.get(id)
@@ -232,6 +240,7 @@ export class OssRuntime {
     return this.disposing=this.shutdown()
   }
   private async shutdown():Promise<void>{
+    await this.pdfPublications.dispose()
     await this.mcpHost?.dispose()
     this.mcpHost=undefined
     await Promise.allSettled([...this.mcpProjects.values()].map(async service => (await service).dispose()))
