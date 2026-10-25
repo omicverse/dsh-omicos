@@ -27,6 +27,21 @@ describe('complete paginated Pipeline collections', () => {
     expect(store.get(runs[129].id).attempts[0].outputTail).toHaveLength(8000)
     expect(() => store.definitionPage(-1)).toThrow(/cursor/); expect(() => store.runPage(undefined,'','unknown')).toThrow(/state/)
   })
+  it('windows one large run and pages every attempt/checkpoint/recovery without loading its full object',()=>{
+    const pinned=store.define(definition(0)),created=store.create(pinned.id,'large-run').run
+    const run=store.update(created.id,created.revision,'fixture/large',draft=>{
+      draft.state='interrupted';draft.attempts=Array.from({length:65},(_,i)=>({id:`attempt-${i}`,operationId:`operation-${i}`,step:0,kind:'step',state:'succeeded',outputTail:'x'.repeat(8000),artifacts:[],files:[{path:'file.json',bytes:2,sha256:'a'.repeat(64)}]}))
+      draft.checkpoints=draft.attempts.map(attempt=>({attemptId:attempt.id,step:0,files:attempt.files!}));draft.recoveries=Array.from({length:45},(_,epoch)=>({epoch,action:'checkpoint',sideEffectsReviewed:true,allowEnvironmentChange:false,at:'2026-10-25'}))
+    })
+    const originalGet=store.get.bind(store);store.get=()=>{throw Error('Full run materialization is forbidden for window reads')}
+    const window=store.window(run.id);expect(window.counts).toEqual({attempts:65,checkpoints:65,recoveries:45});expect(window.attempts).toHaveLength(20);expect(window.attempts[0].id).toBe('attempt-64');expect(window.attempts[0].outputTail).toHaveLength(1000);expect(window.attempts[0].files).toBe(1);expect(window).not.toHaveProperty('approved')
+    for(const kind of ['attempts','checkpoints','recoveries'] as const){let before:number|undefined;const positions:number[]=[];do{const page=store.historyPage(run.id,kind,before,run.revision);expect(page.entries.length).toBeLessThanOrEqual(20);positions.push(...page.entries.map(entry=>entry.position));before=page.next}while(before!==undefined);expect(positions).toHaveLength(window.counts[kind]);expect(new Set(positions).size).toBe(positions.length)}
+    expect((store.historyItem(run.id,'attempts',0,run.revision) as any).record.outputTail).toHaveLength(8000);expect((store.historyItem(run.id,'checkpoints',0,run.revision) as any).record.files[0].path).toBe('file.json')
+    expect(()=>store.historyPage(run.id,'attempts',20)).toThrow(/revision/);expect(()=>store.historyPage(run.id,'unknown' as any)).toThrow(/kind/);expect(()=>store.historyPage(run.id,'attempts',-1)).toThrow(/cursor/);expect(()=>store.historyItem(run.id,'attempts',999,run.revision)).toThrow(/not found/)
+    store.get=originalGet;store.update(run.id,run.revision,'fixture/changed',draft=>{draft.reason='Changed'})
+    expect(()=>store.historyPage(run.id,'attempts',20,run.revision)).toThrow(/changed/);expect(()=>store.historyItem(run.id,'attempts',0,run.revision)).toThrow(/changed/)
+    const large=store.update(run.id,undefined,'fixture/oversized',draft=>{(draft.attempts[0] as any).environment={packages:{oversized:'x'.repeat(2100000)}}});expect(()=>store.historyItem(run.id,'attempts',0,large.revision)).toThrow(/2 MB/);expect(JSON.stringify(store.window(run.id))).not.toContain('oversized')
+  })
   it('recovers old unfinished runs outside the first page without launching or replaying them', async () => {
     const pinned = store.define(definition(0)); const old = store.create(pinned.id, 'old-unfinished').run
     store.update(old.id, old.revision, 'fixture/waiting', draft => { draft.state = 'waiting' })

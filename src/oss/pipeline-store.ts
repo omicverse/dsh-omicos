@@ -3,7 +3,7 @@ import type { DatabaseSync as Database } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
 import { chmod, mkdir, open } from 'node:fs/promises'
 import { join } from 'node:path'
-import { PipelineError, type PipelineDefinition, type PipelineRun, type PipelineEvent, type PipelineRunSummary } from './pipeline-types.js'
+import { PipelineError, type PipelineDefinition, type PipelineRun, type PipelineEvent, type PipelineRunSummary, type PipelineHistoryKind, type PipelineHistoryPage, type PipelineRunWindow } from './pipeline-types.js'
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
 const APPLICATION = 0x4f50534c
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -77,6 +77,31 @@ export class PipelineStore {
     for (;;) { const rows = this.db.prepare("SELECT rowid,id FROM runs WHERE rowid>? AND json_extract(record_json,'$.state') IN ('preparing','running','cancelling','waiting') ORDER BY rowid LIMIT 50").all(after); if (!rows.length) return; for (const row of rows) this.update(String(row.id), undefined, 'run/interrupted', draft => { draft.state = 'interrupted'; draft.reason = 'Host stopped. Inspect partial side effects; recovery requires explicit approval.' }); after = Number(rows.at(-1)!.rowid) }
   }
   get(id: string): PipelineRun { if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) throw new PipelineError(400, 'Invalid Pipeline run id'); const row = this.db.prepare('SELECT record_json FROM runs WHERE id=?').get(id); if (!row) throw new PipelineError(404, 'Pipeline run not found'); const run = JSON.parse(String(row.record_json)) as PipelineRun; if (run.id !== id || !Number.isSafeInteger(run.revision) || run.revision < 1 || !/^[a-f0-9]{64}$/.test(run.definitionId)) throw new PipelineError(409, 'Invalid persisted Pipeline identity'); return run }
+  private header(id:string):{run:Omit<PipelineRun,'attempts'|'checkpoints'|'recoveries'|'approved'>;counts:Record<PipelineHistoryKind,number>}{
+    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id))throw new PipelineError(400,'Invalid Pipeline run id')
+    const row=this.db.prepare("SELECT json_remove(record_json,'$.attempts','$.checkpoints','$.recoveries','$.approved') AS header,json_array_length(record_json,'$.attempts') AS attempts,json_array_length(record_json,'$.checkpoints') AS checkpoints,json_array_length(record_json,'$.recoveries') AS recoveries FROM runs WHERE id=?").get(id)
+    if(!row)throw new PipelineError(404,'Pipeline run not found');const run=JSON.parse(String(row.header));if(run.id!==id||!Number.isSafeInteger(run.revision)||run.revision<1||!/^[a-f0-9]{64}$/.test(run.definitionId))throw new PipelineError(409,'Invalid persisted Pipeline identity')
+    return {run,counts:{attempts:Number(row.attempts),checkpoints:Number(row.checkpoints),recoveries:Number(row.recoveries)}}
+  }
+  historyPage(id:string,kind:PipelineHistoryKind,before=Number.MAX_SAFE_INTEGER,revision?:number):PipelineHistoryPage{
+    if(!['attempts','checkpoints','recoveries'].includes(kind)||!Number.isSafeInteger(before)||before<0||revision!==undefined&&(!Number.isSafeInteger(revision)||revision<1))throw new PipelineError(400,'Invalid Pipeline history kind/cursor/revision')
+    if(before!==Number.MAX_SAFE_INTEGER&&revision===undefined)throw new PipelineError(400,'A run revision is required for older history pages')
+    const header=this.header(id);if(revision!==undefined&&revision!==header.run.revision)throw new PipelineError(409,'Pipeline changed; restart historical paging at its current revision')
+    const rows=this.db.prepare(`SELECT CAST(a.key AS INTEGER) AS position,json_remove(a.value,'$.environment','$.expectedEnvironment','$.observedEnvironment','$.files','$.artifacts','$.methodReviews','$.outputTail','$.error') AS summary,substr(json_extract(a.value,'$.outputTail'),-1000) AS output_tail,substr(json_extract(a.value,'$.error'),1,1000) AS error,json_array_length(a.value,'$.files') AS files,json_array_length(a.value,'$.artifacts') AS artifacts FROM runs r,json_each(r.record_json,'$.${kind}') a WHERE r.id=? AND CAST(a.key AS INTEGER)<? ORDER BY CAST(a.key AS INTEGER) DESC LIMIT 21`).all(id,before)
+    const entries=rows.slice(0,20).map(row=>{const value=JSON.parse(String(row.summary));if(kind==='attempts')return {position:Number(row.position),id:value.id,step:value.step,kind:value.kind,operationId:value.operationId,executionId:value.executionId,state:value.state,codeHash:value.codeHash,outputHash:value.outputHash,...row.output_tail?{outputTail:String(row.output_tail)}:{},...row.error?{error:String(row.error)}:{},files:Number(row.files||0),artifacts:Number(row.artifacts||0)};if(kind==='checkpoints')return {position:Number(row.position),attemptId:value.attemptId,step:value.step,files:Number(row.files||0)};return {position:Number(row.position),epoch:value.epoch,action:value.action,checkpointAttemptId:value.checkpointAttemptId,sideEffectsReviewed:value.sideEffectsReviewed,allowEnvironmentChange:value.allowEnvironmentChange,at:value.at,expectedFingerprint:value.expectedFingerprint,observedFingerprint:value.observedFingerprint}})
+    return {runId:id,revision:header.run.revision,kind,entries,total:header.counts[kind],...rows.length>20?{next:Number(rows[19].position)}:{}}
+  }
+  historyItem(id:string,kind:PipelineHistoryKind,position:number,revision:number):unknown{
+    if(!['attempts','checkpoints','recoveries'].includes(kind)||!Number.isSafeInteger(position)||position<0||!Number.isSafeInteger(revision)||revision<1)throw new PipelineError(400,'Invalid Pipeline history item')
+    const header=this.header(id);if(header.run.revision!==revision)throw new PipelineError(409,'Pipeline changed; restart historical paging at its current revision')
+    const row=this.db.prepare(`SELECT CASE WHEN length(CAST(a.value AS BLOB))<=2000000 THEN a.value ELSE NULL END AS record FROM runs r,json_each(r.record_json,'$.${kind}') a WHERE r.id=? AND CAST(a.key AS INTEGER)=?`).get(id,position)
+    if(!row)throw new PipelineError(404,'Pipeline history item not found');if(row.record===null)throw new PipelineError(413,'History item exceeds 2 MB; inspect the preserved database or individual execution receipt')
+    return {runId:id,revision,kind,position,record:JSON.parse(String(row.record))}
+  }
+  window(id:string):PipelineRunWindow{
+    const {run,counts}=this.header(id)
+    return {...run,reason:run.reason?.slice(0,2000),counts,windowed:true,attempts:this.historyPage(id,'attempts',undefined,run.revision).entries as PipelineRunWindow['attempts'],checkpoints:this.historyPage(id,'checkpoints',undefined,run.revision).entries as PipelineRunWindow['checkpoints'],recoveries:this.historyPage(id,'recoveries',undefined,run.revision).entries as PipelineRunWindow['recoveries']}
+  }
   byOperation(operationId: string): PipelineRun | undefined { const row = this.db.prepare('SELECT record_json FROM runs WHERE operation_id=?').get(operationId); return row ? JSON.parse(String(row.record_json)) : undefined }
   create(definitionId: string, operationId: string): { run: PipelineRun; created: boolean } {
     this.definition(definitionId)
@@ -98,7 +123,7 @@ export class PipelineStore {
     } catch (error) { this.db.exec('ROLLBACK'); throw error }
   }
   private event(run: PipelineRun, type: string): void { this.db.prepare('INSERT INTO events(run_id,type,at,data_json) VALUES(?,?,?,?)').run(run.id, type, run.updatedAt, JSON.stringify({ revision: run.revision, state: run.state, nextStep: run.nextStep, epoch: run.epoch, definitionId: run.definitionId, reason: run.reason, attempts: run.attempts.length, recovery: run.recoveries.at(-1) })) }
-  events(id: string, after = 0): PipelineEvent[] { this.get(id); if (!Number.isSafeInteger(after) || after < 0) throw new PipelineError(400, 'Invalid Pipeline event cursor'); return this.db.prepare('SELECT * FROM events WHERE run_id=? AND seq>? ORDER BY seq LIMIT 200').all(id, after).map(row => ({ seq: Number(row.seq), runId: String(row.run_id), type: String(row.type), at: String(row.at), data: JSON.parse(String(row.data_json)) })) }
+  events(id: string, after = 0): PipelineEvent[] { this.header(id); if (!Number.isSafeInteger(after) || after < 0) throw new PipelineError(400, 'Invalid Pipeline event cursor'); return this.db.prepare('SELECT * FROM events WHERE run_id=? AND seq>? ORDER BY seq LIMIT 200').all(id, after).map(row => ({ seq: Number(row.seq), runId: String(row.run_id), type: String(row.type), at: String(row.at), data: JSON.parse(String(row.data_json)) })) }
   figureCandidates(cursor?: string) {
     const parts = cursor === undefined ? [Number.MAX_SAFE_INTEGER, -1, -1] : cursor.split(':').map(Number)
     if (parts.length !== 3 || !Number.isSafeInteger(parts[0]) || parts[0] < 1 || parts.slice(1).some(value => !Number.isSafeInteger(value) || value < -1)) throw new PipelineError(400, 'Invalid Pipeline artifact cursor')

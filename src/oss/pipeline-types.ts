@@ -12,3 +12,9 @@ export class PipelineError extends Error { constructor(readonly status: number, 
 export type PipelineExecution = Execution
 export interface PipelineListQuery { definitionsBefore?: number; runsBefore?: number; definitionQuery?: string; runQuery?: string; state?: string }
 export type PipelineRunSummary = Pick<PipelineRun, 'id' | 'definitionId' | 'operationId' | 'revision' | 'createdAt' | 'updatedAt' | 'state' | 'nextStep' | 'epoch' | 'reason' | 'cancelRequested'> & { attempts: number; checkpoints: number; title: string }
+export type PipelineAttemptSummary = Pick<PipelineAttempt,'id'|'step'|'kind'|'operationId'|'executionId'|'state'|'codeHash'|'outputHash'|'outputTail'|'error'> & {files:number;artifacts:number}
+export type PipelineCheckpointSummary = Pick<PipelineCheckpoint,'attemptId'|'step'> & {files:number}
+export type PipelineRecoverySummary = Pick<PipelineRun['recoveries'][number],'epoch'|'action'|'checkpointAttemptId'|'sideEffectsReviewed'|'allowEnvironmentChange'|'at'|'expectedFingerprint'|'observedFingerprint'>
+export type PipelineHistoryKind='attempts'|'checkpoints'|'recoveries'
+export interface PipelineHistoryPage {runId:string;revision:number;kind:PipelineHistoryKind;entries:Array<(PipelineAttemptSummary|PipelineCheckpointSummary|PipelineRecoverySummary)&{position:number}>;total:number;next?:number}
+export type PipelineRunWindow=Omit<PipelineRun,'attempts'|'checkpoints'|'recoveries'|'approved'> & {attempts:PipelineAttemptSummary[];checkpoints:PipelineCheckpointSummary[];recoveries:PipelineRecoverySummary[];counts:Record<PipelineHistoryKind,number>;windowed:true}

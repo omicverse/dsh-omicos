@@ -282,13 +282,15 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else if (action === 'pipeline-define' && method === 'POST') result = pipelines.define(data.definition)
           else if (action === 'pipeline-start' && method === 'POST') {
             if (data.confirmed !== true) throw new CloudError(400, 'Explicit Pipeline execution approval required')
-            result = pipelines.start(String(data.definitionId || ''), String(data.operationId || ''))
+            const started=pipelines.start(String(data.definitionId || ''),String(data.operationId || ''));result=data.windowed===true?pipelines.store.window(started.id):started
           }
           else if (action === 'pipeline-control' && method === 'POST') {
             if (data.confirmed !== true) throw new CloudError(400, 'Explicit Pipeline control/recovery approval required')
-            result = await pipelines.control(id, data.revision, data.action, { checkpointAttemptId: data.checkpointAttemptId, sideEffectsReviewed: data.sideEffectsReviewed, allowEnvironmentChange: data.allowEnvironmentChange })
+            const controlled=await pipelines.control(id,data.revision,data.action,{checkpointAttemptId:data.checkpointAttemptId,sideEffectsReviewed:data.sideEffectsReviewed,allowEnvironmentChange:data.allowEnvironmentChange});result=data.windowed===true?pipelines.store.window(controlled.id):controlled
           }
-          else if (action === 'pipeline-run' && method === 'GET') result = pipelines.get(id)
+          else if (action === 'pipeline-run' && method === 'GET'){const view=url.searchParams.get('view');if(view!==null&&view!=='window')throw new CloudError(400,'Unsupported Pipeline run view');result=view==='window'?pipelines.store.window(id):pipelines.get(id)}
+          else if(action==='pipeline-history-item'&&method==='GET')result=pipelines.store.historyItem(id,url.searchParams.get('kind') as any,url.searchParams.has('position')?Number(url.searchParams.get('position')):NaN,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):NaN)
+          else if(action==='pipeline-history'&&method==='GET')result=pipelines.store.historyPage(id,url.searchParams.get('kind') as any,url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined,url.searchParams.has('revision')?Number(url.searchParams.get('revision')):undefined)
           else if (action === 'pipeline-events' && method === 'GET') result = { events: pipelines.store.events(id, Number(url.searchParams.get('after') || 0)) }
           else if (action === 'pipeline-execution' && method === 'GET') result = await pipelines.execution(id, url.searchParams.get('execution') || '')
           else if (action === 'pipeline-artifact' && method === 'GET') {
