@@ -71,7 +71,13 @@ for line in sys.stdin:
                 result = eval(compile(ast.Expression(final.value), '<omicos-cell>', 'eval'), namespace)
                 if result is not None:
                     print(repr(result)[:65536])
-            if 'matplotlib.pyplot' in sys.modules:
+        except KeyboardInterrupt:
+            canceled = True
+            error = 'Execution canceled; partial changes may remain in the Python namespace.'
+        except BaseException:
+            error = traceback.format_exc(limit=12)
+        try:
+            if not canceled and 'matplotlib.pyplot' in sys.modules:
                 plt = sys.modules['matplotlib.pyplot']
                 directory = workspace / '.omicos-oss' / 'artifacts' / current
                 for index, number in enumerate(plt.get_fignums()):
@@ -82,11 +88,16 @@ for line in sys.stdin:
                         data = file.read_bytes()
                         artifact_id = '%s-%s' % (current, index) if extension == 'png' else '%s-%s-%s' % (current, index, extension)
                         artifacts.append({'id': artifact_id, 'path': str(file.relative_to(workspace)), 'mime': mime, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
-                plt.close('all')
         except KeyboardInterrupt:
             canceled = True
-            error = 'Execution canceled; partial changes may remain in the Python namespace.'
+            error = (error + '\n' if error else '') + 'Figure capture canceled; partial results may remain.'
         except BaseException:
-            error = traceback.format_exc(limit=12)
+            error = (error + '\n' if error else '') + 'Figure capture failed: ' + traceback.format_exc(limit=8)
+        finally:
+            if 'matplotlib.pyplot' in sys.modules:
+                try:
+                    sys.modules['matplotlib.pyplot'].close('all')
+                except BaseException:
+                    error = (error + '\n' if error else '') + 'Figure cleanup failed: ' + traceback.format_exc(limit=4)
     emit({'id': current, 'type': 'done', 'error': error, 'canceled': canceled, 'variables': variables(), 'artifacts': artifacts})
     current = None

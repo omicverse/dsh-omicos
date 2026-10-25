@@ -98,6 +98,11 @@ it('curates real Python PNG/PDF/SVG and Pipeline figures, survives restart and n
     const studio = await runtime.figures(project.workspace); const node = await studio.save(draft({ source: { ...source, executionId: job.id, artifactId: job.artifacts[0].id } }), 'human')
     expect((await studio.artifact(node.id)).bytes.subarray(0, 8)).toEqual(Buffer.from([137,80,78,71,13,10,26,10]))
     expect(project.figureCandidates().entries).toHaveLength(3)
+    const partial = await finish(project, (await project.submit('plt.plot([1,2], [3,4])\nraise RuntimeError("after partial plot")', 'partial-plot', 'session')).id)
+    expect(partial.state).toBe('failed'); expect(partial.error).toContain('after partial plot'); expect(partial.artifacts).toHaveLength(3)
+    const clean = await finish(project, (await project.submit('print("no stale figures")', 'no-stale-plot', 'session')).id)
+    expect(clean.artifacts).toHaveLength(0)
+
     const pipelines = await runtime.pipelines(project.workspace)
     const definition = pipelines.define({ title: 'Pipeline plot', language: 'python', steps: [{ id: 'plot', code: 'import matplotlib\nmatplotlib.use("Agg")\nimport matplotlib.pyplot as plt\nplt.scatter([1,2], [3,4])' }] })
     const run = pipelines.start(definition.id, 'pipeline-figure')
@@ -111,7 +116,7 @@ it('curates real Python PNG/PDF/SVG and Pipeline figures, survives restart and n
     expect((await reopened.artifact(node.id)).bytes.length).toBe(node.artifact.bytes)
     expect((await reopened.artifact(piped.id)).bytes.length).toBe(piped.artifact.bytes)
     const restored = await sourceRuntime.project(project.workspace); expect(restored.snapshot().kernel.state).toBe('cold')
-    expect(restored.snapshot().executions).toHaveLength(1)
+    expect(restored.snapshot().executions).toHaveLength(3)
     await writeFile(join(project.workspace, node.artifact.path), 'overwritten')
     await expect(reopened.artifact(node.id)).rejects.toThrow(/changed/)
   } finally { await sourceRuntime.dispose() }
