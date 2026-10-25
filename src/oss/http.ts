@@ -1,3 +1,4 @@
+import { MemoryError } from './memory-types.js'
 import { PipelineError } from './pipeline-types.js'
 import { NotebookError } from './notebooks.js'
 import type { HttpOwnerAuth } from './http-auth.js'
@@ -155,6 +156,15 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           }
           else throw new CloudError(405, 'Method not allowed')
         }
+        else if (action === 'memory-tree' && method === 'GET') result = parent.memory.summaryList({ owner: true }, { search: url.searchParams.get('q') || '', ...(url.searchParams.has('parent') ? { parentId: url.searchParams.get('parent') === 'root' ? null : url.searchParams.get('parent') } : {}), before: url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined })
+        else if (action === 'memory-node' && method === 'GET') result = url.searchParams.has('revision') ? { node: parent.memory.get(url.searchParams.get('id') || '', { owner: true }, Number(url.searchParams.get('revision'))), historical: true } : parent.memory.view(url.searchParams.get('id') || '', { owner: true })
+        else if (action === 'memory-history' && method === 'GET') result = parent.memory.history(url.searchParams.get('id') || '', { owner: true }, url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
+        else if (action === 'memory-context' && method === 'GET') result = parent.memory.context({ sessionId: url.searchParams.get('session') || undefined })
+        else if (action === 'memory-propose' && method === 'POST') result = parent.memory.propose(data.entry, { owner: true, actor: 'user:workbench' })
+        else if (action === 'memory-transition' && method === 'POST') {
+          if (data.confirmed !== true) throw new CloudError(400, 'Explicit memory revision approval required')
+          result = parent.memory.transition(data.change, { owner: true, actor: 'user:workbench' })
+        }
         else if (action === 'notebooks' && method === 'GET') result = { notebooks: parent.notebooks.list() }
         else if (action === 'notebook-document' && method === 'GET') result = parent.notebooks.get(url.searchParams.get('id') || '')
         else if (action === 'notebook-create' && method === 'POST') result = await parent.notebooks.create(data.title, language, data.imported)
@@ -177,7 +187,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           if (data.confirmed !== true || typeof data.code !== 'string') throw new CloudError(400, 'Explicit execution approval required')
           result = await project.submit(data.code, String(data.operationId || ''), String(data.sessionId || 'workbench'))
         } else if (action === 'cancel' && method === 'POST') { await project.cancel(String(data.id)); result = { ok: true } }
-        else if (action === 'memory' && method === 'POST') { await project.remember(String(data.id || ''), String(data.text || ''), String(data.source || '')); result = { ok: true } }
+        else if (action === 'memory' && method === 'POST') { await project.remember(String(data.id || ''), String(data.text || ''), String(data.source || ''), { owner: true, actor: 'user:workbench' }); result = { ok: true } }
         else if (action === 'notebook' && method === 'GET') {
           response.setHeader('content-disposition', 'attachment; filename="omicos-analysis.ipynb"'); result = project.notebook()
         } else if (action === 'artifact' && method === 'GET') {
@@ -193,7 +203,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
       sendJson(response, 200, result)
     } catch (error) {
       if (response.writableEnded) return
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }

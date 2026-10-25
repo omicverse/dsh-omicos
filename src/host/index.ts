@@ -1,3 +1,4 @@
+import type {} from './oss-service.js'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { HarnessScienceChat } from './oss-chat.js'
@@ -62,6 +63,7 @@ export function apply(ctx: Context, config: Config): void {
     try { await service.project(config.workspace || process.cwd()); return service }
     catch (error) { await service.dispose(); throw error }
   })
+  ctx.provide('omicosScience', { runtime, workspace: config.workspace })
   // Attach rejection handling immediately; lifecycle cleanup still awaits it.
   void runtime.catch(error => console.error('OmicOS OSS startup failed:', String(error)))
   ctx.effect(function* () {

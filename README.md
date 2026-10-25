@@ -35,6 +35,15 @@ conflicts require reloading and merging, so another window's edits are not overw
 Imported rich outputs are retained for export with an unverified marker and are
 never executed as browser HTML. The current import limit is 2 MB / 500 cells.
 
+Research memory now has a topic tree with sourced facts, session-private notes and
+project-local long-term entries. Save a proposal, review its sources and explicitly
+confirm its version before the Scientist can use it. Summaries pin source revisions;
+changing or withdrawing a source removes dependent stale summaries from automatic
+context. Consolidation retains all original history. Promoting private session content
+requires a separate sharing approval. Long-term memory is currently scoped to one
+project. Declared file/citation references are not automatically read or verified.
+See [memory architecture](docs/adr/0004-scoped-revisioned-memory.md).
+
 Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
 `--rscript /path/to/Rscript`, `--pass-env NCBI_API_KEY,CUSTOM_DATA_VAR`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
 The service binds only to loopback; exposing it as a public server is unsupported.

@@ -71,8 +71,18 @@ function run(arguments_, env, cwd) {
     const context = await browser.newContext({ reducedMotion: 'reduce' });
     const page = await context.newPage(); page.on('pageerror', error => errors.push(String(error)));
     await page.goto(launch); await page.goto(origin + '/omicos/oss');
+    await page.evaluate(async () => {
+      const session = await (await fetch('/omicos/oss/api/session')).json(); const prefix = `/omicos/oss/api/project/${session.projects[0].id}/`
+      const post = async (path, data) => { const response = await fetch(prefix + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': session.csrf }, body: JSON.stringify(data) }); const body = await response.json(); if (!response.ok) throw Error(JSON.stringify(body)); return body }
+      for (const [index, text, scope, confirmed] of [[1, 'BROWSER_CONFIRMED_GRCh38', 'project', true], [2, 'BROWSER_PRIVATE_OTHER_SESSION', 'session', true], [3, 'BROWSER_PENDING_GUESS', 'project', false]]) {
+        const node = await post('memory-propose', { entry: { title: `Memory fixture ${index}`, text, kind: 'fact', scope, sessionId: scope === 'session' ? 'unrelated-session' : undefined, sources: [{ kind: 'user', ref: 'browser-fixture' }], operationId: `browser-proposal-${index}` } })
+        if (confirmed) await post('memory-transition', { change: { id: node.id, revision: node.revision, action: 'confirm', operationId: `browser-confirm-${index}` }, confirmed: true })
+      }
+    });
     await page.getByLabel('科研问题', { exact: true }).fill('Test-only OmicOS scientific approval request');
+    const sendResult = page.waitForResponse(response => response.url().includes('/chat-send') && response.request().method() === 'POST');
     await page.getByRole('button', { name: '发送给科研 Agent', exact: true }).click();
+    const sent = await sendResult; assert.equal(sent.status(), 200, await sent.text());
     const binding = await page.evaluate(async () => { const session = await (await fetch('/omicos/oss/api/session')).json(); return (await fetch(`/omicos/oss/api/project/${session.projects[0].id}/chat`)).json() });
     assert(binding.sessionId);
     const main = await context.newPage(); main.on('pageerror', error => errors.push(String(error)));
@@ -89,6 +99,9 @@ function run(arguments_, env, cwd) {
     assert.equal(await fs.readFile(marker, 'utf8'), '42');
     assert(requests.some(body => JSON.stringify(body.system).includes('bioinformatics research agent')));
     assert(requests.some(body => body.tools?.some(tool => tool.name === 'omicos_notebook_run')));
+    const scientistRequests = requests.filter(body => body.tools?.some(tool => tool.name === 'omicos_run_python'));
+    assert(scientistRequests.length); for (const request of scientistRequests) { const system = JSON.stringify(request); assert(system.includes('BROWSER_CONFIRMED_GRCh38')); assert(!system.includes('BROWSER_PRIVATE_OTHER_SESSION')); assert(!system.includes('BROWSER_PENDING_GUESS')) }
+
     assert(requests.some(body => body.messages?.some(message => message.content?.some(block => block.type === 'tool_result' && JSON.stringify(block).includes('42')))));
     await page.reload(); await page.locator('.oss-chat-message').filter({ hasText: 'OmicOS mock Scientist connected.' }).waitFor();
     assert.deepEqual(errors, []);

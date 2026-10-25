@@ -19,3 +19,5 @@ body:has(.oss){margin:0}
 .oss-pipeline label input[type="checkbox"] { margin-top: 3px; flex: 0 0 auto; }
 
 .oss-pipeline small,.oss-pipeline strong{overflow-wrap:anywhere;min-width:0}
+
+.oss-memory-layout{display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,2fr);gap:24px}.oss-memory-list{max-height:680px;overflow:auto}.oss-memory-open{display:block;text-align:left;width:100%;font-weight:600}.oss-memory label{display:block}.oss-memory input:not([type=checkbox]),.oss-memory select{max-width:100%;width:100%}.oss-memory input[type=checkbox]{width:auto}.oss-memory pre{white-space:pre-wrap;overflow-wrap:anywhere}.oss-memory small{overflow-wrap:anywhere}.oss-memory-layout>div{min-width:0}@media(max-width:760px){.oss-memory-layout{grid-template-columns:1fr}.oss-memory-list{max-height:320px}}

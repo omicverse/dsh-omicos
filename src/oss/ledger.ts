@@ -1,3 +1,5 @@
+import { MemoryTree } from './memory-store.js'
+import type { MemoryAccess } from './memory-types.js'
 import { createRequire } from 'node:module'
 import type { DatabaseSync as Database } from 'node:sqlite'
 // Load through Node so older Vite builtin lists do not rewrite node:sqlite to a package.
@@ -15,7 +17,8 @@ const STATES = new Set(['queued', 'running', 'succeeded', 'failed', 'canceled', 
 /** Single-project, language-shared execution ledger. Scientific validity is not inferred. */
 export class ScienceLedger {
   private closed = false
-  private constructor(private db: Database) {}
+  readonly memory: MemoryTree
+  private constructor(private db: Database) { this.memory = new MemoryTree(db, (type, data) => this.append(type, 'project', undefined, data), id => { const row = this.db.prepare('SELECT record_json FROM executions WHERE id=?').get(id); return row ? JSON.parse(String(row.record_json)) as Execution : undefined }) }
   static async open(workspace: string): Promise<ScienceLedger> {
     const directory = join(workspace, '.omicos-oss')
     await mkdir(directory, { recursive: true, mode: 0o700 })
@@ -26,7 +29,7 @@ export class ScienceLedger {
     try {
       const version = Number(db.prepare('PRAGMA user_version').get()!.user_version)
       const application = Number(db.prepare('PRAGMA application_id').get()!.application_id)
-      if (version > 1 || (application !== 0 && application !== APPLICATION_ID) || (version === 1 && application !== APPLICATION_ID)) throw new Error('Unsupported scientific ledger schema/application; preserve the database and use a compatible runtime')
+      if (version > 2 || (application !== 0 && application !== APPLICATION_ID) || (version >= 1 && application !== APPLICATION_ID)) throw new Error('Unsupported scientific ledger schema/application; preserve the database and use a compatible runtime')
       if (version === 0 && db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().length) throw new Error('Unknown database contents; refusing to adopt it as an OmicOS ledger')
       db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
       if (version === 0) {
@@ -37,7 +40,8 @@ export class ScienceLedger {
           CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
           PRAGMA application_id=${APPLICATION_ID}; PRAGMA user_version=1; COMMIT;`)
       }
-      await ledger.migrateLegacy(directory)
+      if (version < 2) await ledger.migrateLegacy(directory)
+      ledger.memory.migrate()
       return ledger
     } catch (error) { db.close(); throw error }
   }
@@ -49,6 +53,7 @@ export class ScienceLedger {
     }))
     this.db.exec('BEGIN IMMEDIATE')
     try {
+      if (this.db.prepare("SELECT value FROM metadata WHERE key='legacy-json-imported'").get()) { this.db.exec('COMMIT'); return }
       for (const source of sources) {
         if (!Array.isArray(source.jobs) || !Array.isArray(source.memories)) throw new Error('Invalid legacy scientific metadata; originals were preserved')
         for (const job of source.jobs) this.upsertExecution(source.language, { ...job, language: source.language })
@@ -67,7 +72,7 @@ export class ScienceLedger {
   executions(language: string): Execution[] {
     return this.db.prepare('SELECT record_json FROM executions WHERE language=? ORDER BY rowid').all(language).map(row => JSON.parse(String(row.record_json)) as Execution)
   }
-  memories(): Memory[] { return this.db.prepare('SELECT record_json FROM memories ORDER BY rowid').all().map(row => JSON.parse(String(row.record_json)) as Memory) }
+  memories(sessionId?: string): Memory[] { return this.memory.active({ sessionId }).map(({ id, text, source, updatedAt }) => ({ id, text, source, updatedAt })) }
   saveExecutions(language: string, jobs: Execution[]): void {
     this.db.exec('BEGIN IMMEDIATE')
     try { for (const job of jobs) this.upsertExecution(language, job); this.db.exec('COMMIT') }
@@ -86,15 +91,7 @@ export class ScienceLedger {
       provenance_scope: 'execution receipt and artifact identity; input I/O coverage and scientific validity are not inferred',
     })
   }
-  remember(id: string, text: string, source: string): void {
-    this.db.exec('BEGIN IMMEDIATE')
-    try {
-      if (text) this.db.prepare('INSERT INTO memories(id,record_json) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record_json=excluded.record_json').run(id, JSON.stringify({ id, text, source, updatedAt: new Date().toISOString() }))
-      else this.db.prepare('DELETE FROM memories WHERE id=?').run(id)
-      this.append(text ? 'memory/saved' : 'memory/deleted', 'project', undefined, { id, source, text_sha256: hash(text) })
-      this.db.exec('COMMIT')
-    } catch (error) { this.db.exec('ROLLBACK'); throw error }
-  }
+  remember(id: string, text: string, source: string, access?: MemoryAccess): void { this.memory.legacy(id, text, source, access) }
   private append(type: string, language: string, executionId: string | undefined, data: unknown): void {
     this.db.prepare('INSERT INTO events(type,language,execution_id,at,data_json) VALUES(?,?,?,?,?)').run(type, language, executionId ?? null, new Date().toISOString(), JSON.stringify(data))
   }

@@ -1,3 +1,4 @@
+import type { MemoryAccess } from './memory-types.js'
 import { NotebookStore } from './notebooks.js'
 import { workerEnvironment } from './worker-environment.js'
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -68,10 +69,11 @@ export class ScienceService extends EventEmitter {
     this.saving = next.catch(() => {})
     return next
   }
-  snapshot(): ScienceSnapshot {
+  get memory() { return this.ledger.memory }
+  snapshot(sessionId?: string): ScienceSnapshot {
     return structuredClone({ protocol: PROTOCOL_VERSION, project: this.workspace, eventCursor: this.eventCursor,
       kernel: { state: this.active ? 'busy' : this.child ? 'ready' : 'cold', generation: this.generation, environment: this.environment },
-      executions: this.executions, variables: this.variables, memories: this.ledger.memories() })
+      executions: this.executions, variables: this.variables, memories: this.ledger.memories(sessionId) })
   }
   get(id: string): Execution | undefined { return structuredClone(this.executions.find(job => job.id === id)) }
   async submit(code: string, operationId: string, sessionId: string, expectedKernelGeneration?: string): Promise<Execution> {
@@ -215,10 +217,10 @@ export class ScienceService extends EventEmitter {
       if (this.active === job) { child && this.signalWorker(child, 'SIGKILL'); this.failWorker('Canceled by terminating unresponsive worker; namespace lost and partial changes may remain') }
     }, 3000)
   }
-  async remember(id: string, text: string, source: string): Promise<void> {
+  async remember(id: string, text: string, source: string, access?: MemoryAccess): Promise<void> {
     if (this.closing) throw new Error('Project is shutting down or its runtime lock was lost')
     if (!id || id.length > 200 || text.length > 20000 || !source || source.length > 2000) throw new Error('Memory requires bounded id, text and source')
-    this.ledger.remember(id, text, source)
+    this.ledger.remember(id, text, source, access)
     this.emit('change')
   }
   events(after = 0, limit = 200) { return this.ledger.events(after, limit) }

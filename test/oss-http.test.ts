@@ -63,6 +63,22 @@ describe('scientific workbench and commerce boundary', () => {
     const projects = await runtime.list()
     expect((await post(`project/${projects[0].id}/execute`, { code: 'print(1)', operationId: 'x' })).status).toBe(400)
   })
+  it('exposes revisioned memory only to the owner, requires confirmation and scopes automatic context', async () => {
+    const project = (await runtime.list())[0].id; const route = `project/${project}/`
+    const response = await post(`${route}memory-propose`, { entry: { title: 'Private reference', text: 'GRCh38-private', kind: 'fact', scope: 'session', sessionId: 'fixture-session', sources: [{ kind: 'user', ref: 'researcher' }], operationId: 'memory-proposal' } })
+    expect(response.status).toBe(200); const proposed = await response.json() as any
+    const change = { id: proposed.id, revision: proposed.revision, action: 'confirm', operationId: 'memory-confirm' }
+    expect((await post(`${route}memory-transition`, { change })).status).toBe(400)
+    expect((await post(`${route}memory-transition`, { change, confirmed: true })).status).toBe(200)
+    expect((await post(`${route}memory-propose`, {}, { 'x-omicos-csrf': '' })).status).toBe(403)
+    const read = async (path: string) => (await fetchHost(`${base}/omicos/oss/api/${route}${path}`)).json() as Promise<any>
+    expect((await read('memory-context')).entries).toEqual([])
+    expect((await read('memory-context?session=fixture-session')).entries[0].text).toBe('GRCh38-private')
+    expect((await read('memory-tree')).entries[0].state).toBe('confirmed')
+    expect((await read(`memory-history?id=${proposed.id}`)).revisions.map((node: any) => node.state)).toEqual(['confirmed', 'proposed'])
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${route}memory-tree`)).status).toBe(401)
+  })
+
   it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {
     const core = createServer(createOssHandler(runtime, owner, { backend: 'core' })); const address = await listen(core)
     try {

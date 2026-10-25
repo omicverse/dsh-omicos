@@ -32,16 +32,18 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
 - Persistent nbformat-4 Notebook documents with code/Markdown/raw cells, reorder/edit/save/import/export, optimistic revision conflicts and stable retry IDs. Cell execution uses the existing project Python/R kernel, preserves immutable execution links, invalidates edited outputs and never runs imports automatically. Agent read/update/run tools honor the existing approval boundary. Imported rich outputs and attachments are preserved on export and marked unverified, never rendered as executable browser HTML.
+- Revisioned topic/fact/summary memory tree with project, private-session and project-local long-term scopes; proposals, explicit confirmation/promotion, immutable history, CAS/stable operation receipts and atomic consolidation. Source revision changes/withdrawal invalidate dependent summaries; dependent-source consolidation rolls back. Native schema-v1 and original JSON facts migrate without losing confirmation/history. The workbench and approved Agent tools expose paginated search/edit/confirm/withdraw; the scoped Scientist receives only effective confirmed context through the public Harness assembly hook. Actual model-request browser fixtures exclude unrelated private notes and pending guesses.
 - Scoped OmicOS Scientist preset and four original public scientific checklists; real Loader/preset mounting tested.
 
 - Workbench pages, APIs, assets and SSE require owner authentication before exposing state. Harness uses its connection service; standalone launch links establish origin-bound signed HttpOnly cookies using private persisted signing state.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the complete 159-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
-- 159 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the complete 167-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
+- 167 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Pipeline flow fixed a definition, persisted its background run over page reload, approved a human gate, and verified actual output/journal. Native Node 22.13.1 tests cover checkpoint restoration after Host restart, changed-file/environment blocking, namespace isolation, true cancellation and interrupted-work deduplication.
+- Browser memory flow saves a proposal, confirms it, inspects immutable history, reloads it and withdraws it; full Harness mock-provider requests contain active shared facts and exclude private/unconfirmed notes.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
@@ -70,7 +72,7 @@ Verification at this checkpoint:
 - Richer dataset/AnnData charts, upload/import workflows and broader R environment provisioning/platform matrix.
 - Richer Notebook figure rendering/review and Figure Studio; basic persistent cell editing/import/export/re-execution is implemented.
 - Isolated scientific reviewer and structured evidence/method-version ledger.
-- Agent delegation constraints, scientific plans/approvals, session and long-term memory tree/consolidation.
+- Agent delegation constraints and scientific plans/approvals; global cross-project memory/dossier indexing. Project-local session/long-term memory tree and explicit consolidation are implemented.
 - Broader Pipeline orchestration/templates, mixed-language composition and remote Runner adapters. Ordered local Python/R definitions, human gates and durable checkpoint recovery are implemented; exhaustive I/O capture and exactly-once external side effects are not claimed.
 - SSH/SLURM/cloud Runner profiles, compute credits/jobs, optional research/database connectors.
 - MCP/A2A integration, scheduled goals, project dossier and enterprise/team capabilities.
