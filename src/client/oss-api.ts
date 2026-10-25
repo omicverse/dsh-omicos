@@ -22,4 +22,4 @@ async function request<T>(path: string, data: unknown, signal: AbortSignal | und
   return body as T
 }
 export interface CloudAccount { server?: string; logged_in: boolean; user?: { id: string; email?: string; phone?: string }; generation: number; login?: { user_code: string; verification_uri: string; expires_at: number } }
-export interface Session { csrf: string; account: CloudAccount; projects: Array<{ id: string; workspace: string }>; protocol: number }
+export interface Session { csrf: string; backend?: 'oss' | 'core'; account: CloudAccount; projects: Array<{ id: string; workspace: string }>; protocol: number }

@@ -63,6 +63,15 @@ describe('scientific workbench and commerce boundary', () => {
     const projects = await runtime.list()
     expect((await post(`project/${projects[0].id}/execute`, { code: 'print(1)', operationId: 'x' })).status).toBe(400)
   })
+  it('announces Core compatibility mode without advertising an unregistered Scientist preset', async () => {
+    const core = createServer(createOssHandler(runtime, owner, { backend: 'core' })); const address = await listen(core)
+    try {
+      const session = await (await fetchHost(`${address}/omicos/oss/api/session`)).json() as any
+      expect(session.backend).toBe('core')
+      const chat = await (await fetchHost(`${address}/omicos/oss/api/project/${session.projects[0].id}/chat`)).json() as any
+      expect(chat.available).toBe(false); expect(chat.reason).toContain('Core 兼容后端')
+    } finally { await close(core) }
+  })
   it('uses device pairing without Core, keeps tokens out of the browser and writes owner-only credentials', async () => {
     await login()
     const response = await (await fetchHost(`${base}/omicos/oss/api/session`)).text()

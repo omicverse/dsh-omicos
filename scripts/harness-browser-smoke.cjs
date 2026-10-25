@@ -103,7 +103,22 @@ function run(arguments_, env, cwd) {
     assert(new URL(linked.url()).searchParams.has('project'));
     await main.screenshot({ path: path.join(output, 'harness-entry.png'), fullPage: true });
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
+    // Render the retained legacy console against its public DTO fixture, without a private Core binary.
+    await main.route('**/omicos/oss/api/session', async route => { const upstream = await route.fetch(); const session = await upstream.json(); await route.fulfill({ json: { ...session, backend: 'core' } }) })
+    await main.route('**/omicos/account', route => route.fulfill({ json: { logged_in: false, login_pending: false, subscribe_url: 'https://app.omicos.cn', account_url: 'https://app.omicos.cn' } }))
+    await main.route('**/omicos/kernel', route => route.fulfill({ json: { kernels: [] } }))
+    await main.route('**/omicos/capabilities?*', route => route.fulfill({ json: { query: '', indexed: { skills: 0, agents: 0 }, results: [], categories: [] } }))
+    await main.reload()
+    const legacyGroup = main.locator('[data-row-key="workspace:"]'); await legacyGroup.waitFor();
+    if (await legacyGroup.getAttribute('aria-expanded') === 'false') await legacyGroup.click()
+    await main.locator(`[data-row-key="session:${binding.sessionId}"]`).click()
+    await main.getByRole('tab', { name: 'OmicOS', exact: true }).click()
+    await main.getByText('OmicOS · Core 兼容模式', { exact: true }).waitFor()
+    await main.getByText('内核', { exact: true }).waitFor(); await main.getByText('能力检索', { exact: true }).waitFor()
+    await main.getByText('尚未连接 Core 内核。', { exact: false }).waitFor()
+    await main.screenshot({ path: path.join(output, 'core-compat-entry.png'), fullPage: true })
+    assert.deepEqual(errors, [])
+    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
   } finally {
     await browser?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }

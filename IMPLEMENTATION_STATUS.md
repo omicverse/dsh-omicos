@@ -6,7 +6,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 - Harness release baseline updated to `0.2.1-rc.3`, Cordis `4.0.5`, Schemastery `3.18.5`.
 - Obsolete client-runtime removed; current UI renderer contract and job progress API adapted.
-- Private Core removed from the default installation graph; compatibility mode retained explicitly.
+- Private Core removed from the default installation graph; explicit Core mode retains its original account/kernel/capability console and delegated tool surface. OSS Scientist chat is not advertised in Core mode; workspace resolution waits for the active session identity. Real Cordis tests cover Core routing and missing chat, and the actual Harness browser renders the retained console against an isolated legacy DTO fixture.
 - Independent Node Host / public Python worker protocol with no model loop or private runtime dependency.
 - Persistent per-project Python and separate R namespaces, queue, stable invocation deduplication, cancellation and bounded output.
 - SQLite WAL execution/memory ledger with transactional receipts, one-time JSON migration preserving originals, lazy durable project registry, incomplete-job recovery, project-level heartbeat lock, distinct kernel generations.
@@ -35,8 +35,8 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the 139-test suite passed on actual Node 22.13.1 before commerce recovery additions. Current local Node ran the expanded 145-test suite; the new commerce suite also runs on Node 22.13.1.
-- 145 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the 139-test suite passed on actual Node 22.13.1 before commerce recovery additions. Current local Node ran the expanded 147-test suite; the new commerce suite also runs on Node 22.13.1.
+- 147 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Notebook flow executed two cells sharing the Python namespace, downloaded verified outputs, and restored source/results after reloading the page.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
@@ -50,7 +50,7 @@ Verification at this checkpoint:
 
 ### Finish and harden M1
 
-- Full profile browser coverage remains to be checked; the complete suite passed on actual Node 22.13.1, and a packed standalone installation passed without Harness/private Core.
+- Additional profiles and platforms remain unverified. The pinned Web baseline has the browser coverage described above; hot reload/remount and further platform behavior still need checks.
 - Hot reload/remount behavior remains to be checked; published full Web profile mounting, owner authentication, mock model chat and actual main-window approval have browser coverage.
 - Real external provider/BYOK service contracts and full scientific Skill migration beyond the four bundled checklists. The actual DSH controller/provider/approval path has isolated local mock coverage.
 - Official cross-device complete order listing remains to be verified; local durable recovery receipts are implemented. Paid-order records use the existing invoicing endpoint; no unverified remote pending-order listing API is invented.

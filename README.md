@@ -226,3 +226,8 @@ a saved QR. Paid or expired orders never regain a payable QR. A failed local sav
 after checkout reports a recovery warning with the successful order; it never
 repeats the purchase. This is local recovery history, not a complete cross-device
 cloud order listing.
+
+With `backend: core`, the OmicOS tab retains its original account, kernel and
+capability console and delegated Core tools. Its optional local workbench does
+not advertise the OSS Scientist preset; use the original Harness/Core conversation
+or select the OSS backend. The OSS backend never needs a private Core binary.

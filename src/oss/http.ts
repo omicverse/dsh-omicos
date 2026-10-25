@@ -27,7 +27,7 @@ async function body(request: IncomingMessage, limit = 300_000): Promise<any> {
   return parsed
 }
 /** Loopback + Host + same-origin + per-process CSRF nonce. No permissive CORS. */
-export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, options: { backend?: 'oss' | 'core' } = {}): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const nonce = randomUUID()
   return async (request, response) => {
     try {
@@ -55,7 +55,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req
         response.writeHead(200, { 'content-type': extension === 'js' ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8' }); response.end(asset); return
       }
       if (method === 'GET' && path === '/omicos/oss/api/session') {
-        sendJson(response, 200, { csrf: nonce, account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: 1 }); return
+        sendJson(response, 200, { csrf: nonce, backend: options.backend || 'oss', account: runtime.cloud.snapshot(), projects: await runtime.list(), protocol: 1 }); return
       }
       if (method !== 'GET' && request.headers['x-omicos-csrf'] !== nonce) throw new CloudError(403, 'Invalid CSRF token')
       const data = method === 'POST' ? await body(request, /\/notebook-(create|save)$/.test(path) ? 2_100_000 : 300_000) : undefined
@@ -120,7 +120,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth): (req
         }
         else if (action === 'chat' || action === 'chat-send' || action === 'chat-cancel') {
           if (!runtime.chat) {
-            if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
+            if (action === 'chat' && method === 'GET') { sendJson(response, 200, { available: false, messages: [], reason: options.backend === 'core' ? '当前为 Core 兼容后端，请在 Harness 对话中使用原有委派工具；启用 OSS 后端后可连接项目专属 Scientist 会话。' : '从 DSH 的 OmicOS 入口打开工作台，即可连接科研 Agent。' }); return }
             throw new CloudError(503, '此工作台未连接 Harness 对话服务。请从 DSH 的 OmicOS 入口打开工作台；本地 Python 不受影响。')
           }
           const signal = AbortSignal.timeout(30000)

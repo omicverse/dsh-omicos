@@ -71,7 +71,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['webServer', 'connection'], sub => {
     let handler: ReturnType<typeof createOssHandler> | undefined
     sub.effect(() => sub.webServer.register({ kind: 'prefix', path: '/omicos/oss', handler: async (req, res) => {
-      handler ??= createOssHandler(await runtime, { authorizePage: (req, res) => sub.connection.authorizeIndex(req, res), requestRejection: req => sub.connection.requestRejection(req) })
+      handler ??= createOssHandler(await runtime, { authorizePage: (req, res) => sub.connection.authorizeIndex(req, res), requestRejection: req => sub.connection.requestRejection(req) }, { backend: config.backend })
       await handler(req, res)
     } }))
   })
@@ -79,9 +79,10 @@ export function apply(ctx: Context, config: Config): void {
     sub.effect(async function* () {
       const service = await runtime
       const chat = new HarnessScienceChat(sub.sessionController)
-      service.chat = chat
-      service.resolveSessionWorkspace = async (sessionId, signal) => { const cwd = await chat.workspaceForSession(sessionId, signal); return config.workspace || cwd }
-      yield () => { if (service.chat === chat) { service.chat = undefined; service.resolveSessionWorkspace = undefined } }
+      if (config.backend !== 'core') service.chat = chat
+      const resolveWorkspace = async (sessionId: string, signal: AbortSignal) => { const cwd = await chat.workspaceForSession(sessionId, signal); return config.workspace || cwd }
+      service.resolveSessionWorkspace = resolveWorkspace
+      yield () => { if (service.chat === chat) service.chat = undefined; if (service.resolveSessionWorkspace === resolveWorkspace) service.resolveSessionWorkspace = undefined }
     }, 'omicos: Harness conversation bridge')
   })
   if (config.backend !== 'core') {
