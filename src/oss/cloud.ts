@@ -1,3 +1,6 @@
+import { CloudError } from './cloud-error.js'
+export { CloudError } from './cloud-error.js'
+import { billingDomain, memberships, expiryReminders } from './membership.js'
 import { OrderLedger, paymentOrder, type OrderScope } from './orders.js'
 import type { InvoiceRequest, InvoicingSummary, LabPricing, SeatChange, LabSummary } from './commerce-types.js'
 import { randomUUID } from 'node:crypto'
@@ -7,7 +10,6 @@ interface Identity { id: string; email?: string; phone?: string; display_name?: 
 interface Credentials { server: string; token: string; user: Identity }
 export interface Checkout { plan_code: string; period: 'monthly' | 'quarterly' | 'yearly'; provider: 'wechat' | 'alipay'; domain?: string; seats?: number; lab_id?: string; lab_name?: string }
 interface CatalogPlan { code: string; name: string; display_name?: string; tagline?: string; monthly_price_rmb: number | null; quarterly_price_rmb?: number | null; yearly_price_rmb: number | null }
-export class CloudError extends Error { constructor(readonly status: number, message: string) { super(message) } }
 /** Host-only official cloud adapter. Never send credentials in public snapshots. */
 export class CloudService {
   private credentials?: Credentials
@@ -82,7 +84,7 @@ export class CloudService {
   }
   plans(domain = ''): Promise<{ plans: CatalogPlan[] }> { return this.request(`/api/plans${domain ? `?domain=${encodeURIComponent(domain)}` : ''}`, 'GET', undefined, false) }
   subscription(domain = ''): Promise<unknown> { return this.request(`/api/billing/subscription${domain ? `?domain=${encodeURIComponent(domain)}` : ''}`) }
-  subscriptions(): Promise<unknown> { return this.request('/api/billing/subscriptions') }
+  async subscriptions() { return memberships(await this.request('/api/billing/subscriptions')) }
   async order(id: string): Promise<unknown> {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw new CloudError(400, '无效订单编号')
     const generation = this.generation; const scope = this.orderScope()
@@ -193,8 +195,15 @@ export class CloudService {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id) || !Number.isSafeInteger(seats) || seats < 1 || seats > 100000 || !['wechat', 'alipay'].includes(provider)) throw new CloudError(400, '无效实验室、席位数或支付方式')
     return this.createPayment(`/api/billing/lab/${encodeURIComponent(id)}/seats`, { seats, provider }, 'lab-seats', true)
   }
-  reminders(): Promise<unknown> { return this.request('/api/billing/expiry-reminders') }
-  manageSubscription(action: 'cancel' | 'uncancel', domain?: string): Promise<unknown> {
-    return this.request(`/api/billing/subscription/${action}`, 'POST', domain ? { domain } : {})
+  async reminders() { return expiryReminders(await this.request('/api/billing/expiry-reminders')) }
+  async manageSubscription(action: 'cancel' | 'uncancel', domain?: string): Promise<unknown> {
+    if (!['cancel', 'uncancel'].includes(action)) throw new CloudError(400, '无效订阅操作')
+    const target = billingDomain(domain); const generation = this.generation
+    if (target) {
+      const observed = await this.subscription(target) as { domain?: string }
+      if (observed.domain !== target) throw new CloudError(409, '云服务未确认目标服务域，订阅操作未发送；请核对服务端兼容性')
+      if (generation !== this.generation) throw new CloudError(409, '账号已切换，请刷新')
+    }
+    return this.request(`/api/billing/subscription/${action}${target ? `?domain=${encodeURIComponent(target)}` : ''}`, 'POST', {})
   }
 }

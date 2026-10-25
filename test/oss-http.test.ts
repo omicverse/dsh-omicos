@@ -35,7 +35,9 @@ describe('scientific workbench and commerce boundary', () => {
       else if (path === '/api/billing/invoicing/invoices/inv_1/withdraw') response.end(JSON.stringify({ invoice_id: 'inv_1', status: 'voided' }))
       else if (path === '/api/billing/checkout') { orders++; response.end(JSON.stringify({ order_no: `ord_${orders}`, amount_rmb: 10, currency: 'CNY', pay_url: 'weixin://wxpay/bizpayurl?pr=example', provider: body.provider, expires_at: '2099-01-01' })) }
       else if (path.startsWith('/api/billing/orders/')) response.end(JSON.stringify({ order_no: 'ord_1', status: paid ? 'paid' : 'pending', amount_rmb_cents: 1000, provider: 'wechat', expires_at: '2099-01-01' }))
-      else if (path.startsWith('/api/billing/subscription')) response.end(JSON.stringify({ active: paid, subscription: paid ? { plan_code: 'pro' } : undefined }))
+      else if (path === '/api/billing/subscriptions') response.end(JSON.stringify({ subscriptions: [{ domain: 'omics', plan_code: 'pro', expires_at: '2099-01-01', auto_renew: 0, kind: 'annual' }, { domain: 'humanities_social', plan_code: 'plus', expires_at: '2099-01-01', auto_renew: 1, kind: 'trial' }] }))
+      else if (path === '/api/billing/expiry-reminders') response.end(JSON.stringify({ reminders: [{ domain: 'humanities_social', plan_code: 'plus', expires_at: '2099-01-01', state: 'expiring_soon', days_left: 3, auto_renew: 0 }] }))
+      else if (path.startsWith('/api/billing/subscription')) response.end(JSON.stringify({ active: paid, domain: new URL(path, 'http://fixture.invalid').searchParams.get('domain') || 'omics', subscription: paid ? { plan_code: 'pro' } : undefined }))
       else { response.statusCode = 404; response.end('{}') }
     })
     const cloudBase = await listen(cloud)
@@ -134,6 +136,25 @@ describe('scientific workbench and commerce boundary', () => {
     expect(other.snapshot()).toMatchObject({ logged_in: false })
     await expect(other.subscription()).rejects.toMatchObject({ status: 401 })
   })
+  it('keeps membership reads authenticated and binds cancel/restore to the requested query domain', async () => {
+    expect((await fetchHost(`${base}/omicos/oss/api/subscriptions`)).status).toBe(401)
+    expect((await fetchHost(`${base}/omicos/oss/api/reminders`)).status).toBe(401)
+    await login()
+    const subscriptions = await (await fetchHost(`${base}/omicos/oss/api/subscriptions`)).json() as any
+    expect(subscriptions.subscriptions.map((item: any) => item.domain)).toEqual(['omics', 'humanities_social'])
+    expect(subscriptions.subscriptions[0].auto_renew).toBe(false)
+    const reminders = await (await fetchHost(`${base}/omicos/oss/api/reminders`)).json() as any
+    expect(reminders.reminders[0].domain).toBe('humanities_social')
+    expect((await post('subscription/manage', { action: 'cancel', domain: 'humanities_social' })).status).toBe(400)
+    expect((await post('subscription/manage', { action: 'cancel', domain: 'humanities_social', confirmed: true })).status).toBe(200)
+    expect((await post('subscription/manage', { action: 'uncancel', domain: 'humanities_social', confirmed: true })).status).toBe(200)
+    const mutations = seen.filter(item => item.path.includes('/subscription/cancel') || item.path.includes('/subscription/uncancel'))
+    expect(mutations.map(item => item.path)).toEqual(['/api/billing/subscription/cancel?domain=humanities_social', '/api/billing/subscription/uncancel?domain=humanities_social'])
+    expect(mutations.every(item => JSON.stringify(item.body) === '{}')).toBe(true)
+    expect((await post('subscription/manage', { action: 'cancel', domain: 'omics&domain=other', confirmed: true })).status).toBe(400)
+    expect(orders).toBe(0)
+  })
+
   it('requires login, a valid quote and one-use confirmation before creating orders', async () => {
     const choice = { plan_code: 'pro', period: 'monthly', provider: 'wechat' }
     expect((await post('quote', choice)).status).toBe(401)

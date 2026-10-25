@@ -18,6 +18,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
   cancellation/restoration, account-switch invalidation, order-number recovery.
 - Durable SQLite order recovery receipts for subscription and lab-seat checkouts, scoped by cloud origin/account; paginated local history omits payment links. Reopening requires fresh authoritative status, matching amount/provider and a future expiry. Paid/expired/mismatched/unknown links are hidden. Checkout completion is journaled for its original owner even if logout races; local storage failure returns the successful order with a warning, never a retry. Browser reload restores the QR without a new checkout.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
+- Official per-domain membership panel and on-open cloud expiry banner with dismiss/renewal-to-catalog actions. Paid/trial/promo/admin/seat sources are labelled; server expiry/reminder states, not token TTL or client inference, drive the display. Missing/malformed/unsupported reads remain unknown rather than free. Explicit-domain cancel/restore preflights the acknowledged domain and sends it in the actual server query contract; wrong/ignored domains reject before POST. Reads and UI quote/detail results are fenced against account/domain/selection changes. Browser fixtures verify cancellation/restoration with no checkout and deliberately delayed old-domain detail/quote responses.
 - Paid-order/invoice UI, explicit invoice application/withdrawal, live lab pricing and owner-filtered seat management/top-up payment; browser flow tested against an isolated mock cloud.
 - Workspace data browser, bounded text previews, prepared CSV/TSV/H5AD/RDS loading cells and approved AnnData metadata inspection; real AnnData tests verify X remains unchanged.
 - DSH entry resolves the active session workspace through the formal Host controller instead of silently opening the Host process working directory.
@@ -40,8 +41,8 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 
 Verification at this checkpoint:
 
-- TypeScript host/client typecheck passed; the complete 174-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
-- 174 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- TypeScript host/client typecheck passed; the complete 180-test scientific suite passed on actual Node 22.13.1. Current local Node also exercised real Python/R, packaged CLI, full Harness Web and standalone browser flows.
+- 180 tests passed (including the scientific-environment run), including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Clean npm-packed production installation (no dev dependencies, no Harness, no private Core) executed Python and served its bundled workspace.
 - Browser Pipeline flow fixed a definition, persisted its background run over page reload, approved a human gate, and verified actual output/journal. Native Node 22.13.1 tests cover checkpoint restoration after Host restart, changed-file/environment blocking, namespace isolation, true cancellation and interrupted-work deduplication.
 - Browser memory flow saves a proposal, confirms it, inspects immutable history, reloads it and withdraws it; full Harness mock-provider requests contain active shared facts and exclude private/unconfirmed notes.
@@ -50,6 +51,7 @@ Verification at this checkpoint:
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Actual isolated Harness Web rc.3 profile: unauthenticated workbench/page/assets/session return 401; after Harness cookie bootstrap all return 200. Full mock-provider chat and main-window approval flow verified: no file before approval; real Python writes 42 after Allow once; assistant history survives reload.
+- Forced Worker termination now prevents subsequent signals to the same dying process family; immediate disposal after an injected terminal-ledger failure has actual Python coverage. This addresses a macOS EPERM race observed in the full scientific suite.
 - Node 22.13 native SQLite queries avoid long-lived temporary statement iterators across nested reads; a real baseline run exposed/fixed premature statement finalization in figure search and the analogous memory scans.
 - GitHub Actions workflow added for Node 22.13.1/24, scientific fixtures, clean package and browser smoke; remote CI execution is not yet claimed.
 - `pnpm test:harness-browser` creates a temporary profile with the published rc.3 CLI, synthetic local model and isolated credentials; verifies the actual OmicOS tab opens its project workbench, and tests main-window approval before Python side effects. Added to the Node 24 CI job; remote CI results are not yet claimed.
@@ -79,7 +81,7 @@ Verification at this checkpoint:
 - Broader Pipeline orchestration/templates, mixed-language composition and remote Runner adapters. Ordered local Python/R definitions, human gates and durable checkpoint recovery are implemented; exhaustive I/O capture and exactly-once external side effects are not claimed.
 - SSH/SLURM/cloud Runner profiles, compute credits/jobs, optional research/database connectors.
 - MCP/A2A integration, scheduled goals, project dossier and enterprise/team capabilities.
-- Broader lab collaboration, cloud usage/resource storefront and expiry reminders UI.
+- Broader lab collaboration, cloud usage/resource storefront and native notification delivery. On-open expiry reminders and per-domain membership lifecycle UI are implemented.
 - Channels, desktop/system bridge/pets, audit replay, legacy project migration and release documentation.
 
 See `OMICOS_OSS_DESIGN.md` for full scope, capability mapping, boundaries and acceptance criteria.

@@ -64,6 +64,13 @@ session; no second LLM loop is started. Without a Harness connection, the chat
 panel explains how to connect and local Python remains available. Tool approval
 is currently completed in the Harness main window.
 
+The cloud window also lists each service domain's membership and server-provided
+expiry reminders, with purchase/trial/grant/seat labels. Renewal selects the correct
+catalog and requires a separate order confirmation. Cancel/restore names the target
+domain; older servers that do not acknowledge it are rejected before mutation.
+Unknown/offline membership status is never treated as a downgrade, and local work
+remains independent. See [membership boundaries](docs/adr/0006-domain-memberships.md).
+
 ## Install in Harness
 
 The baseline is the official `dsh-v0.2.1-rc.3` release, Cordis 4.0.5, and
