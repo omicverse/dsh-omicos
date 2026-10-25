@@ -41,8 +41,37 @@ claim is implied by the UI integration.
   upload and HTTP boundaries passed 51 tests after preserving the previous runtime
   checkpoint separately. See `docs/plans/2026-10-25-omicos-harness-application.md`.
 
-Remaining application work: refine compact/mobile session navigation and editing
-lifetimes beyond Notebook; broaden native scientific-page journeys, verify true
+### Editable preferences, compact navigation and editor guards (2026-10-25)
+
+- Found that CLI overlays made locale/default-Agent settings read-only to the native
+  settings editor. Defaults now come from a private bundle before the user's profile
+  patch; the CLI overlay contains only the owned scientific-runtime configuration.
+  The real settings test changes language to English and default Agent to Standard,
+  stops the entire application, restarts it and verifies both settings. It also checks
+  clean requested shutdown, lease release, a cold kernel and no executions. No model
+  or cloud account is simulated by that test.
+- The native Language row offers OmicOS Chinese/English variants without duplicate
+  generic entries and retains third-party registered languages. Native dictionaries
+  remain their owners' property; this is a priority-ranked row contribution, not a
+  mutation of the locale service or another plugin's dictionary.
+- Compact navigation is now a horizontally scrollable bottom bar with labels and a
+  reserved safe-area-aware frame height. Native session/workspace controls remain.
+  Actual 390px Chrome exercised off-screen Store/Data buttons, checked frame geometry
+  and document overflow, and generated a visually inspected screenshot.
+- Eight editors register only their existing dirty state (Pipeline also requires its
+  existing touched flag). Pointer navigation aggregates one discard reminder; project
+  changes and a docked scientific tab's close button guard the actual affected scope.
+  Cancel retains the editor; accepting navigation never submits its fields or cancels
+  accepted jobs. Retained right-sidebar tabs are excluded from unrelated main-page
+  navigation. The guard serializes no draft text or MCP configuration.
+- Native application smoke passed a two-editor Plan/Pipeline discard/cancel case;
+  isolated Harness scientific smoke passed main-memory cancellation/acceptance and
+  right-memory-tab close cancellation/acceptance alongside real Python/R, approvals,
+  streaming, scoped MCP and Core compatibility. Typecheck/build and client/Harness
+  unit checks passed. Existing app smokes now capture settled animation frames.
+
+Remaining application work: audit keyboard/programmatic navigation and floating or
+context-menu close paths; broaden native scientific-page journeys, verify true
 Electron window chrome/packaging, and finish the requirement-by-requirement visual
 and behavioral audit. The new goal remains active. Real provider credentials and
 production payment transactions were not exercised or fabricated.

@@ -1,3 +1,4 @@
+import { useUnsavedNavigation } from './unsaved-navigation.js'
 import {PipelineHistory} from './PipelineHistory.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './oss-api.js'
@@ -91,7 +92,8 @@ export function PipelinePane({ projectId, visible }: { projectId: string; visibl
   })
   const known = runDefinition?.id === run?.definitionId
   const recoverable = run && ['waiting', 'failed', 'canceled', 'interrupted'].includes(run.state)
-  return <article className="oss-card oss-pipeline" aria-label="Pipeline 工作流"><div className="oss-row"><div><small>PINNED SCIENTIFIC WORKFLOWS</small><h2>Pipeline</h2></div><span className="oss-chip">独立内核 · 检查点 · 人工关卡</span></div>
+  const navigationRef = useUnsavedNavigation(dirty && touched, 'Pipeline 定义')
+  return <article ref={navigationRef} className="oss-card oss-pipeline" aria-label="Pipeline 工作流"><div className="oss-row"><div><small>PINNED SCIENTIFIC WORKFLOWS</small><h2>Pipeline</h2></div><span className="oss-chip">独立内核 · 检查点 · 人工关卡</span></div>
     <p>把分析固定为有版本的步骤。每次运行使用独立 Python/R 进程，工作目录仍是当前项目。定义保存不会执行；批准运行后按顺序执行，人工关卡会暂停。恢复不会假装已丢失的变量仍在。</p>
     {error && <p role="alert" className="oss-error">{error}</p>}
     <div className="oss-toolbar"><label>查找固定定义<input aria-label="查找 Pipeline 定义" value={definitionQuery} maxLength={200} onChange={event => { setDefinitionQuery(event.target.value); setDefinitionsBefore(undefined) }} /></label><button disabled={busy || !definitionsBefore} onClick={() => setDefinitionsBefore(undefined)}>定义第一页</button><button disabled={busy || !listing.definitionPage?.next} onClick={() => setDefinitionsBefore(listing.definitionPage?.next)}>更早的固定定义</button><small>固定定义共 {listing.definitionPage?.total ?? listing.definitions.length} 个 · 此页 {listing.definitions.length} 个</small></div>

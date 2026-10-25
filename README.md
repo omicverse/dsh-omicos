@@ -39,15 +39,30 @@ subscriptions are managed separately in the Store.
 
 The selected directory is the initial working directory, not a global override of
 other conversations: scientific tools and docked panes follow each native Session's
-workspace. Main scientific pages also expose their project selector. The generated
-application overlay is separate from user profile patches and model settings. An
-exclusive profile lease rejects duplicate launch before changing its configuration;
+workspace. Main scientific pages also expose their project selector. Default language
+and Scientist selection are contributed by a private application defaults bundle,
+below the native user profile patch. Native Settings can change them
+and retain those choices across restart; `--locale` sets the deployment default.
+The generated scientific-runtime overlay is separate from user profile patches and
+model settings. An exclusive profile lease rejects duplicate launch before changing its configuration;
 graceful shutdown releases the lease. Native approvals still govern Agent actions,
 and data reads never start an analysis or purchase.
 
 Notebook edits are temporarily retained in this browser tab across native navigation.
 Restoring a draft is explicit and does not execute its cells; saving still uses the
 server's revision checks. Closing the browser tab can discard this temporary copy.
+Tracked edits in the scientific editors prompt before pointer navigation or closing
+an edited docked scientific tab. Canceling leaves the editor untouched; accepting
+discards the local changes without canceling already submitted work. Multiple dirty
+editors share one reminder. Initial untouched Pipeline examples do not prompt.
+This guard does not copy proposal text or MCP configuration into browser storage;
+keyboard/programmatic navigation and other close paths remain under audit.
+
+On compact windows, scientific navigation moves to a scrollable bottom bar while
+the native session/workspace rail remains available. The main frame reserves the
+bar's height, including the bottom safe-area inset, rather than squeezing the page
+between two vertical rails.
+
 The independent workbench remains a diagnostic/compatibility entry below, rather than
 the main OmicOS application. Native Electron packaging and broader UI refinements are
 still tracked in [implementation status](IMPLEMENTATION_STATUS.md).

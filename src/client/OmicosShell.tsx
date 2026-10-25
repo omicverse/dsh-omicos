@@ -1,7 +1,9 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { LocaleDict } from '@deepseek-ai/dsh-client-locale/client'
+import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { installNavigationGuard } from './unsaved-navigation.js'
 import type {
   ILayout,
   MainPanelId
@@ -11,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import { registerOmicosLanguageRow } from './OmicosLanguage.js'
 import { OmicosPanel, type OmicosPage } from './OmicosPanel.js'
 import componentStyles from './oss.css?inline'
 import shellStyles from './omicos-shell.css?inline'
@@ -130,6 +133,7 @@ function OmicosRail({
         >
           <path d="M4 19l1-4a8 8 0 1 1 4 4ZM8 10h8M8 14h5" />
         </svg>
+        <span className="omicos-rail-label">对话</span>
       </button>
       {OMICOS_PAGES.map((page) => (
         <button
@@ -140,6 +144,7 @@ function OmicosRail({
           onClick={() => layout.selectPanel(`omicos-${page.id}` as MainPanelId)}
         >
           <PanelIcon kind={page.icon} size={21} />
+          <span className="omicos-rail-label">{page.label}</span>
         </button>
       ))}
       <div className="omicos-rail-footer">
@@ -202,6 +207,16 @@ function ShellAppearance(): null {
 
 /** Brand, navigation and scientific pages live in the real Harness shell. */
 export function registerOmicosShell(ctx: Context): void {
+  ctx.effect(
+    () =>
+      installNavigationGuard(() =>
+        ctx.slots
+          .entriesOfSlot('sidebar.panellist')
+          .map((entry) => resolveSlotLabel(entry.options.label) || '')
+          .filter(Boolean)
+      ),
+    'omicos: unsaved editor navigation'
+  )
   ctx.effect(() => {
     const style = document.createElement('style')
     style.dataset.omicosShell = ''
@@ -210,6 +225,7 @@ export function registerOmicosShell(ctx: Context): void {
     return () => style.remove()
   }, 'omicos: application appearance')
   ctx.inject(['locale'], (sub) => {
+    registerOmicosLanguageRow(sub)
     for (const language of [
       { id: 'zh-x-omicos', label: '中文 · OmicOS', fallback: 'zh' },
       { id: 'en-x-omicos', label: 'English · OmicOS', fallback: 'en' }

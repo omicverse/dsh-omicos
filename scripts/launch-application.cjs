@@ -50,7 +50,9 @@ async function launchApplication({
   env.DSH_HOME = path.join(base, 'harness')
   env.DSH_AGENTS_HOME = path.join(base, 'agents')
   let child
+  let stopping = false
   const forward = (signal) => {
+    stopping = true
     child?.kill(signal)
   }
   const sigint = () => forward('SIGINT')
@@ -66,13 +68,45 @@ async function launchApplication({
       })
       child.once('error', reject)
       child.once('exit', (code, signal) =>
-        code === 0
+        code === 0 && !stopping
           ? resolve()
           : reject(Error(`Harness exited ${signal || code}`))
       )
     })
   try {
     await run(['plugin', '--profile', 'web', 'add', ROOT])
+    // Bundle defaults precede the user profile patch. CLI overlays would make these settings read-only.
+    const defaultsBundle = path.join(base, 'application-defaults')
+    await fs.mkdir(defaultsBundle, { recursive: true, mode: 0o700 })
+    await fs.writeFile(
+      path.join(defaultsBundle, 'package.json'),
+      JSON.stringify(
+        {
+          name: '@omicverse/omicos-application-defaults',
+          version: '0.0.0',
+          private: true,
+          dsh: { bundle: { patch: './cordis.patch.yml' } }
+        },
+        null,
+        2
+      ) + '\n',
+      { mode: 0o600 }
+    )
+    await fs.writeFile(
+      path.join(defaultsBundle, 'cordis.patch.yml'),
+      [
+        '- id: agent-preset-registry',
+        '  config:',
+        '    default: omicos',
+        '- id: locale',
+        '  config:',
+        `    preference: ${locale}`,
+        ''
+      ].join('\n'),
+      { mode: 0o600 }
+    )
+    await run(['plugin', '--profile', 'web', 'add', defaultsBundle])
+
     // Only this generated overlay is replaced; profile patches and model settings stay user-owned.
     const overlay = path.join(base, 'omicos-application.patch.yml')
     const patch = [
@@ -84,12 +118,6 @@ async function launchApplication({
       `    python: ${JSON.stringify(python)}`,
       `    rscript: ${JSON.stringify(rscript)}`,
       '    autoStart: false',
-      '- id: agent-preset-registry',
-      '  config:',
-      '    default: omicos',
-      '- id: locale',
-      '  config:',
-      `    preference: ${locale}`,
       ''
     ].join('\n')
     await fs.writeFile(overlay, patch, { mode: 0o600 })
@@ -104,6 +132,8 @@ async function launchApplication({
       '--port',
       String(port)
     ])
+  } catch (error) {
+    if (!stopping) throw error
   } finally {
     process.removeListener('SIGINT', sigint)
     process.removeListener('SIGTERM', sigterm)

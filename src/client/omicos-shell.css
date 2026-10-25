@@ -322,24 +322,6 @@ html[data-omicos-shell] body[data-ds-dark-theme] {
   margin-top: auto;
   padding-top: 28px;
 }
-@media (max-width: 700px) {
-  [data-omicos-frame] {
-    margin-left: 52px;
-    width: calc(100% - 52px);
-  }
-  .omicos-rail {
-    width: 52px;
-    padding: 18px 4px;
-    gap: 8px;
-  }
-  .omicos-rail > button {
-    width: 40px;
-    height: 40px;
-  }
-  .omicos-rail-mark {
-    margin-bottom: 15px;
-  }
-}
 
 .omicos-core-entry {
   height: 100%;
@@ -383,11 +365,88 @@ html[data-omicos-shell] body[data-ds-dark-theme] {
 .omicos-language-bar select {
   min-width: 110px;
 }
-html[data-omicos-shell][data-platform='darwin']:not([data-fullscreen])
-  .omicos-rail {
-  padding-top: 64px;
+@media (min-width: 701px) {
+  html[data-omicos-shell][data-platform='darwin']:not([data-fullscreen])
+    .omicos-rail {
+    padding-top: 64px;
+  }
+  html[data-omicos-shell][data-windows-titlebar] .omicos-rail {
+    top: var(--dsh-windows-titlebar-height, 36px);
+  }
 }
-html[data-omicos-shell][data-windows-titlebar] .omicos-rail {
-  top: var(--dsh-windows-titlebar-height, 36px);
+.omicos-mark {
+  color: var(--omicos-brand, #4c7a69);
 }
-.omicos-mark{color:var(--omicos-brand,#4c7a69)}
+
+.omicos-rail-label {
+  display: none;
+}
+.omicos-language-preference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 0;
+  color: var(--omicos-text);
+  font-size: 14px;
+}
+.omicos-language-preference select {
+  color: var(--omicos-text);
+  background: var(--omicos-surface);
+  border: 1px solid var(--omicos-line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 145px;
+  font: inherit;
+}
+.omicos-language-preference select:focus-visible {
+  outline: 2px solid var(--omicos-brand);
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  [data-omicos-frame] {
+    margin-left: 0;
+    width: 100%;
+    height: calc(100% - 64px - env(safe-area-inset-bottom, 0px));
+  }
+  html[data-omicos-shell] .omicos-rail {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    flex-direction: row;
+    gap: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-top: 1px solid var(--omicos-line);
+    scrollbar-width: thin;
+  }
+  .omicos-rail-mark {
+    display: none;
+  }
+  .omicos-rail > button {
+    min-width: 52px;
+    width: auto;
+    height: 48px;
+    gap: 3px;
+    padding: 5px 8px;
+  }
+  .omicos-rail-label {
+    display: block;
+    font-size: 10px;
+    line-height: 12px;
+    white-space: nowrap;
+  }
+  .omicos-rail-footer {
+    margin: 0 0 0 4px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .omicos-rail-footer > span {
+    display: none;
+  }
+}

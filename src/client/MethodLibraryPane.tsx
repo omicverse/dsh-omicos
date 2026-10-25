@@ -1,3 +1,4 @@
+import { useUnsavedNavigation } from './unsaved-navigation.js'
 import { useEffect, useRef, useState } from 'react'
 import { api } from './oss-api.js'
 import type { MethodPack, MethodRecord, MethodReview } from '../oss/method-types.js'
@@ -20,7 +21,8 @@ export function MethodLibraryPane({projectId,visible}:{projectId:string;visible:
   const importPack=()=>void action(async()=>{const pack=JSON.parse(draft);const records=await api<MethodRecord[]>(`${prefix}import`,{confirmed:true,pack,operationId:operationId({pack})});setDirty(false);setId(records[0].id);setRecord(records[0]);await list()})
   const review=(decision:'publish'|'withdraw')=>void action(async()=>{if(!record)throw new Error('请先读取方法原文');const request={id:record.id,revision:record.review.revision,action:decision,note};const result=await api<MethodRecord>(`${prefix}review`,{confirmed:true,review:{...request,operationId:operationId(request)}});setRecord(result);await list()})
   const readHistory=()=>void action(async()=>{if(!record)return;const result=await api<{reviews:MethodReview[];next?:number}>(`${prefix}history?id=${record.id}${history.next?`&before=${history.next}`:''}`);setHistory(current=>({reviews:history.next?current.reviews.concat(result.reviews):result.reviews,next:result.next}))})
-  return <article className="oss-card" aria-label="科研方法库"><details onToggle={event=>setExpanded(event.currentTarget.open)}><summary>科研 Skill 与方法版本库</summary><h2>固定方法原文，再审阅和引用。</h2><p>方法包只包含声明与指导文本，不会运行脚本、安装依赖或自动上传数据。作者、来源和许可证需要你核对；发布记录也不等于科学有效性验证。同一 key/version 的原文不能替换，修改须使用新版本。</p>
+  const navigationRef = useUnsavedNavigation(dirty, '科研方法包')
+  return <article ref={navigationRef} className="oss-card" aria-label="科研方法库"><details onToggle={event=>setExpanded(event.currentTarget.open)}><summary>科研 Skill 与方法版本库</summary><h2>固定方法原文，再审阅和引用。</h2><p>方法包只包含声明与指导文本，不会运行脚本、安装依赖或自动上传数据。作者、来源和许可证需要你核对；发布记录也不等于科学有效性验证。同一 key/version 的原文不能替换，修改须使用新版本。</p>
     {error&&<p role="alert" className="oss-error">{error}</p>}
     <div className="oss-toolbar"><button disabled={busy} onClick={()=>replaceDraft(template)}>准备新方法模板</button><button disabled={busy} onClick={()=>void action(async()=>replaceDraft(await api<MethodPack>(`${prefix}builtin-pack`)))}>准备四份内置公开清单</button><label>读取本机方法包 JSON<input type="file" accept="application/json,.json" aria-label="本机方法包 JSON" disabled={busy} onChange={event=>{const file=event.target.files?.[0];if(file)void action(async()=>{if(file.size>1000000)throw new Error('方法包最多 1 MB');replaceDraft(JSON.parse(await file.text()))})}} /></label></div>
     <label>待导入方法包（JSON）<textarea aria-label="科研方法包 JSON" className="oss-code" spellCheck={false} value={draft} disabled={busy} onChange={event=>{setDraft(event.target.value);setDirty(true)}} /></label><p><small>格式 omicos.methods/1；每包 1–20 个方法。导入后的新内容均为 draft，外部包携带的审阅记录不会自动获得本项目批准。</small></p><button className="oss-primary" disabled={busy||!draft.trim()} onClick={importPack}>批准导入待审阅方法包</button>

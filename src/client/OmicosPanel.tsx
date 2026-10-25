@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { confirmUnsavedNavigation } from './unsaved-navigation.js'
 import { api, HOST_REFRESH_EVENT, type Session } from './oss-api.js'
 import { DataBrowser } from './DataBrowser.js'
 import { NotebookPane } from './NotebookPane.js'
@@ -219,7 +220,15 @@ export function OmicosPanel({
                 <select
                   aria-label="科研工作区"
                   value={project?.id || ''}
-                  onChange={(event) => setProjectId(event.target.value)}
+                  onChange={(event) => {
+                    if (
+                      confirmUnsavedNavigation(
+                        event.currentTarget.closest('.omicos-panel') ||
+                          undefined
+                      )
+                    )
+                      setProjectId(event.target.value)
+                  }}
                 >
                   {session.projects.map((project) => (
                     <option key={project.id} value={project.id}>

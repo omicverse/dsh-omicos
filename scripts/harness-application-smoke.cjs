@@ -48,6 +48,7 @@ const { chromium } = require('playwright')
     await page.waitForFunction(() => document.title.includes('OmicOS'))
     await page.getByText('OmicOS Scientist', { exact: true }).first().waitFor()
     await page.screenshot({
+      animations: 'disabled',
       path: path.join(root, 'test-results/harness-preview/application-home.png')
     })
     const pages = [
@@ -75,6 +76,7 @@ const { chromium } = require('playwright')
       )
       assert.equal(await page.locator('iframe[src*="/omicos/oss"]').count(), 0)
       await page.screenshot({
+        animations: 'disabled',
         path: path.join(
           root,
           `test-results/harness-preview/application-${id}.png`
@@ -85,9 +87,17 @@ const { chromium } = require('playwright')
     await page
       .getByText('和 OmicOS 一起，探索下一次发现', { exact: true })
       .waitFor()
-    if (await page.evaluate(() => document.body.hasAttribute('data-ds-dark-theme'))) {
-      await rail.getByRole('button', { name: '切换深浅外观', exact: true }).click()
-      await page.waitForFunction(() => !document.body.hasAttribute('data-ds-dark-theme'))
+    if (
+      await page.evaluate(() =>
+        document.body.hasAttribute('data-ds-dark-theme')
+      )
+    ) {
+      await rail
+        .getByRole('button', { name: '切换深浅外观', exact: true })
+        .click()
+      await page.waitForFunction(
+        () => !document.body.hasAttribute('data-ds-dark-theme')
+      )
     }
     await rail
       .getByRole('button', { name: '切换深浅外观', exact: true })
@@ -96,6 +106,7 @@ const { chromium } = require('playwright')
       document.body.hasAttribute('data-ds-dark-theme')
     )
     await page.screenshot({
+      animations: 'disabled',
       path: path.join(root, 'test-results/harness-preview/application-dark.png')
     })
     await rail
@@ -104,6 +115,26 @@ const { chromium } = require('playwright')
     await page.waitForFunction(
       () => !document.body.hasAttribute('data-ds-dark-theme')
     )
+    await rail.getByRole('button', { name: '科研流程', exact: true }).click()
+    const flow = page.locator('[data-omicos-page="pipelines"]')
+    const planDraft = flow.getByLabel('科研计划定义 JSON', { exact: true })
+    const pipelineDraft = flow.getByLabel('Pipeline 定义 JSON', { exact: true })
+    await planDraft.fill((await planDraft.inputValue()) + '\n')
+    await pipelineDraft.fill((await pipelineDraft.inputValue()) + '\n')
+    let confirmation
+    page.once('dialog', async (dialog) => {
+      confirmation = dialog.message()
+      await dialog.dismiss()
+    })
+    await rail.getByRole('button', { name: '数据盘', exact: true }).click()
+    assert(
+      confirmation?.includes('科研计划') &&
+        confirmation.includes('Pipeline 定义')
+    )
+    assert(await flow.isVisible())
+    page.once('dialog', (dialog) => dialog.accept())
+    await rail.getByRole('button', { name: '数据盘', exact: true }).click()
+    await page.locator('[data-omicos-page="data"]').waitFor()
     const box = await page.locator('[data-omicos-frame]').boundingBox()
     assert(
       box.x >= 60 && box.width <= 1380,
@@ -112,7 +143,29 @@ const { chromium } = require('playwright')
     await page.setViewportSize({ width: 390, height: 844 })
     await rail.getByRole('button', { name: '数据盘', exact: true }).click()
     await page.locator('[data-omicos-page="data"]').waitFor()
+    await page.waitForFunction(() => {
+      const frame = document
+        .querySelector('[data-omicos-frame]')
+        .getBoundingClientRect()
+      const navigation = document
+        .querySelector('.omicos-rail')
+        .getBoundingClientRect()
+      return (
+        Math.abs(frame.left) < 1 &&
+        frame.width > innerWidth - 2 &&
+        navigation.top > innerHeight - 85 &&
+        Math.abs(navigation.bottom - innerHeight) < 2
+      )
+    })
+    await rail.getByRole('button', { name: '订阅商城', exact: true }).click()
+    await page.locator('[data-omicos-page="store"]').waitFor()
+    await rail.getByRole('button', { name: '数据盘', exact: true }).click()
+    await page
+      .locator('[data-omicos-page="data"]')
+      .getByRole('heading', { name: '项目数据', exact: true })
+      .waitFor()
     await page.screenshot({
+      animations: 'disabled',
       path: path.join(
         root,
         'test-results/harness-preview/application-mobile.png'

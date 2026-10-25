@@ -171,6 +171,19 @@ function run(arguments_, env, cwd) {
       await nativeNotebook.getByRole('button', { name: '保存并批准运行单元 1', exact: true }).click();
       await nativeNotebook.locator('.oss-notebook .oss-output').filter({ hasText: '[1] 4' }).waitFor();
     }
+    await rail.getByRole('button', { name: '记忆', exact: true }).click();
+    const memoryPage = main.locator('[data-omicos-page="memory"]');
+    await memoryPage.getByLabel('记忆标题', { exact: true }).fill('UNSAVED_NAVIGATION_FIXTURE');
+    await memoryPage.getByLabel('记忆正文', { exact: true }).fill('Unsubmitted text must stay in the current editor when navigation is canceled.');
+    let navigationPrompt;
+    main.once('dialog', async dialog => { navigationPrompt = dialog.message(); await dialog.dismiss(); });
+    await rail.getByRole('button', { name: '数据盘', exact: true }).click();
+    assert(navigationPrompt?.includes('记忆提案'));
+    assert.equal(await memoryPage.getByLabel('记忆标题', { exact: true }).inputValue(), 'UNSAVED_NAVIGATION_FIXTURE');
+    assert(await memoryPage.isVisible());
+    main.once('dialog', dialog => dialog.accept());
+    await rail.getByRole('button', { name: '数据盘', exact: true }).click();
+    await main.locator('[data-omicos-page="data"]').waitFor();
     await rail.getByRole('button', { name: '对话', exact: true }).click();
     const expandRight = main.locator('[data-sidebar-right-expand]');
     if (await expandRight.isVisible()) await expandRight.click();
@@ -179,7 +192,20 @@ function run(arguments_, env, cwd) {
     await right.locator('[data-omicos-page="memory"]').waitFor();
     await right.getByText('BROWSER_CONFIRMED_GRCh38', { exact: false }).first().waitFor();
     await main.screenshot({ path: path.join(output, 'harness-scientific-sidebar.png'), fullPage: true });
-    await right.getByRole('button', { name: /^(Collapse right sidebar|收起右侧边栏)$/ }).click();
+    await right.getByLabel('记忆标题', { exact: true }).fill('RIGHT_UNSAVED_FIXTURE');
+    const closeMemory = right.locator('[data-dockkit-tab-close]').first();
+    await closeMemory.hover();
+    let sidebarPrompt;
+    main.once('dialog', async dialog => { sidebarPrompt = dialog.message(); await dialog.dismiss(); });
+    await closeMemory.click();
+    assert(sidebarPrompt?.includes('记忆提案'));
+    assert.equal(await right.getByLabel('记忆标题', { exact: true }).inputValue(), 'RIGHT_UNSAVED_FIXTURE');
+    main.once('dialog', dialog => dialog.accept());
+    await closeMemory.click();
+    await right.locator('[data-omicos-page="memory"]').waitFor({ state: 'detached' });
+
+    const collapseRight = right.getByRole('button', { name: /^(Collapse right sidebar|收起右侧边栏)$/ });
+    if (await collapseRight.isVisible()) await collapseRight.click();
     await main.screenshot({ path: path.join(output, 'harness-entry.png'), fullPage: true });
     assert.deepEqual(errors, []);
     // Render the retained legacy console against its public DTO fixture, without a private Core binary.

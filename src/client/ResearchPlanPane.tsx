@@ -1,3 +1,4 @@
+import { useUnsavedNavigation } from './unsaved-navigation.js'
 import { useEffect, useRef, useState } from 'react'
 import { api } from './oss-api.js'
 import type { Execution } from '../oss/types.js'
@@ -40,7 +41,8 @@ export function ResearchPlanPane({ projectId, visible, executions }: { projectId
   })
   const loadHistory = () => { if (!plan) return; const id = plan.id; const cursor = history.next; void action(async () => { const result = await api<History>(`${prefix}history?id=${encodeURIComponent(id)}${cursor ? `&before=${cursor}` : ''}`); if (identity.current === id) setHistory(current => ({ revisions: cursor ? current.revisions.concat(result.revisions) : result.revisions, next: result.next })) }) }
   const disabled = busy || dirty || !note.trim()
-  return <article className="oss-card" aria-label="科研计划"><div className="oss-row"><div><small>RESEARCH PLANS</small><h2>科研计划与人工审批</h2></div><span className="oss-chip">版本 · 验收条件 · 执行证据</span></div>
+  const navigationRef = useUnsavedNavigation(dirty, '科研计划')
+  return <article ref={navigationRef} className="oss-card" aria-label="科研计划"><div className="oss-row"><div><small>RESEARCH PLANS</small><h2>科研计划与人工审批</h2></div><span className="oss-chip">版本 · 验收条件 · 执行证据</span></div>
     <p>先固定研究目标、方法、输入输出与风险，再由你批准。计划审批不会自动执行或代替代码审批；完成记录是你的验收意见，执行成功不代表科学结论有效。</p>
     {error && <p role="alert" className="oss-error">{error}</p>}
     <div className="oss-toolbar"><label>搜索科研计划<input aria-label="搜索科研计划" maxLength={200} value={query} onChange={event => { setQuery(event.target.value); setBefore(undefined) }} /></label><button disabled={busy || !before} onClick={() => setBefore(undefined)}>计划第一页</button><button disabled={busy || !page.next} onClick={() => setBefore(page.next)}>更早的科研计划</button><small>此页 {page.entries.length} 个</small></div>

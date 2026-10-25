@@ -34,3 +34,10 @@
 - Match the running UI against OmicOS reference structure and palette, not merely passing registration tests.
 - Verify sessions/dialogue/scientific side panel and subscription commerce each work in the main app.
 - Record limitations and remaining work. Keep goal active if any objective requirement is missing.
+
+## 6. Follow-up verified interactions (2026-10-25)
+- Application defaults must be a bundle below the native user patch, not a read-only CLI override. Validate locale/default-Agent writes and full application restart with `node scripts/application-preferences-smoke.cjs`; no fake provider, no execution.
+- Native Language row shadows the built-in row by priority and keeps registered third-party languages. Product variants retain OmicOS copy.
+- Compact screens retain the native workspace rail and move OmicOS pages to a labeled bottom bar. Check real frame bounds and horizontal navigation, not just document overflow.
+- Eight editor dirty states participate in one scope-aware pointer-navigation guard. Preserve existing Pipeline touched semantics. Test cancel/accept for multiple editors, main-memory navigation and an actual docked scientific tab close.
+- Remaining: keyboard/programmatic navigation, floating/context-menu close paths, fuller native scientific journeys and actual Electron window/packaging verification.

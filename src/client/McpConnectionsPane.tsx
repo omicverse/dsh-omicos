@@ -1,3 +1,4 @@
+import { useUnsavedNavigation } from './unsaved-navigation.js'
 import {useEffect,useRef,useState} from 'react'
 import {api} from './oss-api.js'
 import type {McpConnectionConfig,McpConnectionRecord,McpHostStatus} from '../oss/mcp-types.js'
@@ -15,7 +16,8 @@ export function McpConnectionsPane({projectId,visible}:{projectId:string;visible
   const open=(id?:string)=>{if(dirty&&!window.confirm('放弃尚未保存的 MCP 配置？'))return;void action(async()=>adopt(id?await api<McpConnectionRecord>(`${prefix}document?id=${id}`):undefined))}
   const save=()=>void action(async()=>{const request={...(record?{id:record.id,revision:record.revision}:{}),title,config:JSON.parse(config) as McpConnectionConfig,note};adopt(await api<McpConnectionRecord>(`${prefix}save`,{confirmed:true,connection:{...request,operationId:operation(request)}}));await load()})
   const decide=(reconnect=false,authorize=false)=>{if(!record)return;void action(async()=>{const decision={id:record.id,revision:record.revision,note,...reconnect?{}:{enabled:authorize||!record.enabled}};adopt(await api<McpConnectionRecord>(`${prefix}${reconnect?'reconnect':'enabled'}`,{confirmed:true,decision:{...decision,operationId:operation({reconnect,authorize,...decision})}}));await load()})}
-  return <article className="oss-card oss-wide"><details onToggle={event=>setExpanded(event.currentTarget.open)}><summary>科研 MCP 扩展连接</summary>
+  const navigationRef = useUnsavedNavigation(dirty, 'MCP 连接配置')
+  return <article ref={navigationRef} className="oss-card oss-wide"><details onToggle={event=>setExpanded(event.currentTarget.open)}><summary>科研 MCP 扩展连接</summary>
     <p>复用 Harness 的 MCP 工具、资源和重连机制，只挂载到此项目的 OmicOS Scientist 会话。保存默认停用；修改后需重新启用。授权单独保存在此 Host，复制或回退项目文件不会恢复授权。启用会启动本地程序或联系指定服务，调用仍须 Harness 审批。</p>
     {error&&<p role="alert" className="oss-error">{error}</p>}
     {state&&!state.host.available&&<p className="oss-note">当前没有 Harness MCP 桥接。可以管理配置；运行连接需要从 Harness 打开 OmicOS Scientist，并安装可选的 @deepseek-ai/dsh-mcp-client@0.2.1-rc.3。</p>}

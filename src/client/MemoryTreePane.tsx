@@ -1,3 +1,4 @@
+import { useUnsavedNavigation } from './unsaved-navigation.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './oss-api.js'
 import type { MemoryDraft, MemoryNode, MemoryView } from '../oss/memory-types.js'
@@ -53,7 +54,8 @@ export function MemoryTreePane({ projectId, visible }: { projectId: string; visi
     const value = fresh(); value.kind = 'summary'; value.title = '整合摘要'; value.sources = nodes.map(({ node }) => ({ kind: 'memory', ref: node.id, revision: node.revision, digest: node.digest }))
     setDraft(value); setSources(JSON.stringify(value.sources, null, 2)); setSelected(undefined); setHistory({ revisions: [] }); setDirty(true); setPromotion(false); setConsolidate(false)
   })
-  return <article className="oss-card oss-memory" aria-label="结构化记忆"><div className="oss-row"><div><small>SCOPED RESEARCH MEMORY</small><h2>记忆树</h2></div><button disabled={busy} onClick={newDraft}>新建记忆提案</button></div>
+  const navigationRef = useUnsavedNavigation(dirty, '记忆提案')
+  return <article ref={navigationRef} className="oss-card oss-memory" aria-label="结构化记忆"><div className="oss-row"><div><small>SCOPED RESEARCH MEMORY</small><h2>记忆树</h2></div><button disabled={busy} onClick={newDraft}>新建记忆提案</button></div>
     <p>按主题组织事实、会话笔记和项目内长期记忆。只有已确认且来源仍有效的内容会进入 Agent 上下文。确认代表人工认可，不能代替科学验证；来源变动后摘要需要重新核对。</p>
     {error && <p className="oss-error" role="alert">{error}</p>}
     <div className="oss-toolbar"><label>搜索记忆<input value={search} onChange={event => { setSearch(event.target.value); setCursor(undefined) }} /></label><label>主题筛选<select value={parent} onChange={event => { setParent(event.target.value); setCursor(undefined) }}><option value="all">全部主题</option><option value="root">根目录</option>{listing.outline.topics.map(topic => <option key={topic.id} value={topic.id}>{topic.title} · {topic.state}</option>)}</select></label><button disabled={busy || checked.length < 2} onClick={summarize}>从所选事实建立摘要</button></div>
