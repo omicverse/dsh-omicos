@@ -6,7 +6,7 @@ import {ToolCallId} from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import McpResources from '@deepseek-ai/dsh-mcp-resources'
-import {mkdtemp,readFile,rm} from 'node:fs/promises'
+import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
 import {join} from 'node:path'
 import {tmpdir} from 'node:os'
@@ -136,3 +136,9 @@ it('cancels a real pending negotiation on disable and does not start late after 
     await bridge.dispose();expect((await bridge.snapshot(project.workspace)).agents).toEqual([])
   }finally{await bridge.dispose();await scoped.scope.dispose();await ctx.fiber.dispose();await runtime.dispose();if(old===undefined)delete process.env.OMICOS_MCP_FIXTURE_TOKEN;else process.env.OMICOS_MCP_FIXTURE_TOKEN=old;await rm(directory,{recursive:true,force:true})}
 },20000)
+
+it('cancels only context preparation while preserving one Agent-owned negotiating transport, then resumes without duplicate instances',async()=>{
+ const {directory,runtime,ctx,bridge}=await setup();const project=await runtime.project(join(directory,'project'));const current=agent(ctx,'preparing-session',project.workspace);const log=join(directory,'events.jsonl'),release=join(directory,'release');const old=process.env.OMICOS_MCP_FIXTURE_TOKEN;process.env.OMICOS_MCP_FIXTURE_TOKEN='synthetic';const signal=new AbortController()
+ try{await create(runtime,project.workspace,log,release);const waiting=bridge.prepare(current.value,signal.signal).catch(error=>error);await until(async()=>(await events(log)).some(row=>row.event==='server/discover'));signal.abort();expect(await waiting).toMatchObject({name:'AbortError'});expect((await bridge.snapshot(project.workspace)).agents).toHaveLength(1);await writeFile(release,'allow fixture negotiation');await bridge.prepare(current.value);expect(current.scope.ctx.get('tools')!.schemas(current.value).some(tool=>tool.name==='mcp__research__echo')).toBe(true);const starts=(await events(log)).filter(row=>row.event==='start').length;await bridge.prepare(current.value);expect((await events(log)).filter(row=>row.event==='start')).toHaveLength(starts);await bridge.dispose();for(const row of (await events(log)).filter(row=>row.event==='start'))expect(()=>process.kill(row.pid,0)).toThrow()
+ }finally{signal.abort();await bridge.dispose();await current.scope.dispose();await ctx.fiber.dispose();await runtime.dispose();if(old===undefined)delete process.env.OMICOS_MCP_FIXTURE_TOKEN;else process.env.OMICOS_MCP_FIXTURE_TOKEN=old;await rm(directory,{recursive:true,force:true})}
+},15000)

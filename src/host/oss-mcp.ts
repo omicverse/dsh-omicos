@@ -51,6 +51,24 @@ export class HarnessProjectMcp implements McpHostBridge {
       await this.sync(item)
     }catch(error){await this.detach(agent);throw error}
   }
+  /** Rebind retained agents after Host replacement and await their first tool projection.
+   * Cancellation stops this wait; the authorized transport remains Agent-owned.
+   * Returns whether pre-collected tools/instructions need a fresh prompt assembly.
+   */
+  async prepare(agent:Agent,signal?:AbortSignal):Promise<boolean>{
+    const schema=()=>JSON.stringify((agent.ctx.get('tools')?.schemas(agent)||[]).filter(tool=>tool.name.startsWith('mcp__')||RESOURCE_TOOLS.has(tool.name)))
+    const before=schema()
+    const existing=this.agents.get(agent)
+    const projecting=!existing||[...existing.connections.values()].some(live=>live.phase==='starting')
+    signal?.throwIfAborted();await this.attach(agent);signal?.throwIfAborted()
+    const item=this.agents.get(agent);if(!item||item.closed||this.closing)return false
+    const ready=item.queue.then(()=>Promise.all([...item.connections.values()].map(live=>live.ready))).then(()=>{})
+    if(!signal){await ready;return (projecting&&item.connections.size>0)||before!==schema()}
+    await new Promise<void>((resolve,reject)=>{const abort=()=>{cleanup();reject(signal.reason||new Error('MCP context preparation canceled'))};const cleanup=()=>signal.removeEventListener('abort',abort);signal.addEventListener('abort',abort,{once:true});ready.then(()=>{cleanup();resolve()},error=>{cleanup();reject(error)});if(signal.aborted)abort()})
+    signal.throwIfAborted();return (projecting&&item.connections.size>0)||before!==schema()
+  }
+  /** Logical connection projection, not SDK transport-health or authorization proof. */
+  contextVersion(agent:Agent):string{return JSON.stringify([...(this.agents.get(agent)?.connections.values()||[])].map(live=>[live.record.id,live.record.revision,live.phase]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))))}
   private async start(item:Attachment,live:Live):Promise<void>{
     try{
       const plugin=await this.load()

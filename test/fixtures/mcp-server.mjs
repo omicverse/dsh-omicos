@@ -3,7 +3,7 @@
 import {createInterface} from 'node:readline'
 import {appendFileSync,existsSync} from 'node:fs'
 import {setTimeout} from 'node:timers/promises'
-const [eventsPath,releasePath]=process.argv.slice(2)
+const [eventsPath,...options]=process.argv.slice(2);const releasePath=options.find(value=>value!=='--resources-only');const resourcesOnly=options.includes('--resources-only')
 const record=(event,extra={})=>appendFileSync(eventsPath,`${JSON.stringify({event,pid:process.pid,...extra})}\n`)
 record('start');process.once('exit',()=>record('exit'));process.stdin.once('end',()=>process.exit(0))
 createInterface({input:process.stdin}).on('line',async line=>{
@@ -15,7 +15,7 @@ createInterface({input:process.stdin}).on('line',async line=>{
   }
   let result
   if(request.method==='initialize')result={protocolVersion:request.params.protocolVersion,capabilities:{tools:{},resources:{}},serverInfo:{name:'OmicOS test MCP',version:'1'},instructions:'External fixture guidance {{must_stay_literal}}'}
-  else if(request.method==='tools/list')result={tools:[{name:'echo',description:'Fixture echo without external services',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text']}}]}
+  else if(request.method==='tools/list')result={tools:resourcesOnly?[]:[{name:'echo',description:'Fixture echo without external services',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text']}}]}
   else if(request.method==='tools/call'){record('invoked',{text:request.params.arguments.text});result={content:[{type:'text',text:`${request.params.arguments.text}; credential=${Boolean(process.env.FIXTURE_TOKEN)}`} ]}}
   else if(request.method==='resources/list')result={resources:[{uri:'fixture://paper',name:'Paper fixture',mimeType:'text/plain'}]}
   else if(request.method==='resources/templates/list')result={resourceTemplates:[]}

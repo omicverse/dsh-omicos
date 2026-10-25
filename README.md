@@ -453,3 +453,9 @@ Concurrent startup requests share one handler/CSRF generation; retired routes fa
 before dispatch. Full plugin unload restarts an arbitrary Python namespace cold;
 carrier-only replacement preserves it. See [lifecycle evidence and remaining
 platform limits](docs/adr/0022-harness-generation-lifecycle.md).
+
+Retained Scientist preset bindings also follow the current Host provider after
+remount: the next context prepares authorized MCP tools and refreshes the public
+prompt assembly, while current memory stays literal and approvals remain required.
+Cold transcript reads do not start transports. See [retained-scope evidence and
+remaining live-streaming limits](docs/adr/0023-retained-scientist-context.md).
