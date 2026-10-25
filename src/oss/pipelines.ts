@@ -170,7 +170,7 @@ export class PipelineService {
     return false
   }
   async control(id: string, revision: number, action: 'continue' | 'checkpoint' | 'restart' | 'cancel' | 'reject', options: { checkpointAttemptId?: string; sideEffectsReviewed?: boolean; allowEnvironmentChange?: boolean } = {}): Promise<PipelineRun> {
-    this.assertOpen(); const run = this.store.get(id)
+    this.assertOpen(); let run = this.store.get(id)
     if (action === 'cancel') {
       if (stopped.has(run.state)) return run
       const updated = this.store.update(id, undefined, 'run/cancel-requested', draft => { draft.cancelRequested = true; draft.state = this.active.has(id) ? 'cancelling' : 'canceled' })
@@ -180,6 +180,11 @@ export class PipelineService {
       if (worker && execution && !stopped.has(execution.state)) await worker.cancel(execution.id)
       return updated
     }
+    if (run.revision !== revision) throw new PipelineError(409, 'Pipeline changed; refresh before approving this stage')
+    // A visible gate/terminal receipt may precede final worker disposal. Await
+    // that exact task, then recheck CAS; never recover into its dying namespace.
+    const settling = this.active.get(id)
+    if (settling && (run.state === 'waiting' || stopped.has(run.state))) { await settling; this.assertOpen(); run = this.store.get(id) }
     if (run.revision !== revision) throw new PipelineError(409, 'Pipeline changed; refresh before approving this stage')
     if (this.active.has(id)) throw new PipelineError(409, 'Pipeline is still active; cancel or wait for its current execution')
     if (action === 'reject') {

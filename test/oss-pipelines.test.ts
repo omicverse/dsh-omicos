@@ -11,7 +11,7 @@ const options = () => ({ stateDir: join(directory, 'state'), python: process.env
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'oss-pipelines-')); runtime = await OssRuntime.open(options()) })
 afterEach(async () => { await runtime.dispose(); await rm(directory, { recursive: true, force: true }) })
 async function wait(service: PipelineService, id: string, predicate: (run: PipelineRun) => boolean): Promise<PipelineRun> {
-  for (let count = 0; count < 400; count++) { const run = service.get(id); if (predicate(run)) { await new Promise(resolve => setTimeout(resolve, 5)); return service.get(id) } await new Promise(resolve => setTimeout(resolve, 20)) }
+  for (let count = 0; count < 400; count++) { const run = service.get(id); if (predicate(run)) return run; await new Promise(resolve => setTimeout(resolve, 20)) }
   throw new Error(`Pipeline timed out: ${JSON.stringify(service.get(id))}`)
 }
 const definition = () => ({ title: 'Checkpointed analysis', language: 'python', parameters: { base: 40 }, inputs: ['data.txt'], references: [{ id: 'method', version: '1', text: 'Original method guidance', sha256: digest('Original method guidance') }], steps: [
