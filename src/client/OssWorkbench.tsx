@@ -166,7 +166,7 @@ function Laboratory({ project, visible }: { visible: boolean; project: Session['
   return <section><header className="oss-section-head"><div><small>RESEARCH WORKSPACE</small><h1>{short(project.workspace)}</h1><p>{project.workspace}</p></div><span className="oss-chip">Kernel · {snapshot?.kernel.state || '加载中'} · {connection === 'live' ? '实时同步' : connection === 'reconnecting' ? '重连中' : '连接中'}</span></header>
     {(error || streamError) && <p role="alert" className="oss-error">{error || streamError}</p>}
     <ScienceChat projectId={project.id} />
-    <DataBrowser projectId={project.id} prepare={(nextLanguage, source) => { setLanguage(nextLanguage); setCode(source) }} />
+    <DataBrowser key={project.id} visible={visible} projectId={project.id} prepare={(nextLanguage, source) => { setLanguage(nextLanguage); setCode(source) }} />
     <AnnDataExplorer projectId={project.id} visible={visible} variables={language === 'python' ? snapshot?.variables || [] : []} />
     <FigureStudioPane key={`figures:${project.id}`} projectId={project.id} visible={visible} />
     <MemoryTreePane key={`memory:${project.id}`} projectId={project.id} visible={visible} />

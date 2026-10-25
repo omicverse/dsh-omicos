@@ -1,5 +1,6 @@
 /** Full published Harness profile, synthetic local model only; never reads real model keys. */
 const assert = require('node:assert/strict');
+const {createHash}=require('node:crypto');
 const { spawn } = require('node:child_process');
 const { createServer } = require('node:http');
 const fs = require('node:fs/promises');
@@ -71,6 +72,13 @@ function run(arguments_, env, cwd) {
     const context = await browser.newContext({ reducedMotion: 'reduce' });
     const page = await context.newPage(); page.on('pageerror', error => errors.push(String(error)));
     await page.goto(launch); await page.goto(origin + '/omicos/oss');
+    const importer = page.getByLabel('导入项目数据', { exact: true }); await importer.getByText('导入文件与断点续传', { exact: true }).click();
+    const importBytes = Buffer.from('sample,value\nharness,42\n'); const importSha = createHash('sha256').update(importBytes).digest('hex');
+    await importer.getByLabel('本机导入文件', { exact: true }).setInputFiles({ name: 'harness-import.csv', mimeType: 'text/csv', buffer: importBytes });
+    await importer.getByLabel('导入预期完整 SHA-256', { exact: true }).fill(importSha); await importer.getByRole('button', { name: '批准导入新文件', exact: true }).click();
+    await importer.locator('[data-upload-state]').filter({ hasText: 'completed' }).waitFor(); assert.equal(createHash('sha256').update(await fs.readFile(path.join(workspace, 'harness-import.csv'))).digest('hex'), importSha);
+    const importSnapshot = await page.evaluate(async () => { const session = await (await fetch('/omicos/oss/api/session')).json(); return (await fetch(`/omicos/oss/api/project/${session.projects[0].id}/snapshot`)).json() }); assert.equal(importSnapshot.executions.length, 0);
+    await importer.getByText('导入文件与断点续传', { exact: true }).click();
     await page.evaluate(async () => {
       const session = await (await fetch('/omicos/oss/api/session')).json(); const prefix = `/omicos/oss/api/project/${session.projects[0].id}/`
       const post = async (path, data) => { const response = await fetch(prefix + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-omicos-csrf': session.csrf }, body: JSON.stringify(data) }); const body = await response.json(); if (!response.ok) throw Error(JSON.stringify(body)); return body }
@@ -131,7 +139,7 @@ function run(arguments_, env, cwd) {
     await main.getByText('尚未连接 Core 内核。', { exact: false }).waitFor()
     await main.screenshot({ path: path.join(output, 'core-compat-entry.png'), fullPage: true })
     assert.deepEqual(errors, [])
-    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
+    console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', scientist: 'scoped persona and Notebook tools', entry: 'actual OmicOS tab -> project-scoped workbench popup', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller -> local mocked provider -> persistent assistant -> reload', pageErrors: errors }));
   } finally {
     await browser?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }

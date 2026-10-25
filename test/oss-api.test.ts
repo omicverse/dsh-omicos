@@ -86,3 +86,15 @@ it('sends an explicit scientific protocol and refuses automatic fallback after v
   await expect(api('project/fixture/execute', { operationId: 'never-dispatch', code: 'print(42)' })).rejects.toMatchObject({ status: 426 })
   expect(requests).toHaveLength(1); expect((requests[0].headers as Record<string, string>)['x-omicos-protocol']).toBe('1')
 })
+it('retries binary chunks only after the precise pre-dispatch CSRF rejection, preserving exact offset and bytes',async()=>{
+  let sessions=0;const bodies:unknown[]=[];const paths:string[]=[]
+  vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{if(url.endsWith('/session'))return new Response(JSON.stringify({csrf:++sessions===1?'old':'new'}));bodies.push(init?.body);paths.push(url);return (init?.headers as Record<string,string>)['x-omicos-csrf']==='old'?new Response(JSON.stringify({error:'Invalid CSRF token'}),{status:403}):new Response(JSON.stringify({received:4194304}))}))
+  const {api,apiUploadChunk}=await import('../src/client/oss-api.js');await api('session');const bytes=new Uint8Array([1,2,3]).buffer
+  expect(await apiUploadChunk('project/id/upload-chunk?id=stable&offset=0',bytes)).toEqual({received:4194304});expect(paths).toHaveLength(2);expect(paths[0]).toBe(paths[1]);expect(bodies[0]).toBe(bytes);expect(bodies[1]).toBe(bytes)
+})
+it('does not replay a binary upload on unknown network outcomes or protocol rejection',async()=>{
+  const fetcher=vi.fn().mockRejectedValueOnce(new Error('Response lost after chunk committed')).mockResolvedValueOnce(new Response(JSON.stringify({error:'Protocol mismatch'}),{status:426}));vi.stubGlobal('fetch',fetcher)
+  const {apiUploadChunk}=await import('../src/client/oss-api.js');const bytes=new ArrayBuffer(0)
+  await expect(apiUploadChunk('project/id/upload-chunk?id=stable&offset=0',bytes)).rejects.toThrow('Response lost');expect(fetcher).toHaveBeenCalledTimes(1)
+  await expect(apiUploadChunk('project/id/upload-chunk?id=stable&offset=0',bytes)).rejects.toMatchObject({status:426});expect(fetcher).toHaveBeenCalledTimes(2)
+})

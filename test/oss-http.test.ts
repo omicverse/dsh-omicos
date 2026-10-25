@@ -368,6 +368,23 @@ describe('scientific workbench and commerce boundary', () => {
     expect(journal.events.some((event: any) => event.type === 'run/succeeded')).toBe(true)
     expect(seen).toHaveLength(0)
   })
+  it('imports verified raw binary chunks only after owner/CSRF approval and never overwrites or executes uploaded data', async () => {
+    const id=(await runtime.list())[0].id;const prefix=`project/${id}/upload-`;const bytes=Buffer.from('sample,value\na,42\nb,43\n');const digest=createHash('sha256').update(bytes).digest('hex');const upload={operationId:'http-import',directory:'',name:'uploaded.csv',bytes:bytes.length,chunkHashes:[digest],expectedSha256:digest}
+    expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}list`)).status).toBe(401)
+    expect((await post(`${prefix}start`,{upload})).status).toBe(400)
+    const started=await(await post(`${prefix}start`,{confirmed:true,upload})).json() as any;expect(started.state).toBe('uploading')
+    const chunkPath=`${base}/omicos/oss/api/${prefix}chunk?id=${started.id}&offset=0`
+    expect((await globalThis.fetch(chunkPath,{method:'PUT',headers:{'content-type':'application/octet-stream','x-omicos-csrf':csrf},body:bytes})).status).toBe(401)
+    expect((await fetchHost(chunkPath,{method:'PUT',headers:{'content-type':'application/octet-stream','x-omicos-csrf':'wrong'},body:bytes})).status).toBe(403)
+    expect((await fetchHost(chunkPath,{method:'PUT',headers:{'content-type':'application/json','x-omicos-csrf':csrf},body:bytes})).status).toBe(415)
+    expect((await fetchHost(chunkPath,{method:'PUT',headers:{'content-type':'application/octet-stream','x-omicos-csrf':csrf},body:Buffer.from('bad')})).status).toBe(422)
+    const result=await fetchHost(chunkPath,{method:'PUT',headers:{'content-type':'application/octet-stream','x-omicos-csrf':csrf,'x-omicos-protocol':'1'},body:bytes});expect(result.status).toBe(200);const ack=await result.json() as any;expect(ack.received).toBe(bytes.length);expect(ack).not.toHaveProperty('chunkHashes')
+    expect((await post(`${prefix}finalize`,{id:started.id})).status).toBe(400)
+    const completed=await(await post(`${prefix}finalize`,{id:started.id,confirmed:true})).json() as any;expect(completed.state).toBe('completed');expect(completed.sha256).toBe(digest);const project=await runtime.byId(id);expect(await readFile(join(project.workspace,'uploaded.csv'))).toEqual(bytes)
+    expect((await post(`${prefix}start`,{confirmed:true,upload:{...upload,operationId:'overwrite'}})).status).toBe(409)
+    expect((await post(`${prefix}cancel`,{id:started.id,confirmed:true})).status).toBe(409)
+    expect(project.snapshot().executions).toEqual([]);expect(project.kernelState().state).toBe('cold');expect(seen).toHaveLength(0)
+  })
   it('keeps managed environment installation and next-Host selection behind owner/CSRF and explicit human confirmation', async () => {
     const id=(await runtime.list())[0].id;const prefix=`project/${id}/managed-environment-`
     expect((await globalThis.fetch(`${base}/omicos/oss/api/${prefix}list`)).status).toBe(401)

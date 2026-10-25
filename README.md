@@ -42,6 +42,17 @@ conflicts require reloading and merging, so another window's edits are not overw
 Imported rich outputs are retained for export with an unverified marker and are
 never executed as browser HTML. The current import limit is 2 MB / 500 cells.
 
+The data browser can import local files with verified resumable uploads. It hashes
+4 MiB slices, preserves confirmed offsets across reloads and requires the same source
+bytes before resuming. Finalization records the whole-file SHA-256; you can supply an
+independent expected digest. Existing project files are never overwritten. Pause or
+explicitly cancel private staging; after commit, cancellation cannot delete the
+project file. Limits are 10 GiB/file and four active imports. The destination must
+support atomic no-overwrite hard links on the project filesystem. No data is parsed,
+loaded or sent to the cloud by this upload channel. CSV/TSV/H5AD/RDS loading still
+uses prepared code and a separate execution approval. See
+[data import decisions](docs/adr/0013-resumable-project-data-import.md).
+
 The AnnData explorer inspects the current Python object, then previews an existing
 embedding, obs distribution or one explicitly selected X/layer/raw feature. Every
 inspection/plot requires approval. Seeded uniform sampling is capped at 10000 rows;

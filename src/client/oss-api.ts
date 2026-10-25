@@ -26,5 +26,18 @@ async function request<T>(path: string, data: unknown, signal: AbortSignal | und
   if (path === 'session') { csrf = body.csrf; accountIdentity = body.account ? identityOf(body.account) : undefined }
   return body as T
 }
+/** Exact offset/chunk identity is immutable. Unknown network outcomes are never automatically retried. */
+export async function apiUploadChunk<T>(path: string, bytes: ArrayBuffer, signal?: AbortSignal, retried = false): Promise<T> {
+  const response = await fetch(`/omicos/oss/api/${path}`, { method: 'PUT', cache: 'no-store', signal, headers: { 'x-omicos-protocol': '1', 'x-omicos-csrf': csrf, 'content-type': 'application/octet-stream' }, body: bytes })
+  const body = await response.json()
+  if (response.status === 403 && body.error === 'Invalid CSRF token' && !retried) {
+    csrfRefresh ??= request<Session>('session', undefined, signal, true).finally(() => { csrfRefresh = undefined })
+    await csrfRefresh
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(HOST_REFRESH_EVENT))
+    return apiUploadChunk<T>(path, bytes, signal, true)
+  }
+  if (!response.ok) throw new ApiError(response.status, body.error || `HTTP ${response.status}`)
+  return body as T
+}
 export interface CloudAccount { server?: string; logged_in: boolean; user?: { id: string; email?: string; phone?: string }; generation: number; login?: { user_code: string; verification_uri: string; expires_at: number } }
 export interface Session { csrf: string; backend?: 'oss' | 'core'; account: CloudAccount; projects: Array<{ id: string; workspace: string }>; protocol: number }

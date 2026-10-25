@@ -1,3 +1,4 @@
+import { DataUploads } from './uploads.js'
 import { ManagedEnvironments } from './managed-environments.js'
 import { ResearchPlans } from './research-plans.js'
 import { ResearchPlanError } from './research-plan-types.js'
@@ -22,6 +23,7 @@ export class OssRuntime {
   private closing = false
   private known = new Map<string, ProjectReference>()
   private registryWrites: Promise<void> = Promise.resolve()
+  private uploadProjects = new Map<string, Promise<DataUploads>>()
   private environmentProjects = new Map<string, Promise<ManagedEnvironments>>()
   private planProjects = new Map<string, Promise<ResearchPlans>>()
   private figureProjects = new Map<string, Promise<FigureStudio>>()
@@ -95,6 +97,13 @@ export class OssRuntime {
     }
     return service
   }
+  async uploads(workspace: string): Promise<DataUploads> {
+    const parent = await this.project(workspace)
+    if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
+    let service = this.uploadProjects.get(parent.workspace)
+    if (!service) { service = DataUploads.open(parent.workspace, this.sensitiveFiles); this.uploadProjects.set(parent.workspace, service); service.catch(() => { if (this.uploadProjects.get(parent.workspace) === service) this.uploadProjects.delete(parent.workspace) }) }
+    return service
+  }
   async managedEnvironments(workspace: string): Promise<ManagedEnvironments> {
     const parent = await this.project(workspace)
     if (this.closing) throw new Error('OmicOS OSS runtime is shutting down')
@@ -149,6 +158,8 @@ export class OssRuntime {
   }
   async dispose(): Promise<void> {
     this.closing = true
+    await Promise.allSettled([...this.uploadProjects.values()].map(async service => (await service).dispose()))
+    this.uploadProjects.clear()
     await Promise.allSettled([...this.environmentProjects.values()].map(async service => (await service).dispose()))
     this.environmentProjects.clear()
     await Promise.allSettled([...this.planProjects.values()].map(async service => (await service).dispose()))

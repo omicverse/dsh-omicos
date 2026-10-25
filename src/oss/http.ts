@@ -1,3 +1,4 @@
+import { UploadError, UPLOAD_CHUNK_BYTES } from './upload-types.js'
 import { EnvironmentError } from './environment-types.js'
 import { ResearchPlanError } from './research-plan-types.js'
 import { runtimeCapabilities } from './capabilities.js'
@@ -32,6 +33,13 @@ async function body(request: IncomingMessage, limit = 300_000): Promise<any> {
   try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') } catch { throw new CloudError(400, 'Invalid JSON') }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new CloudError(400, 'JSON object required')
   return parsed
+}
+async function uploadChunkBody(request: IncomingMessage): Promise<Buffer> {
+  if (request.headers['content-type'] !== 'application/octet-stream') throw new UploadError(415, 'Binary upload chunk required')
+  if (request.headers['content-length'] !== undefined && Number(request.headers['content-length']) > UPLOAD_CHUNK_BYTES) throw new UploadError(413, 'Upload chunks are limited to 4 MiB')
+  let size = 0; const chunks: Buffer[] = []
+  for await (const chunk of request) { size += chunk.length; if (size > UPLOAD_CHUNK_BYTES) throw new UploadError(413, 'Upload chunks are limited to 4 MiB'); chunks.push(Buffer.from(chunk)) }
+  return Buffer.concat(chunks)
 }
 function sendArtifact(response: ServerResponse, artifact: { bytes: Buffer; mime: string }): void {
   const raster = artifact.mime === 'image/png' || artifact.mime === 'image/jpeg'
@@ -155,6 +163,16 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
           else throw new CloudError(405, 'Method not allowed')
         }
         else if (action === 'environment' && method === 'GET') { if (language === 'python' && project.executionUnavailable) throw new EnvironmentError(409, project.executionUnavailable); result = language === 'r' ? await inspectREnvironment(runtime.rscript) : await inspectEnvironment(project.python, project.usesIsolatedPython) }
+        else if (action?.startsWith('upload-')) {
+          const uploads = await runtime.uploads(parent.workspace); const id = data?.id || url.searchParams.get('id') || ''
+          if (action === 'upload-list' && method === 'GET') result = uploads.list(url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined)
+          else if (action === 'upload-document' && method === 'GET') result = uploads.get(id)
+          else if (action === 'upload-start' && method === 'POST') { if (data.confirmed !== true) throw new UploadError(400, 'Explicit project file import approval required'); result = await uploads.start(data.upload) }
+          else if (action === 'upload-chunk' && method === 'PUT') { const { chunkHashes, requestSha256, targetDirectory, targetDirectoryIdentity, ...summary } = await uploads.chunk(id, url.searchParams.has('offset') ? Number(url.searchParams.get('offset')) : NaN, await uploadChunkBody(request)); result = summary }
+          else if (action === 'upload-finalize' && method === 'POST') { if (data.confirmed !== true) throw new UploadError(400, 'Explicit import publication required'); result = await uploads.finalize(id) }
+          else if (action === 'upload-cancel' && method === 'POST') { if (data.confirmed !== true) throw new UploadError(400, 'Explicit partial import cancellation required'); result = await uploads.cancel(id) }
+          else throw new CloudError(405, 'Method not allowed')
+        }
         else if (action?.startsWith('managed-environment-')) {
           const environments = await runtime.managedEnvironments(parent.workspace)
           if (action === 'managed-environment-list' && method === 'GET') result = { ...environments.list(url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined), currentInterpreter: parent.python, currentUnavailable: parent.executionUnavailable }
@@ -271,7 +289,7 @@ export function createOssHandler(runtime: OssRuntime, auth: HttpOwnerAuth, optio
     } catch (error) {
       if (response.writableEnded) return
       if (response.headersSent) { response.destroy(); return }
-      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
+      sendJson(response, error instanceof CloudError || error instanceof NotebookError || error instanceof PipelineError || error instanceof MemoryError || error instanceof FigureError || error instanceof AnnDataError || error instanceof UploadError || error instanceof EnvironmentError || error instanceof ResearchPlanError || error instanceof HistoryError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) })
     }
   }
 }
