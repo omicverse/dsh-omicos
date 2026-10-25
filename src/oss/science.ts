@@ -17,6 +17,7 @@ const workerPaths = { python: fileURLToPath(new URL('../../runtime/python_worker
 const terminal = new Set(['succeeded', 'failed', 'canceled', 'interrupted'])
 export class ScienceService extends EventEmitter {
   private child?: ChildProcess
+  private terminatedFamilies = new WeakSet<ChildProcess>()
   private starting?: Promise<void>
   private disposing?: Promise<void>
   private generation?: string
@@ -103,8 +104,13 @@ export class ScienceService extends EventEmitter {
     return structuredClone(this.environment)
   }
   private signalWorker(child: ChildProcess, signal: NodeJS.Signals): void {
-    try { if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal); else child.kill(signal) }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error }
+    // A successful SIGKILL can precede Node's exit event. Do not target that
+    // dying process group again during disposal (or after a PID is recycled).
+    if (child.exitCode !== null || child.signalCode !== null || this.terminatedFamilies.has(child)) return
+    try {
+      if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal); else child.kill(signal)
+      if (signal === 'SIGKILL') this.terminatedFamilies.add(child)
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; this.terminatedFamilies.add(child) }
   }
   private start(): Promise<void> {
     if (this.starting) return this.starting

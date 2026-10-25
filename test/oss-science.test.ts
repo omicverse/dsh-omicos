@@ -103,7 +103,10 @@ describe('public scientific runtime with real Python workers', () => {
     })
     try {
       const job = await service.submit('print(42)', 'storage-failure', 'session')
-      const result = await settled(service, job.id)
+      const result = await new Promise<Execution>(resolve => { const check = () => { const result = service.get(job.id)!; if (!['queued', 'running'].includes(result.state)) { service.off('change', check); resolve(result) } }; service.on('change', check); check() })
+      // Dispose in the same event turn as the interrupted receipt, before the
+      // killed supervisor necessarily delivers its exit event.
+      await service.dispose()
       expect(injected).toBe(true)
       expect(result.state).toBe('interrupted')
       expect(result.error).toContain('Injected storage failure')
