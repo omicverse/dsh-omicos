@@ -61,8 +61,21 @@ export function createOssHandler(runtime: OssRuntime): (req: IncomingMessage, re
       else if (path === '/omicos/oss/api/quote' && method === 'POST') result = await cloud.quote(data)
       else if (path === '/omicos/oss/api/checkout' && method === 'POST') result = await cloud.checkout(String(data.confirmation || ''))
       else if (path === '/omicos/oss/api/order' && method === 'GET') result = await cloud.order(url.searchParams.get('id') || '')
+      else if (path === '/omicos/oss/api/labs' && method === 'GET') result = await cloud.labs()
       else if (path === '/omicos/oss/api/lab-pricing' && method === 'GET') result = await cloud.labPricing()
       else if (path === '/omicos/oss/api/invoicing' && method === 'GET') result = await cloud.invoicing()
+      else if (path === '/omicos/oss/api/invoice' && method === 'POST') {
+        if (data.confirmed !== true) throw new CloudError(400, 'Explicit invoice confirmation required')
+        result = await cloud.requestInvoice(data.invoice)
+      }
+      else if (path === '/omicos/oss/api/invoice/withdraw' && method === 'POST') {
+        if (data.confirmed !== true) throw new CloudError(400, 'Explicit withdrawal confirmation required')
+        result = await cloud.withdrawInvoice(String(data.id || ''))
+      }
+      else if (path === '/omicos/oss/api/lab/seats' && method === 'POST') {
+        if (data.confirmed !== true) throw new CloudError(400, 'Explicit seat change confirmation required')
+        result = await cloud.changeLabSeats(String(data.labId || ''), data.seats, String(data.provider || ''))
+      }
       else if (path === '/omicos/oss/api/reminders' && method === 'GET') result = await cloud.reminders()
       else if (path === '/omicos/oss/api/subscription/manage' && method === 'POST') {
         if (!['cancel', 'uncancel'].includes(data.action) || data.confirmed !== true) throw new CloudError(400, 'Explicit subscription action confirmation required')

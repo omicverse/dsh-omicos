@@ -22,8 +22,14 @@ describe('scientific workbench and commerce boundary', () => {
       response.setHeader('content-type', 'application/json')
       if (path === '/api/auth/cli-device-code') response.end(JSON.stringify({ device_code: 'private-device', user_code: 'ABCD-EFGH', verification_uri: 'https://app.omicos.cn/pair', expires_in: 300, interval: 2 }))
       else if (path === '/api/auth/cli-poll') response.end(JSON.stringify(approvals ? { status: 'approved', user_token: 'private-user-token', process_token: 'never-persist-this', user: { id: 'u1', email: 'test@example.invalid' } } : { status: 'pending' }))
-      else if (path.startsWith('/api/plans')) response.end(JSON.stringify({ plans: [{ code: 'pro', name: 'Pro', monthly_price_rmb: 10, yearly_price_rmb: 100 }] }))
+      else if (path.startsWith('/api/plans')) response.end(JSON.stringify({ plans: [{ code: 'pro', name: 'Pro', monthly_price_rmb: 10, yearly_price_rmb: 100 }, { code: 'lab', name: 'Lab', monthly_price_rmb: null, yearly_price_rmb: null }] }))
       else if (!request.headers.authorization) { response.statusCode = 401; response.end('{}') }
+      else if (path === '/api/billing/lab/pricing') response.end(JSON.stringify({ min_seats: 3, can_purchase: true, currency: 'CNY', seat_price_monthly_rmb: 8, seat_price_yearly_rmb: 80, grants_plan: 'pro' }))
+      else if (path === '/api/labs') response.end(JSON.stringify({ labs: [{ id: 'lab_1', name: 'Test lab', owner_id: 'u1', seat_quota: 3, status: 'active' }] }))
+      else if (path === '/api/billing/lab/lab_1/seats') response.end(JSON.stringify({ message: 'updated', new_total_seats: body.seats }))
+      else if (path === '/api/billing/invoicing') response.end(JSON.stringify({ paid_cents: 1000, remaining_cents: 1000, invoiced_cents: 0, min_invoice_cents: 500, daily_limit: 5, submitted_today: 0, orders: [{ order_no: 'ord_1', amount_rmb_cents: 1000, invoiced: false }], invoices: [] }))
+      else if (path === '/api/billing/invoicing/invoices') response.end(JSON.stringify({ invoice_id: 'inv_1', status: 'pending' }))
+      else if (path === '/api/billing/invoicing/invoices/inv_1/withdraw') response.end(JSON.stringify({ invoice_id: 'inv_1', status: 'voided' }))
       else if (path === '/api/billing/checkout') { orders++; response.end(JSON.stringify({ order_no: `ord_${orders}`, amount_rmb: 10, currency: 'CNY', pay_url: 'weixin://wxpay/bizpayurl?pr=example', provider: body.provider, expires_at: '2099-01-01' })) }
       else if (path.startsWith('/api/billing/orders/')) response.end(JSON.stringify({ order_no: 'ord_1', status: paid ? 'paid' : 'pending' }))
       else if (path.startsWith('/api/billing/subscription')) response.end(JSON.stringify({ active: paid, subscription: paid ? { plan_code: 'pro' } : undefined }))
@@ -86,6 +92,31 @@ describe('scientific workbench and commerce boundary', () => {
     await post('logout', {})
     expect((await post('checkout', { confirmation: next.confirmation })).status).toBe(409)
     expect((await fetch(`${base}/omicos/oss/api/order?id=ord_1`)).status).toBe(401)
+  })
+  it('uses authoritative lab prices and validates seat and period constraints', async () => {
+    await login()
+    const choice = { plan_code: 'lab', period: 'monthly', provider: 'wechat', lab_name: 'Test lab', seats: 3 }
+    const quote = await (await post('quote', choice)).json() as any
+    expect(quote.catalog_amount_rmb).toBe(24)
+    expect((await post('quote', { ...choice, seats: 2 })).status).toBe(400)
+    expect((await post('quote', { ...choice, period: 'quarterly' })).status).toBe(400)
+    expect((await post('lab/seats', { labId: 'lab_1', seats: 4, provider: 'wechat' })).status).toBe(400)
+    const change = await post('lab/seats', { labId: 'lab_1', seats: 4, provider: 'wechat', confirmed: true })
+    expect(change.status).toBe(200)
+    expect(seen.find(request => request.path === '/api/billing/lab/lab_1/seats')?.body).toEqual({ seats: 4, provider: 'wechat' })
+  })
+  it('requires explicit invoice actions and forwards order IDs rather than caller-supplied amounts', async () => {
+    await login()
+    const invoice = { order_nos: ['ord_1'], buyer_type: 'personal', buyer_title: 'Researcher', invoice_kind: 'normal', buyer_email: 'research@example.invalid', amount_rmb_cents: 999999 }
+    expect((await post('invoice', { invoice })).status).toBe(400)
+    expect((await post('invoice', { invoice, confirmed: true })).status).toBe(200)
+    const submitted = seen.find(request => request.path === '/api/billing/invoicing/invoices')!
+    expect(submitted.body.order_nos).toEqual(['ord_1'])
+    expect(submitted.body).not.toHaveProperty('amount_rmb_cents')
+    expect((await post('invoice', { confirmed: true, invoice: { ...invoice, invoice_kind: 'special' } })).status).toBe(400)
+    expect((await post('invoice/withdraw', { id: 'inv_1' })).status).toBe(400)
+    expect((await post('invoice/withdraw', { id: 'inv_1', confirmed: true })).status).toBe(200)
+    expect((await post('invoice/withdraw', { id: '../inv_1', confirmed: true })).status).toBe(400)
   })
   it('executes only registered workspaces and exports a real notebook', async () => {
     const id = (await runtime.list())[0].id

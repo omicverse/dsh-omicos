@@ -16,6 +16,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 - Live price catalog, order quote/confirmation, checkout, QR, server-authoritative polling, subscription refresh,
   cancellation/restoration, account-switch invalidation, order-number recovery.
 - Loopback, Host, same-origin, CSRF, bounded JSON, explicit execution approval and artifact containment checks.
+- Paid-order/invoice UI, explicit invoice application/withdrawal, live lab pricing and owner-filtered seat management/top-up payment; browser flow tested against an isolated mock cloud.
 - Public plugin metadata and icon, source/build packaging for standalone CLI.
 - Python/R interpreter/package metadata diagnostic endpoint/tool and UI; real R 4.5.2 + jsonlite tests cover variable continuity, cancellation and PDF/PNG integrity.
 - Project-fixed Scientist chat bridge through the formal Harness session controller; durable session binding, request IDs, safe history projection, cancellation and workspace validation. Standalone CLI has no model engine; chat is available when opened from the DSH Host.
@@ -24,7 +25,7 @@ Updated: 2026-10-25. Branch: `feat/omicos-oss-runtime`. Work is ongoing.
 Verification at this checkpoint:
 
 - TypeScript host/client typecheck passed.
-- 110 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
+- 112 tests passed, including real Python and real rc.3 Cordis + ToolRuntime cold-load.
 - Built standalone process exercised in actual headless Chrome: Python produced 42; mock cloud login,
   quote, confirmation and QR succeeded; no page errors; mobile layout had no horizontal overflow.
 - Browser screenshots: workspace-level `outputs/omicos-oss/`. No real payments were made.
@@ -53,7 +54,7 @@ Verification at this checkpoint:
 - Immutable Pipeline definitions and checkpointed/resumable execution.
 - SSH/SLURM/cloud Runner profiles, compute credits/jobs, optional research/database connectors.
 - MCP/A2A integration, scheduled goals, project dossier and enterprise/team capabilities.
-- Lab seat purchase/management, invoices, cloud usage/resource storefront, expiry reminders UI.
+- Broader lab collaboration, cloud usage/resource storefront and expiry reminders UI.
 - Channels, desktop/system bridge/pets, audit replay, legacy project migration and release documentation.
 
 See `OMICOS_OSS_DESIGN.md` for full scope, capability mapping, boundaries and acceptance criteria.

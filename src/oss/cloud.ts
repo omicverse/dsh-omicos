@@ -1,3 +1,4 @@
+import type { InvoiceRequest, InvoicingSummary, LabPricing, SeatChange, LabSummary } from './commerce-types.js'
 import { randomUUID } from 'node:crypto'
 import { readJson, writeJson } from './storage.js'
 
@@ -75,9 +76,11 @@ export class CloudService {
   plans(domain = ''): Promise<{ plans: CatalogPlan[] }> { return this.request(`/api/plans${domain ? `?domain=${encodeURIComponent(domain)}` : ''}`, 'GET', undefined, false) }
   subscription(domain = ''): Promise<unknown> { return this.request(`/api/billing/subscription${domain ? `?domain=${encodeURIComponent(domain)}` : ''}`) }
   subscriptions(): Promise<unknown> { return this.request('/api/billing/subscriptions') }
-  order(id: string): Promise<unknown> {
+  async order(id: string): Promise<unknown> {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw new CloudError(400, '无效订单编号')
-    return this.request(`/api/billing/orders/${encodeURIComponent(id)}`)
+    const order = await this.request(`/api/billing/orders/${encodeURIComponent(id)}`)
+    if (order.order_no !== id) throw new CloudError(502, '云端返回的订单编号不匹配，请保留订单信息联系官方')
+    return order
   }
   async quote(input: Checkout): Promise<unknown> {
     if (!this.credentials) throw new CloudError(401, '购买前请登录')
@@ -96,7 +99,14 @@ export class CloudService {
     const plan = catalog.plans.find(plan => plan.code === checkout.plan_code)
     if (!plan) throw new CloudError(400, '套餐不在当前目录中')
     const field = `${checkout.period === 'monthly' ? 'monthly' : checkout.period === 'quarterly' ? 'quarterly' : 'yearly'}_price_rmb` as const
-    const price = plan[field]
+    let price = plan[field]
+    if (checkout.plan_code === 'lab') {
+      if (checkout.period === 'quarterly') throw new CloudError(400, '实验室套餐仅支持月付或年付')
+      const pricing = await this.labPricing()
+      if (!pricing.can_purchase || checkout.seats! < pricing.min_seats) throw new CloudError(400, `此账号暂不可购买或席位数少于 ${pricing.min_seats}`)
+      price = (checkout.period === 'yearly' ? pricing.seat_price_yearly_rmb : pricing.seat_price_monthly_rmb) * checkout.seats!
+      if (!Number.isFinite(price) || price <= 0) throw new CloudError(400, '席位价格不可用，请联系官方')
+    }
     if (checkout.plan_code !== 'lab' && (typeof price !== 'number' || price <= 0)) throw new CloudError(400, '该套餐暂不支持此周期自助购买')
     if (generation !== this.generation) throw new CloudError(409, '账号已切换')
     this.quotes.clear()
@@ -112,8 +122,29 @@ export class CloudService {
     try { return await this.request('/api/billing/checkout', 'POST', quote.checkout) }
     finally { this.pendingCheckout = false }
   }
-  labPricing(): Promise<unknown> { return this.request('/api/billing/lab/pricing') }
-  invoicing(): Promise<unknown> { return this.request('/api/billing/invoicing') }
+  labPricing(): Promise<LabPricing> { return this.request('/api/billing/lab/pricing') }
+  invoicing(): Promise<InvoicingSummary> { return this.request('/api/billing/invoicing') }
+  labs(): Promise<{ labs: LabSummary[] }> { return this.request('/api/labs') }
+  async requestInvoice(input: InvoiceRequest): Promise<unknown> {
+    if (!input || typeof input !== 'object') throw new CloudError(400, '缺少开票申请')
+    if (!Array.isArray(input.order_nos) || input.order_nos.length < 1 || input.order_nos.length > 100 || input.order_nos.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(id))) throw new CloudError(400, '请选择有效付款订单')
+    if (!['personal', 'company'].includes(input.buyer_type) || !['normal', 'special'].includes(input.invoice_kind) || typeof input.buyer_title !== 'string' || !input.buyer_title.trim() || input.buyer_title.length > 200) throw new CloudError(400, '请填写有效抬头和发票类型')
+    if (input.invoice_kind === 'special' && input.buyer_type !== 'company') throw new CloudError(400, '专票需要企业抬头')
+    const request: InvoiceRequest = { order_nos: [...new Set(input.order_nos)], buyer_type: input.buyer_type, buyer_title: input.buyer_title.trim(), invoice_kind: input.invoice_kind }
+    for (const field of ['buyer_tax_id', 'buyer_email', 'buyer_address', 'buyer_phone', 'buyer_bank', 'buyer_bank_account', 'remark'] as const) {
+      const value = input[field]
+      if (value !== undefined) { if (typeof value !== 'string' || value.length > 1000) throw new CloudError(400, '开票字段过长或格式无效'); request[field] = value.trim() }
+    }
+    return this.request('/api/billing/invoicing/invoices', 'POST', request)
+  }
+  withdrawInvoice(id: string): Promise<unknown> {
+    if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw new CloudError(400, '无效发票编号')
+    return this.request(`/api/billing/invoicing/invoices/${encodeURIComponent(id)}/withdraw`, 'POST')
+  }
+  changeLabSeats(id: string, seats: number, provider: string): Promise<SeatChange> {
+    if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id) || !Number.isSafeInteger(seats) || seats < 1 || seats > 100000 || !['wechat', 'alipay'].includes(provider)) throw new CloudError(400, '无效实验室、席位数或支付方式')
+    return this.request(`/api/billing/lab/${encodeURIComponent(id)}/seats`, 'POST', { seats, provider })
+  }
   reminders(): Promise<unknown> { return this.request('/api/billing/expiry-reminders') }
   manageSubscription(action: 'cancel' | 'uncancel', domain?: string): Promise<unknown> {
     return this.request(`/api/billing/subscription/${action}`, 'POST', domain ? { domain } : {})

@@ -99,7 +99,7 @@ silently rerun. A failed/canceled cell can leave partial variable or file change
 R history and variables are separate from Python; its execution metadata lives under `.omicos-oss/r/`. The interface makes this distinction explicit. Notebook export preserves source,
 outputs, execution identity, kernel generation and artifact references.
 
-Figures created with matplotlib are saved after successful cells; R graphics are captured as PDF with a PNG preview when supported. Figures are  displayed
+Figures created with matplotlib are saved after successful cells; R graphics are captured as PDF with a PNG preview when supported. Figures are displayed
 in the workspace. The file endpoint checks workspace containment and integrity.
 No object pickle is automatically loaded on restart.
 
@@ -109,8 +109,10 @@ Local work does not require an OmicOS account. The store supports device-code
 login, live server catalog prices, monthly/quarterly/yearly selection, order
 confirmation, WeChat/Alipay QR, order polling/recovery, current subscription,
 and cancel/restore subscription management. Unsupported sales-only combinations
-are disabled or rejected by the server. Lab seats, invoices and advanced cloud
-resource management remain in the migration queue.
+are disabled or rejected by the server. The store also provides paid-order records,
+order-bound invoice applications/withdrawals, live lab seat pricing and owner-only
+seat changes. Seat expansion orders use the same payment panel. Advanced cloud
+resource/usage management remains in the migration queue.
 
 Credentials stay in the Host's private state directory (`~/.omicos-oss/cloud.json`
 by default), in an owner-readable file. They are not put in browser storage,

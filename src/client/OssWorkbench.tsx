@@ -1,7 +1,9 @@
+import { CloudManagement } from './CloudManagement.js'
 import { EnvironmentPane } from './EnvironmentPane.js'
 import { ScienceChat } from './ScienceChat.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
+import type { LabPricing } from '../oss/commerce-types.js'
 import type { ScienceSnapshot } from '../oss/types.js'
 import { api, type Session, type CloudAccount } from './oss-api.js'
 import './oss.css'
@@ -24,6 +26,7 @@ function Store({ account, refresh }: { account: CloudAccount; refresh: () => Pro
   const [subscription, setSubscription] = useState<any>()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [labPricing, setLabPricing] = useState<LabPricing>()
   const [labName, setLabName] = useState('')
   const [seats, setSeats] = useState(3)
   const [lookup, setLookup] = useState('')
@@ -84,7 +87,13 @@ function Store({ account, refresh }: { account: CloudAccount; refresh: () => Pro
     setOrder(result); setStatus('pending')
     sessionStorage.setItem(`omicos:last-order:${account.user?.id}`, result.order_no)
   })
-  const price = (plan: Plan) => period === 'monthly' ? plan.monthly_price_rmb : period === 'quarterly' ? plan.quarterly_price_rmb : plan.yearly_price_rmb
+  useEffect(() => {
+    if (!account.logged_in) { setLabPricing(undefined); return }
+    const controller = new AbortController()
+    void api<LabPricing>('lab-pricing', undefined, controller.signal).then(setLabPricing, () => {})
+    return () => controller.abort()
+  }, [account.generation, account.logged_in])
+  const price = (plan: Plan) => plan.code === 'lab' && labPricing ? period === 'quarterly' ? null : (period === 'yearly' ? labPricing.seat_price_yearly_rmb : labPricing.seat_price_monthly_rmb) * seats : period === 'monthly' ? plan.monthly_price_rmb : period === 'quarterly' ? plan.quarterly_price_rmb : plan.yearly_price_rmb
   return <section>
     <header className="oss-section-head"><div><small>OMICOS CLOUD</small><h1>让算力与研究同行。</h1><p>本地分析自由使用。需要官方模型、云端资源或团队服务时，在这里接入。</p></div><span className="oss-chip">官方订阅商城</span></header>
     {error && <p role="alert" className="oss-error">{error}</p>}
@@ -102,6 +111,7 @@ function Store({ account, refresh }: { account: CloudAccount; refresh: () => Pro
     {!account.logged_in && <p className="oss-note">请先登录 OmicOS 云账号再购买。登录入口在页面右上角；本地科研功能无需登录。</p>}
     {quote && <section className="oss-confirm" aria-label="订单确认"><h2>确认订阅</h2><p>{quote.plan} · {quote.checkout.period} · {quote.checkout.provider === 'wechat' ? '微信支付' : '支付宝'}</p><p>目录金额：{quote.catalog_amount_rmb == null ? '由服务端核算' : `¥${quote.catalog_amount_rmb}`}{quote.checkout.seats ? `，${quote.checkout.seats} 个席位` : ''}</p><p>{quote.notice}</p><button className="oss-primary" disabled={busy} onClick={confirm}>确认并生成付款订单</button> <button onClick={() => setQuote(undefined)}>返回选择</button></section>}
     {order && <section className="oss-payment"><div><small>PAYMENT ORDER</small><h2>{status === 'paid' ? '支付成功' : status === 'expired' ? '订单已过期' : status === 'canceled' ? '订单已取消' : '扫码支付'}</h2><p className="oss-price">{order.currency} {order.amount_rmb}</p><p>订单号：<code>{order.order_no}</code></p><p>到期：{new Date(order.expires_at).toLocaleString()}</p><p>支付状态以服务端确认为准。关闭窗口不会取消订单。</p><button onClick={() => { setOrder(undefined); setStatus('') }}>收起订单</button></div>{status === 'pending' && (qr ? <img width={260} height={260} src={qr} alt={`${order.provider} 付款二维码`} /> : <p>付款链接格式暂不支持，请保留订单编号联系官方。</p>)}</section>}
+    {account.logged_in && <CloudManagement userId={account.user!.id} onOrder={result => { setOrder(result); setStatus('pending') }} />}
     <div className="oss-two"><article className="oss-card"><h2>我的订阅</h2>{subscription ? <><p>{subscription.active ? `当前：${subscription.subscription?.plan_code || subscription.plan_code}` : '暂无有效订阅'}</p>{subscription.subscription?.expires_at && <p>有效期至 {new Date(subscription.subscription.expires_at).toLocaleString()}</p>}{subscription.active && <button disabled={busy} onClick={() => { const action = subscription.cancelled ? 'uncancel' : 'cancel'; if (window.confirm(subscription.cancelled ? '恢复此订阅？' : '取消此订阅的后续续订？现有权益以服务端规则为准。')) void run(async () => { await api('subscription/manage', { action, domain: domain || undefined, confirmed: true }); await subscriptionRefresh() }) }}>{subscription.cancelled ? '恢复订阅' : '取消续订'}</button>}</> : <p>{account.logged_in ? '正在查询…' : '登录后查看订阅'}</p>}<button disabled={!account.logged_in || busy} onClick={() => void run(subscriptionRefresh)}>刷新权益</button></article>
     <article className="oss-card"><h2>找回订单</h2><p>重新打开窗口后，可输入订单编号查询。查询失败时请勿重复付款。</p><input placeholder="订单编号" value={lookup} onChange={event => setLookup(event.target.value)} /><button disabled={!account.logged_in || busy || !lookup.trim()} onClick={() => void run(async () => { const result = await api<any>(`order?id=${encodeURIComponent(lookup.trim())}`); setError(`订单 ${result.order_no}：${result.status}`) })}>查询订单状态</button><button disabled={!account.logged_in} onClick={() => setLookup(sessionStorage.getItem(`omicos:last-order:${account.user?.id}`) || '')}>最近订单</button></article></div>
   </section>
