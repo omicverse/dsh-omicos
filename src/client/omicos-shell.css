@@ -545,3 +545,11 @@ html[data-omicos-shell][data-omicos-rail-expanded] {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Harness's transcript width handles are absolutely positioned inside the conversation
+   column and can land on the first science tabs when the rail width shifts the column.
+   The tools view has no transcript to resize, so keep it above them. */
+.omicos-conversation-tools {
+  position: relative;
+  z-index: 1;
+}
