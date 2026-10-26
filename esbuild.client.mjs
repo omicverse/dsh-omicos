@@ -63,7 +63,7 @@ ${cjs}
 });
 `
 await writeFile('lib/client.js', wrapped)
-console.log('client bundle written: lib/client.js')
+console.error('client bundle written: lib/client.js')
 
 // Standalone workbench owns its React runtime; the DSH closure remains platform-external.
 const standalone = await build({ entryPoints: ['src/client/oss-standalone.tsx'], bundle: true,

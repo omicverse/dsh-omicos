@@ -27,7 +27,7 @@ const result = await build({
 await writeBundleNotices('host', result.metafile)
 
 const bundled = Object.keys(result.metafile.inputs).filter((f) => f.includes('node_modules/@omicverse'))
-console.log(`host bundle written: lib/host/index.js (inlined ${bundled.length} SDK modules)`)
+console.error(`host bundle written: lib/host/index.js (inlined ${bundled.length} SDK modules)`)
 
 const standalone = await build({ entryPoints: ['src/oss/cli.ts'], outfile: 'lib/oss/cli.js', bundle: true,
   banner: { js: "import { createRequire as __omicosRequireFactory } from 'node:module'; const require = __omicosRequireFactory(import.meta.url);" },
