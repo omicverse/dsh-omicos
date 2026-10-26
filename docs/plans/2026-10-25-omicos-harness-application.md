@@ -52,3 +52,9 @@
 - Use the official start:desktop launcher with isolated home/user data. Desktop profiles are Electron-owned: install OmicOS and the printed defaults bundle through the native Plugins page, never by bypassing CLI ownership checks.
 - Actual native dsh-app renderer and macOS preload passed eight scientific panels, conversation return, title/no-iframe/error checks; screenshot inspected.
 - Pending: native welcome/menu/Dock branding, keyboard/programmatic draft safety, actual scientific execution under Electron and final packaging/fidelity audit.
+
+## 9. Native product identity
+- Ship a pinned, digest-checked MIT source patch and license; never replace native bridges with a web wrapper. Verify clean-clone application, idempotence and conflicts without partial changes.
+- Rebrand welcome artwork/palette, application/menu copy and development bundle identity. Preserve explicit product locale choice in the native shell.
+- Add direct local entry through the existing isolated skip operation; retain provider-specific DeepSeek connection actions. Test pending-action exclusion, visible failure and no credential/sign-in side effects.
+- Verify actual Electron welcome, local entry, application identity and menu before rerunning eight native scientific pages.

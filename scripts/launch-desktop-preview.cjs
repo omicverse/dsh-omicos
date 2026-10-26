@@ -1,21 +1,13 @@
 /** Native development preview through the pinned public Harness desktop launcher. */
-const { spawn, execFileSync } = require('node:child_process')
+const { spawn } = require('node:child_process')
+const { prepareDesktopSource } = require('./apply-desktop-branding.cjs')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const lockfile = require('proper-lockfile')
 const ROOT = path.resolve(__dirname, '..')
-const REVISION = '1f81c047fc48fa190a683e469daa699857e9afe8'
-
 async function launchDesktopPreview(options) {
   const source = await fs.realpath(options.source)
-  const revision = execFileSync('git', ['rev-parse', 'HEAD'], {
-    cwd: source,
-    encoding: 'utf8'
-  }).trim()
-  if (revision !== REVISION)
-    throw Error(
-      `Expected public Harness revision ${REVISION}, found ${revision}`
-    )
+  prepareDesktopSource(source)
   for (const file of [
     'apps/desktop/lib/main.js',
     'apps/desktop-host/lib/index.js'

@@ -85,9 +85,25 @@ scientific main panels, returning to the native conversation with no iframe or
 observed page errors. `scripts/desktop-application-smoke.cjs` records the same path
 and a visually inspected screenshot. The isolated keyless preview remains running.
 
+Native product derivative: the pinned MIT source patch now supplies OmicOS welcome
+artwork/palette, application name, menu copy and macOS development bundle identity.
+Product zh/en locale IDs retain explicit choice in native onboarding/menu code.
+A direct local-entry action uses the existing isolated skip operation; competing actions
+are disabled while pending and failures remain visible. DeepSeek connections are
+provider-specific. Focused native tests passed 202 cases; the final app-name change
+also passed the 125-case startup suite. Updated source build:artifacts and build:check
+passed. A clean clone verifies patch application, idempotence and conflict rejection
+without partial writes; upstream MIT notice ships with the patch.
+
+The actual rebuilt Electron welcome shows OmicOS OSS in Chinese and enters the local
+workspace without credentials. Main-process inspection confirms app name and About /
+Quit menu branding. The native eight-page regression passes with no observed page
+errors. Actual Notebook Python prints 42 and R computes mean 4 through custom-scheme
+save/confirmed-run requests; the smoke binds new Notebook and execution IDs to visible
+outputs. Native Scientist selection also works through the original preset selector.
+
 Remaining application work: audit keyboard/programmatic navigation; finish native
-welcome/menu/Dock branding, scientific execution under Electron, packaging and the
-requirement-by-requirement visual/behavioral audit. The new goal remains active.
+Dock artwork, packaging and the requirement-by-requirement visual/behavioral audit. The new goal remains active.
 Real provider credentials and production payment transactions were not exercised
 or fabricated.
 

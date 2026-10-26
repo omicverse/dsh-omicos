@@ -67,6 +67,8 @@ between two vertical rails.
 
 The native preview uses public `deepseek-ai/deepseek-harness` revision
 `1f81c047fc48fa190a683e469daa699857e9afe8`, not a BrowserWindow around the web preview.
+First run `pnpm prepare:desktop-source --source /absolute/path/to/deepseek-harness`
+from this package. This applies the reviewable [MIT native product derivative](desktop/README.md).
 In that checkout run `pnpm install --frozen-lockfile`, `pnpm run build:artifacts`,
 `pnpm run build:check`, and
 `pnpm --filter @deepseek-ai/dsh-desktop exec install-electron`, using its pinned pnpm 11.28.5.
@@ -84,15 +86,22 @@ rejects ordinary CLI plugin edits, so use its Plugins page to install and enable
 two local package paths printed by the launcher, in order. The second is an owned
 application-defaults bundle; saved user preferences keep normal precedence.
 No model key or cloud account is supplied by the launcher. The native welcome screen
-allows **Add API Key → Set up later** without saving credentials.
+opens the local workspace directly without saving credentials. DeepSeek account/API-key
+actions remain available as explicit provider connections.
 
 `pnpm test:desktop-application` inspects this running macOS preview over its local
 9222 development endpoint: actual `dsh-app` renderer, macOS preload, all eight native
 scientific pages, conversation return, title, no iframe and no observed page errors.
 It leaves the window open. These developer inspection ports are inherited from the
-official source launcher. Native welcome/menu/Dock branding, keyboard draft safety,
-scientific execution under Electron and release packaging remain pending; this is
+official source launcher. Native Dock artwork, keyboard draft safety,
+release packaging and the final application audit remain pending; this is
 not the final branded installer.
+
+`pnpm test:desktop-notebook` explicitly creates two test Notebooks in the selected
+workspace and approves harmless Python/R calculations (42 and mean 4). It verifies
+actual custom-scheme writes, confirmation, fresh Notebook/execution IDs and visible
+outputs. Run it only in the isolated preview, with Python/R configured. No provider
+model or cloud account is used.
 
 The independent workbench remains a diagnostic/compatibility entry below, rather than
 the main OmicOS application. Native Electron packaging and broader UI refinements are
