@@ -526,6 +526,9 @@ export function registerOmicosShell(ctx: Context): void {
               {
                 id: page.id,
                 order: -50,
+                icon: ({ size }: { size?: number | string }) => (
+                  <PanelIcon kind={page.icon} size={Number(size) || 20} />
+                ),
                 title: () => page.label,
                 description: () => '当前会话的 OmicOS 科研项目'
               }

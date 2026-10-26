@@ -702,3 +702,36 @@ html[data-omicos-shell] [class*='_sidebarCol'] [class*='_panelList'] {
   position: relative;
   z-index: 1;
 }
+
+/* Right sidebar start page: dense launcher rows with the OmicOS page glyphs,
+   closer to omicos-ui's tool list than Harness's roomy cards. */
+html[data-omicos-shell] [class*='_entryCell'] {
+  min-height: 0;
+}
+html[data-omicos-shell] [class*='_guide'] {
+  gap: 6px;
+}
+html[data-omicos-shell] [class*='_entryCell'] button[class*='_entry'] {
+  padding: 9px 14px;
+  min-height: 0;
+  border-radius: 10px;
+  box-shadow: none;
+  border: 1px solid var(--omicos-line);
+  background: var(--omicos-card);
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+html[data-omicos-shell] [class*='_entryCell'] button[class*='_entry']:hover {
+  border-color: var(--omicos-brand);
+  background: color-mix(in srgb, var(--omicos-brand) 6%, var(--omicos-card));
+}
+html[data-omicos-shell] [class*='_entryCell'] button[class*='_entry'] svg {
+  color: var(--omicos-brand);
+/* Harness's transcript width handles are absolutely positioned inside the conversation
+   column and can land on the first science tabs when the rail width shifts the column.
+   The tools view has no transcript to resize, so keep it above them. */
+.omicos-conversation-tools {
+  position: relative;
+  z-index: 1;
+}
