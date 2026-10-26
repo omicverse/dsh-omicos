@@ -723,3 +723,256 @@ html[data-omicos-shell] [class*='_entryCell'] button[class*='_entry']:hover {
 html[data-omicos-shell] [class*='_entryCell'] button[class*='_entry'] svg {
   color: var(--omicos-brand);
 }
+
+/* Memory tree: constellation stage beside the proposal editor. */
+.oss.omicos-panel .omicos-memory-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.omicos-memory-head h2 {
+  margin: 2px 0 0;
+}
+.omicos-memory-stats {
+  padding-bottom: 4px;
+  color: var(--omicos-muted);
+  font-size: 12.5px;
+}
+.omicos-grow {
+  flex: 1;
+}
+.omicos-memory-note {
+  margin: 10px 0;
+  color: var(--omicos-muted);
+  font-size: 13px;
+}
+.omicos-memory-tools {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.oss.omicos-panel .omicos-segment {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--omicos-line);
+  border-radius: 9px;
+  background: var(--omicos-surface);
+}
+.oss.omicos-panel .omicos-segment button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--omicos-muted);
+  font-size: 12.5px;
+}
+.oss.omicos-panel .omicos-segment button[aria-selected='true'] {
+  background: var(--omicos-card);
+  color: var(--omicos-brand);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.omicos-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--omicos-muted);
+}
+.omicos-memory-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.omicos-memory-stage {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--omicos-line);
+  border-radius: 14px;
+  background: var(--omicos-bg);
+  overflow: hidden;
+}
+.omicos-memory-stage > .oss-memory-list {
+  max-height: 640px;
+  padding: 12px;
+}
+.omicos-galaxy {
+  position: relative;
+  height: min(62vh, 560px);
+  min-height: 340px;
+}
+.omicos-galaxy canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+.omicos-galaxy canvas:active {
+  cursor: grabbing;
+}
+.omicos-galaxy canvas:focus-visible {
+  outline: 2px solid var(--omicos-brand);
+  outline-offset: -2px;
+}
+.omicos-galaxy-tip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 240px;
+  padding: 7px 10px;
+  border: 1px solid var(--omicos-line);
+  border-radius: 8px;
+  background: var(--omicos-card);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+  pointer-events: none;
+}
+.omicos-galaxy-tip span {
+  color: var(--omicos-muted);
+}
+.omicos-galaxy-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--omicos-muted);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+.omicos-galaxy-empty strong {
+  color: var(--omicos-text);
+  font-size: 15px;
+}
+.omicos-memory-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  border-top: 1px solid var(--omicos-line);
+  color: var(--omicos-muted);
+  font-size: 11.5px;
+}
+.omicos-memory-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+.omicos-memory-legend i[data-state='confirmed'] {
+  background: var(--omicos-brand);
+}
+.omicos-memory-legend i[data-state='proposed'] {
+  border: 1.5px dashed #d99a1e;
+}
+.omicos-memory-legend i[data-state='inactive'] {
+  background: var(--omicos-muted);
+  opacity: 0.5;
+}
+.omicos-memory-side {
+  min-width: 0;
+}
+.omicos-memory-card {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--omicos-line);
+  border-radius: 12px;
+  background: var(--omicos-card);
+}
+.omicos-memory-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.omicos-memory-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.omicos-memory-chips span {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--omicos-brand) 12%, transparent);
+  color: var(--omicos-brand);
+  font-size: 11.5px;
+}
+.omicos-memory-chips span[data-state='proposed'] {
+  background: rgba(217, 154, 30, 0.16);
+  color: #a8740f;
+}
+.omicos-memory-chips span[data-state='withdrawn'],
+.omicos-memory-chips span[data-state='superseded'] {
+  background: var(--omicos-surface);
+  color: var(--omicos-muted);
+}
+.omicos-memory-current {
+  outline: 2px solid var(--omicos-brand);
+  outline-offset: -2px;
+}
+@media (max-width: 900px) {
+  .omicos-memory-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Compact memory toolbar: inline labels and 32px controls so the stage stays above the fold. */
+.oss.omicos-panel .omicos-memory-tools {
+  align-items: center;
+  gap: 10px 14px;
+}
+.oss.omicos-panel .omicos-memory-tools label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--omicos-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.oss.omicos-panel .omicos-memory-tools input:not([type='checkbox']),
+.oss.omicos-panel .omicos-memory-tools select {
+  height: 32px;
+  min-height: 0;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.oss.omicos-panel .omicos-memory-tools input:not([type='checkbox']) {
+  width: 140px;
+}
+.oss.omicos-panel .omicos-memory-tools select {
+  max-width: 150px;
+}
+.oss.omicos-panel .omicos-memory-tools > button {
+  height: 32px;
+  min-height: 0;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+.oss.omicos-panel .omicos-memory-head > button {
+  height: 34px;
+  min-height: 0;
+  padding: 0 14px;
+}
+.oss.omicos-panel .omicos-segment button {
+  min-height: 0;
+  height: 26px;
+  padding: 0 12px;
+}
+.oss.omicos-panel .omicos-memory-note {
+  margin: 8px 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.oss.omicos-panel .omicos-memory h2 {
+  margin: 2px 0 0;
+}
