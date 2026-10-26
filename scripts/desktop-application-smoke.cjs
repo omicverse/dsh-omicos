@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { chromium } = require('playwright')
+const { clickRailPage } = require('./rail-helper.cjs')
 async function inspectNativeShell() {
   const endpoints = await (
     await fetch('http://127.0.0.1:9229/json/list')
@@ -115,7 +116,7 @@ async function inspectNativeShell() {
           response.url().endsWith('/omicos/oss/api/session') &&
           response.request().method() === 'GET'
       )
-      await rail.getByRole('button', { name, exact: true }).click()
+      await clickRailPage(rail, name)
       assert(
         (await connected).ok(),
         `Native ${id} session connection must succeed`

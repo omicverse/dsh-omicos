@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { LocaleDict } from '@deepseek-ai/dsh-client-locale/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -92,6 +92,27 @@ function PanelIcon({
     </svg>
   )
 }
+const PRIMARY_PAGES: ReadonlyArray<OmicosPage> = [
+  'data',
+  'notebook',
+  'figures',
+  'memory',
+  'store'
+]
+const RAIL_EXPANDED_KEY = 'omicos.rail.expanded'
+
+function readRailExpanded(): boolean {
+  try {
+    return localStorage.getItem(RAIL_EXPANDED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function RailGlyph({ children }: { children: JSX.Element }): JSX.Element {
+  return <span className="omicos-rail-ic">{children}</span>
+}
+
 function OmicosRail({
   layout,
   toggleTheme
@@ -100,10 +121,19 @@ function OmicosRail({
   toggleTheme: () => void
 }): JSX.Element {
   const rail = useRef<HTMLElement>(null)
+  const moreButton = useRef<HTMLButtonElement>(null)
+  const moreMenu = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(readRailExpanded)
+  const [moreOpen, setMoreOpen] = useState(false)
   const selected = useSyncExternalStore(
     layout.panelInfo.subscribe,
     layout.panelInfo.getSnapshot
   ).activePanelId
+  const primary = PRIMARY_PAGES.map(
+    (id) => OMICOS_PAGES.find((page) => page.id === id)!
+  )
+  const overflow = OMICOS_PAGES.filter((page) => !PRIMARY_PAGES.includes(page.id))
+  const overflowActive = overflow.some((page) => selected === `omicos-${page.id}`)
   useEffect(() => {
     const frame = rail.current?.closest('[data-shell-overlay]')?.parentElement
     if (!frame) return
@@ -126,62 +156,176 @@ function OmicosRail({
       else frame.setAttribute('data-omicos-frame', previous)
     }
   }, [])
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-omicos-rail-expanded', expanded)
+    try {
+      localStorage.setItem(RAIL_EXPANDED_KEY, expanded ? '1' : '0')
+    } catch {
+      // Appearance preference only; the rail still works without storage.
+    }
+    return () => document.documentElement.removeAttribute('data-omicos-rail-expanded')
+  }, [expanded])
+  useEffect(() => {
+    if (!moreOpen) return
+    const close = (event: Event): void => {
+      const target = event.target as Node
+      if (moreMenu.current?.contains(target) || moreButton.current?.contains(target))
+        return
+      setMoreOpen(false)
+    }
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setMoreOpen(false)
+      moreButton.current?.focus()
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [moreOpen])
+  const pageButton = (page: (typeof OMICOS_PAGES)[number]): JSX.Element => (
+    <button
+      key={page.id}
+      type="button"
+      className="omicos-rail-page"
+      title={page.label}
+      aria-label={page.label}
+      aria-current={selected === `omicos-${page.id}` ? 'page' : undefined}
+      onClick={() => {
+        setMoreOpen(false)
+        layout.selectPanel(`omicos-${page.id}` as MainPanelId)
+      }}
+    >
+      <RailGlyph>
+        <PanelIcon kind={page.icon} size={20} />
+      </RailGlyph>
+      <span className="omicos-rail-label">{page.label}</span>
+    </button>
+  )
   return (
-    <nav ref={rail} className="omicos-rail" aria-label="OmicOS 功能导航">
-      <div className="omicos-rail-mark">
-        <OmicosMark size={26} />
-      </div>
-      <button
-        title="对话"
-        aria-label="对话"
-        aria-current={selected === null ? 'page' : undefined}
-        onClick={() => layout.selectPanel(null)}
-      >
-        <svg
-          width="21"
-          height="21"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          aria-hidden="true"
-        >
-          <path d="M4 19l1-4a8 8 0 1 1 4 4ZM8 10h8M8 14h5" />
-        </svg>
-        <span className="omicos-rail-label">对话</span>
-      </button>
-      {OMICOS_PAGES.map((page) => (
+    <nav
+      ref={rail}
+      className="omicos-rail"
+      data-expanded={expanded ? '' : undefined}
+      aria-label="OmicOS 功能导航"
+    >
+      <div className="omicos-rail-top">
         <button
-          key={page.id}
-          title={page.label}
-          aria-label={page.label}
-          aria-current={selected === `omicos-${page.id}` ? 'page' : undefined}
-          onClick={() => layout.selectPanel(`omicos-${page.id}` as MainPanelId)}
+          type="button"
+          className="omicos-rail-page omicos-rail-brand"
+          aria-expanded={expanded}
+          title={expanded ? '收起导航' : '展开导航'}
+          aria-label={expanded ? '收起导航' : '展开导航'}
+          onClick={() => setExpanded((value) => !value)}
         >
-          <PanelIcon kind={page.icon} size={21} />
-          <span className="omicos-rail-label">{page.label}</span>
+          <RailGlyph>
+            <OmicosMark size={24} />
+          </RailGlyph>
+          <span className="omicos-rail-label">
+            {expanded ? '收起导航' : '展开导航'}
+          </span>
         </button>
-      ))}
-      <div className="omicos-rail-footer">
+      </div>
+      <div className="omicos-rail-nav">
         <button
-          aria-label="切换深浅外观"
+          type="button"
+          className="omicos-rail-page"
+          title="对话"
+          aria-label="对话"
+          aria-current={selected === null ? 'page' : undefined}
+          onClick={() => {
+            setMoreOpen(false)
+            layout.selectPanel(null)
+          }}
+        >
+          <RailGlyph>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M4 19l1-4a8 8 0 1 1 4 4ZM8 10h8M8 14h5" />
+            </svg>
+          </RailGlyph>
+          <span className="omicos-rail-label">对话</span>
+        </button>
+        {primary.map(pageButton)}
+        <button
+          ref={moreButton}
+          type="button"
+          className="omicos-rail-page"
+          title="更多"
+          aria-label="更多"
+          
+          aria-expanded={moreOpen}
+          aria-current={overflowActive ? 'page' : undefined}
+          onClick={() => setMoreOpen((value) => !value)}
+        >
+          <RailGlyph>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <circle cx="5" cy="12" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="19" cy="12" r="1.6" />
+            </svg>
+          </RailGlyph>
+          <span className="omicos-rail-label">更多</span>
+        </button>
+      </div>
+      {moreOpen ? (
+        <div ref={moreMenu} className="omicos-rail-more">
+          {overflow.map((page) => (
+            <button
+              key={page.id}
+              type="button"
+             
+              aria-current={selected === `omicos-${page.id}` ? 'page' : undefined}
+              onClick={() => {
+                setMoreOpen(false)
+                layout.selectPanel(`omicos-${page.id}` as MainPanelId)
+              }}
+            >
+              <PanelIcon kind={page.icon} size={18} />
+              <span>{page.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="omicos-rail-foot">
+        <button
+          type="button"
+          className="omicos-rail-page"
           title="切换深浅外观"
+          aria-label="切换深浅外观"
           onClick={toggleTheme}
         >
-          <svg
-            width="21"
-            height="21"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" />
-          </svg>
+          <RailGlyph>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" />
+            </svg>
+          </RailGlyph>
+          <span className="omicos-rail-label">外观</span>
         </button>
-        <span>OSS</span>
       </div>
     </nav>
   )

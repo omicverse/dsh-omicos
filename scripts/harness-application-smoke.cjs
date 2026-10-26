@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { chromium } = require('playwright')
+const { clickRailPage } = require('./rail-helper.cjs')
 ;(async () => {
   const root = path.resolve(__dirname, '..')
   const log = await fs.readFile(
@@ -115,7 +116,7 @@ const { chromium } = require('playwright')
     await page.waitForFunction(
       () => !document.body.hasAttribute('data-ds-dark-theme')
     )
-    await rail.getByRole('button', { name: '科研流程', exact: true }).click()
+    await clickRailPage(rail, '科研流程')
     const flow = page.locator('[data-omicos-page="pipelines"]')
     const planDraft = flow.getByLabel('科研计划定义 JSON', { exact: true })
     const pipelineDraft = flow.getByLabel('Pipeline 定义 JSON', { exact: true })

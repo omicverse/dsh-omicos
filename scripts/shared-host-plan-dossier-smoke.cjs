@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { chromium } = require('playwright')
+const { clickRailPage } = require('./rail-helper.cjs')
 ;(async () => {
   const log = await fs.readFile(
     path.resolve(__dirname, '../test-results/desktop-preview-launch.log'),
@@ -100,7 +101,7 @@ const { chromium } = require('playwright')
       'approved',
       'Run test:shared-host-figure first to create the real evidence fixture'
     )
-    await rail.getByRole('button', { name: '科研流程', exact: true }).click()
+    await clickRailPage(rail, '科研流程')
     const plans = page.getByRole('article', { name: '科研计划', exact: true })
     const definition = {
       title: `Synthetic figure acceptance ${Date.now()}`,
@@ -180,7 +181,7 @@ const { chromium } = require('playwright')
         (a) => a.sha256 === fixture.sha256
       )
     )
-    await rail.getByRole('button', { name: '方法与证据', exact: true }).click()
+    await clickRailPage(rail, '方法与证据')
     const dossier = page.getByRole('article', {
       name: '项目科研档案',
       exact: true

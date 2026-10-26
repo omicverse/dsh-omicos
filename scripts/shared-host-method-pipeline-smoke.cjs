@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { chromium } = require('playwright')
+const { clickRailPage } = require('./rail-helper.cjs')
 ;(async () => {
   const log = await fs.readFile(
     path.resolve(__dirname, '../test-results/desktop-preview-launch.log'),
@@ -87,7 +88,7 @@ const { chromium } = require('playwright')
       .getByRole('menuitem', { name: 'session-scope-fixture', exact: true })
       .click()
     const stamp = Date.now()
-    await rail.getByRole('button', { name: '方法与证据', exact: true }).click()
+    await clickRailPage(rail, '方法与证据')
     const methods = page.getByRole('article', {
       name: '科研方法库',
       exact: true
@@ -148,7 +149,7 @@ const { chromium } = require('playwright')
       .getByRole('button', { name: '读取精确 Pipeline 固定引用', exact: true })
       .click()
     const reference = await (await referencing).json()
-    await rail.getByRole('button', { name: '科研流程', exact: true }).click()
+    await clickRailPage(rail, '科研流程')
     const pipeline = page.getByRole('article', {
       name: 'Pipeline 工作流',
       exact: true
