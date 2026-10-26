@@ -16,6 +16,13 @@ interface Collection {
 }
 
 /** No draft text leaves its editor or enters browser storage through this guard. */
+/** Rail controls that do not leave the current page. */
+const RAIL_NON_NAVIGATION = new Set([
+  '切换深浅外观',
+  '展开导航',
+  '收起导航',
+  '更多'
+])
 export function useUnsavedNavigation(dirty: boolean, label: string) {
   const ref = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -135,7 +142,7 @@ export function installNavigationGuard(
       control.matches('[data-row-key^="session:"]') ||
       /^(New Session|新会话)$/.test(name) ||
       panelLabels().includes(name) ||
-      (control.closest('.omicos-rail') && name !== '切换深浅外观')
+      (control.closest('.omicos-rail') && !RAIL_NON_NAVIGATION.has(name))
     if (navigation && !confirmUnsavedNavigation()) {
       event.preventDefault()
       event.stopImmediatePropagation()
