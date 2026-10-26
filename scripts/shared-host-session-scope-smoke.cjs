@@ -150,7 +150,8 @@ const { chromium } = require('playwright')
       path: path.resolve(
         __dirname,
         '../test-results/workspace-session-scope.png'
-      )
+      ),
+      animations: 'disabled'
     })
     await rail.getByRole('button', { name: '对话', exact: true }).click()
     await picker.click()
