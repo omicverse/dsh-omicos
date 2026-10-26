@@ -69,7 +69,8 @@
     "test:shared-host-project": "node scripts/shared-host-project-smoke.cjs",
     "test:shared-host-session-scope": "node scripts/shared-host-session-scope-smoke.cjs",
     "test:shared-host-data-notebook": "node scripts/shared-host-data-notebook-smoke.cjs",
-    "test:shared-host-method-pipeline": "node scripts/shared-host-method-pipeline-smoke.cjs"
+    "test:shared-host-method-pipeline": "node scripts/shared-host-method-pipeline-smoke.cjs",
+    "test:shared-host-figure": "node scripts/shared-host-figure-smoke.cjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.5",

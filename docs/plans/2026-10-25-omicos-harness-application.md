@@ -173,3 +173,22 @@ to the default conversation workspace afterward.
 Result: passed with no renderer errors. Evidence:
 `test-results/application-method-pipeline.log` and
 `application-method-pipeline.png`.
+
+
+## 17. Real Notebook figure archive and review
+
+`test:shared-host-figure` runs an explicitly approved Matplotlib cell in the actual
+persistent kernel. It polls the public execution-receipt endpoint to a terminal
+state, checks the exact code and successful execution, then chooses the returned
+PNG artifact in Figure Studio. Saving a figure preserves that execution identity
+and the source artifact hash. The test waits for the application's integrity
+verification, decodes the displayed PNG, downloads the original via the actual
+figure link and compares its SHA-256 with the execution receipt. Explicit review
+requires the saved-source checkbox and review note; the resulting version is
+`approved` and is rendered before the proof screenshot.
+
+Result: passed; observed execution states `running`→`succeeded`, the downloaded
+PNG digest matched the source, and no renderer errors occurred. Evidence:
+`test-results/application-figure.log` and `application-approved-figure.png` (visually
+inspected). No fake model/account or second runtime was used. The early HTTP
+Notebook response can be queued/running; it is not used as proof of completion.
