@@ -128,3 +128,30 @@ light/dark screenshots, and restores the original appearance. Both native images
 were inspected; no renderer errors occurred. Evidence:
 `test-results/workspace-palette-native.log`, `omicos-native-light.png`, and
 `omicos-native-dark.png`.
+
+
+## 15. Real data-to-Notebook-to-memory workflow
+
+`pnpm test:shared-host-data-notebook` uses the complete frontend of the existing
+native Host and an isolated fixture workspace registered through its public RPC.
+The browser approves import of a fresh 28-byte CSV, waits for the completed upload
+receipt, previews its exact contents and prepares the real file-loading code.
+It verifies that these steps send no Notebook execution requests. It then creates
+a Notebook, transfers that prepared code through the editor and explicitly clicks
+the save-and-approve cell action. The real persistent Python kernel returns the
+CSV sum 42. The test matches the returned Notebook and execution identities/code,
+asserts exactly one confirmed run, navigates away and reopens the saved Notebook
+to verify persistence of the output.
+
+It next saves a memory proposal citing that exact local execution ID, verifies
+the Host pins it as a `local-receipt`, explicitly confirms the version, and checks
+the returned memory view is effective. Synthetic acceptance text is clearly
+labeled as a software fixture. The test uses no synthetic model, account, Agent
+loop, direct database setup, or second scientific runtime, and returns to the
+default conversation workspace afterward.
+
+The current interaction is manual copy of prepared code into Notebook; the
+interface states that explicitly. One-click code handoff is a possible usability
+improvement, not a behavior this test invents or claims exists. Evidence lives in
+`test-results/application-data-notebook.log`, `application-data-notebook.png`, and
+`application-confirmed-memory.png`.
