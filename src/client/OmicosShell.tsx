@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { registerOmicosLanguageRow } from './OmicosLanguage.js'
 import { OmicosPanel, type OmicosPage } from './OmicosPanel.js'
+import { OmicosSidebarHeader } from './OmicosSidebar.js'
 import componentStyles from './oss.css?inline'
 import shellStyles from './omicos-shell.css?inline'
 
@@ -115,10 +116,12 @@ function RailGlyph({ children }: { children: JSX.Element }): JSX.Element {
 
 function OmicosRail({
   layout,
-  toggleTheme
+  toggleTheme,
+  hostPanels
 }: {
   layout: ILayout
   toggleTheme: () => void
+  hostPanels: () => ReadonlyArray<{ id: string; label: string }>
 }): JSX.Element {
   const rail = useRef<HTMLElement>(null)
   const moreButton = useRef<HTMLButtonElement>(null)
@@ -133,7 +136,10 @@ function OmicosRail({
     (id) => OMICOS_PAGES.find((page) => page.id === id)!
   )
   const overflow = OMICOS_PAGES.filter((page) => !PRIMARY_PAGES.includes(page.id))
-  const overflowActive = overflow.some((page) => selected === `omicos-${page.id}`)
+  const hostEntries = moreOpen ? hostPanels() : []
+  const overflowActive =
+    overflow.some((page) => selected === `omicos-${page.id}`) ||
+    (selected !== null && !selected.startsWith('omicos-'))
   useEffect(() => {
     const frame = rail.current?.closest('[data-shell-overlay]')?.parentElement
     if (!frame) return
@@ -300,6 +306,20 @@ function OmicosRail({
               <span>{page.label}</span>
             </button>
           ))}
+          {hostEntries.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              aria-current={selected === entry.id ? 'page' : undefined}
+              onClick={() => {
+                setMoreOpen(false)
+                layout.selectPanel(entry.id as MainPanelId)
+              }}
+            >
+              <PanelIcon kind="runtime" size={18} />
+              <span>{entry.label}</span>
+            </button>
+          ))}
         </div>
       ) : null}
       <div className="omicos-rail-foot">
@@ -458,6 +478,12 @@ export function registerOmicosShell(ctx: Context): void {
       OmicosDocumentTitle
     )
   )
+  ctx.slots.inject('shell.overlay', () =>
+    ctx.slots.register(
+      { name: 'shell.overlay', id: 'omicos-sidebar-header' },
+      OmicosSidebarHeader
+    )
+  )
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.register(
       { name: 'sidebar.brand.mark', priority: -20 },
@@ -525,6 +551,14 @@ export function registerOmicosShell(ctx: Context): void {
           id: 'omicos-navigation',
           inject: () => ({
             layout: sub.layout,
+            hostPanels: () =>
+              sub.slots
+                .entriesOfSlot('sidebar.panellist')
+                .map((entry) => ({
+                  id: String(entry.options.id ?? ''),
+                  label: resolveSlotLabel(entry.options.label) || ''
+                }))
+                .filter((entry) => entry.id && entry.label),
             toggleTheme: () =>
               sub.theme.setTheme(
                 sub.theme.getTheme().active.colorScheme === 'dark'

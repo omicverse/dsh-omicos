@@ -545,3 +545,68 @@ html[data-omicos-shell][data-omicos-rail-expanded] {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Conversation list: the rail owns the brand and the page launchers, so the
+   sidebar leads with its own title and filter strip, as in omicos-ui. */
+html[data-omicos-shell] [class*='_sidebarCol'] [class*='_logoRow'],
+html[data-omicos-shell] [class*='_sidebarCol'] [class*='_panelList'] {
+  display: none;
+}
+.omicos-conversations {
+  padding: 4px 12px 0;
+}
+.omicos-conversations-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 4px 8px;
+  color: var(--omicos-text);
+  font-size: 15px;
+  font-weight: 650;
+}
+.omicos-conversations-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--omicos-line);
+}
+.omicos-conversations-tabs button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--omicos-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.omicos-conversations-tabs button:hover {
+  color: var(--omicos-text);
+}
+.omicos-conversations-tabs button[aria-selected='true'] {
+  color: var(--omicos-brand);
+  font-weight: 600;
+}
+.omicos-conversations-tabs button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--omicos-brand);
+}
+.omicos-conversations-tabs i {
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--omicos-brand) 14%, transparent);
+  color: var(--omicos-brand);
+  font-size: 10.5px;
+  font-style: normal;
+  line-height: 15px;
+  text-align: center;
+}
