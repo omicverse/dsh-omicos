@@ -975,4 +975,10 @@ html[data-omicos-shell] [class*='_entryCell'] button[class*='_entry'] svg {
 }
 .oss.omicos-panel .omicos-memory h2 {
   margin: 2px 0 0;
+/* Harness's transcript width handles are absolutely positioned inside the conversation
+   column and can land on the first science tabs when the rail width shifts the column.
+   The tools view has no transcript to resize, so keep it above them. */
+.omicos-conversation-tools {
+  position: relative;
+  z-index: 1;
 }
