@@ -258,18 +258,24 @@ const { chromium } = require('playwright')
       animations: 'disabled'
     })
     assert.deepEqual(errors, [])
-    console.log(
-      JSON.stringify({
-        notebook: document.id,
-        execution: result.execution.id,
-        artifact: artifact.id,
-        figure: saved.id,
-        sha256: digest,
-        review: 'approved',
-        actualPngDecoded: true,
-        errors
-      })
+    const fixture = {
+      notebook: document.id,
+      execution: result.execution.id,
+      artifact: artifact.id,
+      figure: saved.id,
+      sha256: digest,
+      review: 'approved',
+      actualPngDecoded: true,
+      errors
+    }
+    await fs.writeFile(
+      path.resolve(
+        __dirname,
+        '../test-results/application-figure-fixture.json'
+      ),
+      JSON.stringify(fixture, null, 2) + '\n'
     )
+    console.log(JSON.stringify(fixture))
     await rail.getByRole('button', { name: '对话', exact: true }).click()
     await picker.click()
     await page

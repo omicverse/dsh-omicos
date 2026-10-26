@@ -197,7 +197,7 @@ Notebook response can be queued/running; it is not used as proof of completion.
 ## 18. Plan acceptance and four-source Dossier
 
 `test:shared-host-plan-dossier` follows `test:shared-host-figure` and explicitly
-requires its successful receipt log plus the corresponding real project records.
+requires its successful fixture JSON plus the corresponding real project records.
 It creates and saves a synthetic research plan, approves the fixed version, and
 records a completed assessment using the actual plotting execution. The recorded
 evidence must contain the exact execution ID and PNG digest.
@@ -214,3 +214,28 @@ Result: passed with four pinned/rechecked sources and zero renderer errors.
 `application-reviewed-dossier.png` was visually inspected. This verifies owner
 assessment and historical evidence capture; synthetic fixtures make no scientific
 claims.
+
+
+## 19. Assembly source integrity and sequential application acceptance
+
+`test:shared-host-assembly` follows the successful figure receipt in
+`test-results/application-figure-fixture.json`. It intentionally repeats the same
+synthetic approved curve in panels A/B, with an explicit caption stating this is
+not independent evidence. The UI fixes both source revisions, saves the layout,
+and requires the owner's review checkbox/note. The approved assembly renders two
+images; fetching each referenced original must match the execution PNG SHA-256.
+The actual SVG download must embed PNG bytes and contain both labels. The rendered
+assembly was visually inspected. Individual run passed with zero renderer errors.
+
+`test:application-acceptance` runs nine existing real-Host checks sequentially and
+writes per-step logs plus `test-results/application-acceptance.json`. It requires
+an already-running isolated native preview; no second Host or scientific runtime
+is launched. Figure acceptance writes a structured fixture receipt only after
+successful artifact/review checks, which the dependent plan/dossier and assembly
+steps use. The runner explicitly excludes foreground native input and real cloud
+payment from its claimed results.
+
+The native command-input preflight was rechecked against the running preview and
+refused before editing because the native window was not focused. The user was
+asked to bring the preview to the foreground, unlocking macOS if necessary; this
+request remains separate from the automated browser acceptance.

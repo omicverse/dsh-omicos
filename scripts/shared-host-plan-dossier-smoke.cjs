@@ -86,23 +86,18 @@ const { chromium } = require('playwright')
     await page
       .getByRole('menuitem', { name: 'session-scope-fixture', exact: true })
       .click()
-    const figureLog = await fs.readFile(
-      path.resolve(__dirname, '../test-results/application-figure.log'),
-      'utf8'
+    const fixture = JSON.parse(
+      await fs.readFile(
+        path.resolve(
+          __dirname,
+          '../test-results/application-figure-fixture.json'
+        ),
+        'utf8'
+      )
     )
-    const fixture = figureLog
-      .trim()
-      .split('\n')
-      .map((line) => {
-        try {
-          return JSON.parse(line)
-        } catch {
-          return null
-        }
-      })
-      .find((row) => row?.review === 'approved')
-    assert(
-      fixture,
+    assert.equal(
+      fixture.review,
+      'approved',
       'Run test:shared-host-figure first to create the real evidence fixture'
     )
     await rail.getByRole('button', { name: '科研流程', exact: true }).click()
