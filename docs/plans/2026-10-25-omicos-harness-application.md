@@ -155,3 +155,21 @@ interface states that explicitly. One-click code handoff is a possible usability
 improvement, not a behavior this test invents or claims exists. Evidence lives in
 `test-results/application-data-notebook.log`, `application-data-notebook.png`, and
 `application-confirmed-memory.png`.
+
+
+## 16. Method publication and gated Pipeline
+
+`test:shared-host-method-pipeline` operates the full native-Host browser frontend.
+It imports fresh synthetic method text as a draft, publishes it through explicit
+owner review, retrieves the exact content-hash Pipeline reference, and saves a
+two-stage Python definition with that reference unchanged. The approved run uses
+the existing independent Pipeline kernel, prints the prepared value 40 and enters
+`waiting` at the manual gate. The result marker is absent at this point. Only
+clicking the explicit stage-continuation action permits the second stage, which
+prints 42 and reaches `succeeded`. Native method, definition and run IDs are checked.
+No model/account fixture or second scientific runtime is involved; the test returns
+to the default conversation workspace afterward.
+
+Result: passed with no renderer errors. Evidence:
+`test-results/application-method-pipeline.log` and
+`application-method-pipeline.png`.
