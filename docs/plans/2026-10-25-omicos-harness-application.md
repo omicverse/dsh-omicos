@@ -87,5 +87,25 @@ actual native application passes all eight page checks with no renderer errors.
 and its real Session/project responses; it checks the selected Session workspace,
 manual selection, a second page's default, and an explicit selection surviving a
 delayed real binding response. It does not start another scientific
-runtime or create model/account fixtures. Different-workspace Session switching and
-the final full visual/workflow audit remain open acceptance items.
+runtime or create model/account fixtures. Different-workspace Session switching is now verified below; the final full
+visual/workflow audit remains open.
+
+
+## 13. Cross-workspace Session identity acceptance
+
+`pnpm test:shared-host-session-scope` registers an existing isolated test directory
+through the public Harness Workspace RPC, then uses the actual conversation
+workspace picker to select the default workspace and the fixture workspace. It
+observes two distinct native Session IDs in authoritative project-binding requests,
+checks both main-page paths, returns to the conversation and opens the native
+Memory sidebar. The sidebar shows the fixture Session CWD and has no independent
+project selector. No model calls, synthetic account or second runtime are used.
+The test returns the conversation to the default workspace afterward.
+
+Result: passed with two distinct Sessions, matching sidebar scope, and zero
+renderer errors (`test-results/shared-host-session-scope.log`). The rendered
+conversation/sidebar was inspected in `workspace-session-scope.png`.
+
+Visual follow-up: the actual macOS frame retains an upstream blue/violet wash in
+the workspace column. The browser frontend uses the sage palette, but native
+visual acceptance still needs this frame detail corrected.
