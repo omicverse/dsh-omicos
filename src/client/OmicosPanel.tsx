@@ -45,11 +45,13 @@ const message = (error: unknown) =>
 export function OmicosPanel({
   page = 'data',
   sessionId,
-  visible = true
+  visible = true,
+  allowProjectSelection = !sessionId
 }: {
   page?: OmicosPage
   sessionId?: string
   visible?: boolean
+  allowProjectSelection?: boolean
 }): JSX.Element {
   const [session, setSession] = useState<Session>()
   const [projectId, setProjectId] = useState('')
@@ -101,7 +103,7 @@ export function OmicosPanel({
     void api<{ id: string }>('open-session-project', { sessionId }).then(
       (project) => {
         if (live) {
-          setProjectId(project.id)
+          setProjectId((current) => current || project.id)
           void refresh()
         }
       },
@@ -212,7 +214,7 @@ export function OmicosPanel({
           <>
             <div className="omicos-project-bar">
               <span>工作区</span>
-              {sessionId ? (
+              {!allowProjectSelection ? (
                 <strong>
                   {project?.workspace || '正在定位当前会话的项目…'}
                 </strong>
@@ -230,6 +232,11 @@ export function OmicosPanel({
                       setProjectId(event.target.value)
                   }}
                 >
+                  {!project && (
+                    <option value="" disabled>
+                      {sessionId ? '正在定位当前会话项目…' : '请选择科研工作区'}
+                    </option>
+                  )}
                   {session.projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.workspace}

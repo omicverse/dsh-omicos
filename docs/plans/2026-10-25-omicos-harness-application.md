@@ -71,3 +71,21 @@
 - Actual native main pages now wait for successful Session requests and concrete feature controls; all eight pass.
 - Same native Host, real browser frontend: Scientist selector, actual keyboard main navigation and scoped tab-close cancel/accept pass with zero memory proposals, no model/account fixture and no page errors. Physical native input is still gated by the locked macOS session; do not bypass focus protection.
 - Next: align default scientific main-page project selection with the selected native Session; audit remaining programmatic navigation and the complete goal against current artifacts.
+
+## 12. Main scientific pages follow the current Session
+
+The main slot now consumes the public native Session list and resolves the Session
+retained by `mainView`. Its editor subtree is keyed by Session identity. Scientific
+pages use the existing authoritative Session-to-project endpoint, show a pending
+placeholder instead of selecting the first registry entry, and preserve an explicit
+manual choice made before the binding response returns. Session-bound sidebars keep
+their fixed scope; main pages retain their visible project selector.
+
+Validation: root typecheck/build and three client-bundle/Harness tests pass. The
+actual native application passes all eight page checks with no renderer errors.
+`test:shared-host-project` uses the running native Host's complete browser frontend
+and its real Session/project responses; it checks the selected Session workspace,
+manual selection, a second page's default, and an explicit selection surviving a
+delayed real binding response. It does not start another scientific
+runtime or create model/account fixtures. Different-workspace Session switching and
+the final full visual/workflow audit remain open acceptance items.

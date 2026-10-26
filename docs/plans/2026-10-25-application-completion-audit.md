@@ -13,7 +13,7 @@ Status: incomplete; preserve the full application objective.
 | Optional cloud subscription Store | Real main Store surface and account status; existing scoped commerce implementation/tests; no account fixture in user preview | Integrated; real provider/payment acceptance not exercised |
 | Preserve tools, approvals and plugins | Native owners retained; source GUI 10,902 passed, 115 focused shortcut cases, nine Web shortcut replays | Positive evidence; initial full Web replay was blocked by missing browser and is not claimed green |
 | Guard editor navigation | Pointer/menu/float close flows; actual shared-Host browser keyboard cancel/accept and zero memory proposals | Proven on the browser frontend; real native foreground input still pending because macOS is locked |
-| Consistent project context | Sidebars/tools use Session CWD; main pages expose explicit project selector but default to first registered project | Needs improvement: avoid initially selecting the native profile/config directory instead of the current Session project |
+| Consistent project context | Main pages resolve the native `mainView` Session through the same authoritative CWD API as sidebars; shared-Host browser confirms the current workspace, manual override and another-page default | Default-directory defect fixed; different-workspace Session switching still merits final workflow audit |
 | Runnable user preview | Native window remains alive; Codex browser opens the same native Host root, not the old `/omicos/oss` dashboard | Available; no second scientific process or fake model/account |
 
 Release signing/installers and production billing are not represented as completed

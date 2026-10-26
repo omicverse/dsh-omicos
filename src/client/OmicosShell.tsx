@@ -174,6 +174,25 @@ function OmicosRail({
     </nav>
   )
 }
+function OmicosMainPanel({
+  page,
+  useSessions
+}: PropsRuntime<'main'> & { page: OmicosPage }): JSX.Element {
+  const sessionId = useSessions(
+    (state) =>
+      Object.values(state.byId).find(
+        (session) => (session.retainedBy.mainView ?? 0) > 0
+      )?.id
+  )
+  return (
+    <OmicosPanel
+      key={sessionId || 'unselected'}
+      page={page}
+      sessionId={sessionId}
+      allowProjectSelection
+    />
+  )
+}
 function OmicosDocumentTitle({
   useSessions,
   usePanelInfo
@@ -365,9 +384,10 @@ export function registerOmicosShell(ctx: Context): void {
   for (const page of OMICOS_PAGES) {
     const key = `omicos-${page.id}`
     ctx.slots.inject('main', () =>
-      ctx.slots.register({ name: 'main', key }, () => (
-        <OmicosPanel page={page.id} />
-      ))
+      ctx.slots.register(
+        { name: 'main', key, inject: () => ({ page: page.id }) },
+        OmicosMainPanel
+      )
     )
   }
 }

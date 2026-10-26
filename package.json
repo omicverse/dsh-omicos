@@ -65,7 +65,8 @@
     "test:desktop-commands": "node scripts/desktop-command-guard-smoke.cjs",
     "test:shared-host-commands": "node scripts/shared-host-commands-smoke.cjs",
     "test:application-browser": "node scripts/harness-application-smoke.cjs",
-    "test:application-preferences": "pnpm build && node scripts/application-preferences-smoke.cjs"
+    "test:application-preferences": "pnpm build && node scripts/application-preferences-smoke.cjs",
+    "test:shared-host-project": "node scripts/shared-host-project-smoke.cjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.5",
