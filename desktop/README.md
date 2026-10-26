@@ -35,6 +35,7 @@ product's user-data directory. The internal `dsh` protocol is retained for engin
 compatibility. No session format or credential schema is changed.
 
 This is a native development derivative, not a signed release. Installer/update
-configuration, native Dock artwork, keyboard/programmatic draft lifecycle and
-the final application audit remain pending. Native Python/R Notebook execution has
+configuration, native Dock artwork, complete programmatic draft lifecycle and
+the final application audit remain pending. Resolved-command guards are implemented;
+physical native input acceptance still needs an unlocked, focused desktop. Native Python/R Notebook execution has
 passed actual approved runs; no model/account fixtures are installed in the preview.

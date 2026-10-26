@@ -103,6 +103,21 @@ actual custom-scheme writes, confirmation, fresh Notebook/execution IDs and visi
 outputs. Run it only in the isolated preview, with Python/R configured. No provider
 model or cloud account is used.
 
+The pinned native derivative also offers disposable resolved-command guards, used by
+OmicOS for unsaved main-editor navigation and scoped scientific-tab closure. Earlier
+published engines retain pointer protection. `pnpm test:desktop-commands` requires the
+native preview to be focused on an unlocked desktop; it checks this before modifying
+editors, drives real Electron input and temporarily supplies controlled discard choices.
+Physical acceptance remains pending while the development desktop is locked.
+`pnpm test:shared-host-commands` exercises the same assembled OmicOS root through the
+existing native Host's loopback URL. It tests real browser key bindings, cancel/accept
+for main navigation and scoped scientific tab close, with no model/account fixture or
+memory submission. The browser is a second frontend to the same Host, not a second
+scientific runtime. This can validate UI wiring while native foreground input is
+unavailable, but it does not replace the physical native acceptance check.
+Stop the development preview before rebuilding its source/client files; a partially
+replaced development module graph is not a supported live-update deployment.
+
 The independent workbench remains a diagnostic/compatibility entry below, rather than
 the main OmicOS application. Native Electron packaging and broader UI refinements are
 still tracked in [implementation status](IMPLEMENTATION_STATUS.md).

@@ -58,3 +58,16 @@
 - Rebrand welcome artwork/palette, application/menu copy and development bundle identity. Preserve explicit product locale choice in the native shell.
 - Add direct local entry through the existing isolated skip operation; retain provider-specific DeepSeek connection actions. Test pending-action exclusion, visible failure and no credential/sign-in side effects.
 - Verify actual Electron welcome, local entry, application identity and menu before rerunning eight native scientific pages.
+
+## 10. Native resolved-command guards
+- Add an optional, disposable guard registration to the pinned source command service. Evaluate guards only after owner resolution; consume canceled keyboard input, leave pass/blocked/repeat inputs inert and preserve all binding/menu behavior.
+- Register editor checks through this interface when available. Main session creation collects main edits; sidebar close resolves the current Session/tab; window fallback includes retained editors. Modal-close actions remain native.
+- Published engines without the optional interface retain their existing pointer guard; the native derivative is the application verification target.
+- Verify real native input through Electron's input API and its actual keyboard bridge, with cancel/accept for main navigation and scoped tab closure. Run focused registry/service tests, required GUI checks and the source build checks.
+
+## 11. Current acceptance evidence and next audit
+- Source GUI: 652 files / 10,902 tests passed before the final service case; final focused shortcut suite: 115 tests passed. Source artifacts/aggregate checks and OmicOS typecheck/build/client tests passed.
+- Initial full Web replay could not launch its missing Chromium. Installed exact Chromium 1228; nine relevant Web shortcut replay cases now pass. The full replay suite is not claimed green.
+- Actual native main pages now wait for successful Session requests and concrete feature controls; all eight pass.
+- Same native Host, real browser frontend: Scientist selector, actual keyboard main navigation and scoped tab-close cancel/accept pass with zero memory proposals, no model/account fixture and no page errors. Physical native input is still gated by the locked macOS session; do not bypass focus protection.
+- Next: align default scientific main-page project selection with the selected native Session; audit remaining programmatic navigation and the complete goal against current artifacts.

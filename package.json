@@ -62,6 +62,8 @@
     "start:desktop-preview": "node scripts/launch-desktop-preview.cjs",
     "test:desktop-application": "node scripts/desktop-application-smoke.cjs",
     "test:desktop-notebook": "node scripts/desktop-notebook-smoke.cjs",
+    "test:desktop-commands": "node scripts/desktop-command-guard-smoke.cjs",
+    "test:shared-host-commands": "node scripts/shared-host-commands-smoke.cjs",
     "test:application-browser": "node scripts/harness-application-smoke.cjs",
     "test:application-preferences": "pnpm build && node scripts/application-preferences-smoke.cjs"
   },
@@ -123,6 +125,7 @@
     "@deepseek-ai/dsh-attachment": "0.2.1-rc.3",
     "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3",
     "@deepseek-ai/dsh-client-locale": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-client-shortcuts": "0.2.1-rc.3",
     "@deepseek-ai/dsh-client-store": "0.2.1-rc.3",
     "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.3",
     "@deepseek-ai/dsh-client-ui-layout": "0.2.1-rc.3",

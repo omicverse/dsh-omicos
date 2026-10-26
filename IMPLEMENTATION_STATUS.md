@@ -102,8 +102,32 @@ errors. Actual Notebook Python prints 42 and R computes mean 4 through custom-sc
 save/confirmed-run requests; the smoke binds new Notebook and execution IDs to visible
 outputs. Native Scientist selection also works through the original preset selector.
 
-Remaining application work: audit keyboard/programmatic navigation; finish native
-Dock artwork, packaging and the requirement-by-requirement visual/behavioral audit. The new goal remains active.
+Resolved-command guards are now part of the pinned derivative's optional public
+shortcut service. OmicOS attaches a disposable veto after native owner resolution,
+without replacing commands/bindings/focus checks. Main edits and exact sidebar Session /
+tab edits are scoped separately; modal close remains native. Focused shortcut tests
+passed 115 cases including controlled native-preload keyboard/menu dispatch through
+the actual service/registry. Full GUI passed 10,902 tests before the added service case;
+source artifact/aggregate checks and OmicOS typecheck/build/client tests passed.
+Nine shortcut Web replay cases passed after installing Chromium 1228. The initial
+full Web replay failed broadly at browser launch and has not been rerun; no full green
+claim is made. Actual native page smoke now waits for Session API success and concrete
+feature controls and passes all eight surfaces. See ADR 0036 for exact limits.
+
+Foreground native acceptance remains pending because the macOS session is locked;
+the input driver refuses to touch editors before focus is available. The real Harness
+root over the existing native Host passed actual browser key bindings with main-editor
+and scoped-sidebar cancel/accept, zero memory proposals and no page errors. It uses
+the original Scientist selector and the same runtime, without a model/account fixture.
+Codex now opens this full root application instead of the old diagnostic dashboard.
+Separate browser and native runtime processes must not simultaneously own the same
+scientific workspace: stopped the owned
+browser preview and retained the actual native preview, preserving project locks.
+
+Remaining application work: verify native foreground command acceptance and audit
+programmatic navigation; review default main-page project selection against the active
+native Session, finish native Dock artwork and the requirement-by-requirement visual /
+behavioral audit. Release packaging remains a separate unverified distribution task. The new goal remains active.
 Real provider credentials and production payment transactions were not exercised
 or fabricated.
 

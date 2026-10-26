@@ -110,8 +110,48 @@ async function inspectNativeShell() {
       ['订阅商城', 'store']
     ]
     for (const [name, id] of pages) {
+      const connected = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/omicos/oss/api/session') &&
+          response.request().method() === 'GET'
+      )
       await rail.getByRole('button', { name, exact: true }).click()
-      await page.locator(`[data-omicos-page="${id}"]`).waitFor()
+      assert(
+        (await connected).ok(),
+        `Native ${id} session connection must succeed`
+      )
+      const panel = page.locator(`[data-omicos-page="${id}"]`)
+      await panel.waitFor()
+      await panel
+        .getByText('正在连接 OmicOS…', { exact: true })
+        .waitFor({ state: 'hidden' })
+      const headings = {
+        data: '项目数据',
+        figures: 'Figure Studio',
+        memory: '记忆树',
+        pipelines: 'Pipeline'
+      }
+      if (headings[id])
+        await panel
+          .getByRole('heading', { name: headings[id], exact: true })
+          .waitFor()
+      if (id === 'methods')
+        await panel
+          .getByText('科研 Skill 与方法版本库', { exact: true })
+          .waitFor()
+      if (id === 'notebook')
+        await panel
+          .getByRole('button', { name: '新建 Notebook', exact: true })
+          .waitFor()
+      if (id === 'runtime')
+        await panel
+          .getByText('基础 Python 运行时 · 按需下载', { exact: true })
+          .waitFor()
+      if (id === 'store') await panel.locator('.omicos-cloud-status').waitFor()
+      assert.equal(
+        await panel.locator('.omicos-panel-content > [role="alert"]').count(),
+        0
+      )
     }
     await rail.getByRole('button', { name: '对话', exact: true }).click()
     assert.equal(await page.locator('iframe').count(), 0)

@@ -759,3 +759,217 @@ index 575c7423..cc5e001a 100644
    it.each(['zh-CN', 'en'])('renders the %s entry and API-key step', async (language) => {
      const view = mount(language)
      expect(view.document.documentElement.lang).toBe(language)
+diff --git a/packages/client/shortcuts/README.md b/packages/client/shortcuts/README.md
+index 97b1e1bb..4c662c79 100644
+--- a/packages/client/shortcuts/README.md
++++ b/packages/client/shortcuts/README.md
+@@ -90,3 +90,5 @@ None; this package neither assembles nor sends a provider request.
+ None.
+ 
+ </details>
++
++OmicOS derivative: optional `guardCommands` registers a synchronous veto after a command resolves as handled. It covers effective keyboard bindings and native menus, consumes canceled keyboard actions, and leaves blocked/pass/repeat inputs inert. Dispose registrations with their feature. A thrown guard prevents execution.
+diff --git a/packages/client/shortcuts/README.zh.md b/packages/client/shortcuts/README.zh.md
+index 31b2c692..8975c43d 100644
+--- a/packages/client/shortcuts/README.zh.md
++++ b/packages/client/shortcuts/README.zh.md
+@@ -90,3 +90,5 @@ Desktop 原生菜单和内嵌 frame 使用与 DOM 输入相同的命令注册表
+ 无。
+ 
+ </details>
++
++OmicOS 衍生接口：可选 `guardCommands` 在命令解析为可执行后提供同步拦截，覆盖有效快捷键和原生菜单。取消快捷键仍会消费输入，不改变命令或改键配置；不可用、透传和重复按键不会触发拦截。功能卸载时释放注册，回调异常时不执行命令。
+diff --git a/packages/client/shortcuts/src/client/index.ts b/packages/client/shortcuts/src/client/index.ts
+index bf4ee42a..cbbe49e4 100644
+--- a/packages/client/shortcuts/src/client/index.ts
++++ b/packages/client/shortcuts/src/client/index.ts
+@@ -12,7 +12,7 @@ import type { ShortcutFixedInput } from './types.ts'
+ import { installNativeKeyboard } from './native.ts'
+ import { Config } from '../config.ts'
+ 
+-export type { ShortcutCatalogEntry, ShortcutCommand, ShortcutContext, ShortcutGesture, Shortcuts } from './types.ts'
++export type { ShortcutCatalogEntry, ShortcutCommand, ShortcutContext, ShortcutGesture, ShortcutCommandGuard, Shortcuts } from './types.ts'
+ export type { ShortcutFixedInput, ShortcutFixedCommand, ShortcutFixedCatalogEntry } from './types.ts'
+ export type { ShortcutBinding, ShortcutCommandId, ShortcutPlatform, ShortcutRuntime } from '../protocol.ts'
+ 
+@@ -74,6 +74,10 @@ export default class ShortcutsService extends Service implements Shortcuts {
+     ctx.effect(() => ctx.locale.subscribe(() => { this.registry.refreshLabels() }), 'shortcuts: locale')
+   }
+ 
++  guardCommands(guard: Parameters<ShortcutRegistry['guardCommands']>[0]): () => void {
++    return this.registry.guardCommands(guard)
++  }
++
+   register(command: Parameters<Shortcuts['register']>[0]): () => void {
+     const off = this.registry.register(command)
+     this.syncDefinitions()
+diff --git a/packages/client/shortcuts/src/client/registry.ts b/packages/client/shortcuts/src/client/registry.ts
+index b0c3be72..9ccf8ee2 100644
+--- a/packages/client/shortcuts/src/client/registry.ts
++++ b/packages/client/shortcuts/src/client/registry.ts
+@@ -3,7 +3,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+ import { bindingIssue, bindingKey, effectiveShortcuts, initialShortcutConfig, isWebBindingAllowed, normalizeBinding, overlappingBindings, presentBinding, resolveShortcutDefault } from '../protocol.ts'
+ import type { ShortcutCommandId, ShortcutConfigSnapshot, ShortcutDefinition, ShortcutPlatform, ShortcutRuntime } from '../protocol.ts'
+ import type { ShortcutCatalogEntry, ShortcutCommand, ShortcutContext, ShortcutGesture,
+-  ShortcutFixedCommand, ShortcutFixedCatalogEntry } from './types.ts'
++  ShortcutFixedCommand, ShortcutFixedCatalogEntry, ShortcutCommandGuard } from './types.ts'
+ 
+ /** Dispatch consumption is independent of later business-operation success. */
+ type ShortcutDispatch = { status: 'handled'; commandId: ShortcutCommandId }
+@@ -12,6 +12,7 @@ type ShortcutDispatch = { status: 'handled'; commandId: ShortcutCommandId }
+ 
+ /** Application command registry; adapters own event listeners, feature plugins own actions. */
+ export class ShortcutRegistry {
++  private readonly guards = new Set<ShortcutCommandGuard>()
+   private readonly commands = new Map<ShortcutCommandId, ShortcutCommand>()
+   private readonly fixedCommands = new Map<ShortcutCommandId, ShortcutFixedCommand>()
+   private readonly conflicts = new Map<string, ShortcutCommand>()
+@@ -33,6 +34,24 @@ export class ShortcutRegistry {
+       subscribe: (listener: () => void) => this.state.subscribe(listener) }
+   }
+ 
++  /**
++   * Register a synchronous resolved-command veto, including native menu invocations.
++   * @param guard - false prevents business execution; an exception also leaves the action unexecuted.
++   * @returns idempotent disposer removing this registration.
++   */
++  guardCommands(guard: ShortcutCommandGuard): () => void {
++    const registration: ShortcutCommandGuard = (id, context) => guard(id, context)
++    this.guards.add(registration)
++    return () => { this.guards.delete(registration) }
++  }
++
++  private allows(id: ShortcutCommandId, context: ShortcutContext): boolean {
++    for (const guard of [...this.guards]) {
++      if (this.guards.has(guard) && !guard(id, context)) return false
++    }
++    return true
++  }
++
+   /**
+    * Return the serializable active catalog for storage validation.
+    * @returns definitions without callbacks or localized labels.
+@@ -140,8 +159,9 @@ export class ShortcutRegistry {
+   invoke(id: ShortcutCommandId, context: ShortcutContext): void {
+     const command = this.commands.get(id)
+     if (command === undefined || (context.modal !== null && !command.modals.includes(context.modal))) return
+-    const result = command.resolve({ ...context, source: 'menu' })
+-    if (result.status === 'handled') result.run()
++    const input = { ...context, source: 'menu' as const }
++    const result = command.resolve(input)
++    if (result.status === 'handled' && this.allows(id, input)) result.run()
+   }
+ 
+   /**
+@@ -174,7 +194,10 @@ export class ShortcutRegistry {
+     if (resolution.status === 'pass') return resolution
+     consume()
+     if (resolution.status === 'blocked') return { ...resolution, commandId: command.id }
+-    if (!gesture.repeat) resolution.run()
++    if (!gesture.repeat) {
++      if (!this.allows(command.id, context)) return { status: 'blocked', commandId: command.id, reason: 'guard' }
++      resolution.run()
++    }
+     return { status: 'handled', commandId: command.id }
+   }
+ }
+diff --git a/packages/client/shortcuts/src/client/types.ts b/packages/client/shortcuts/src/client/types.ts
+index 565b9076..d0004921 100644
+--- a/packages/client/shortcuts/src/client/types.ts
++++ b/packages/client/shortcuts/src/client/types.ts
+@@ -16,6 +16,8 @@ export interface ShortcutContext {
+ export type ShortcutResolution = { status: 'handled'; run(): void }
+   | { status: 'blocked'; reason: string }
+   | { status: 'pass' }
++/** Synchronous veto after owner resolution; false prevents execution and exceptions abort invocation. */
++export type ShortcutCommandGuard = (id: ShortcutCommandId, context: ShortcutContext) => boolean
+ /** One command's labels, defaults, input ownership, and target resolver. */
+ export interface ShortcutCommand {
+   readonly id: ShortcutCommandId
+@@ -87,6 +89,13 @@ export interface Shortcuts {
+   readonly config: ObservableSnapshot<ShortcutConfigSnapshot>
+   readonly fixedCatalog: ObservableSnapshot<readonly ShortcutFixedCatalogEntry[]>
+   readonly stopSequenceMs: number
++  /**
++   * Intercept resolved keyboard/menu actions without changing bindings or owning their execution.
++   * Providers without this optional method do not support command interception.
++   * @param guard - synchronous owner check; false cancels, true delegates, exceptions prevent the action.
++   * @returns idempotent disposer; callers release it when their feature unmounts.
++   */
++  guardCommands?(guard: ShortcutCommandGuard): () => void
+   /**
+    * Contribute one fixed action and reserve its keys against editable bindings.
+    * @param command - owner-localized name, group, readable keys, and reserved physical combinations.
+diff --git a/packages/client/shortcuts/tests/registry.client.spec.ts b/packages/client/shortcuts/tests/registry.client.spec.ts
+index 92a800f3..0d101628 100644
+--- a/packages/client/shortcuts/tests/registry.client.spec.ts
++++ b/packages/client/shortcuts/tests/registry.client.spec.ts
+@@ -212,3 +212,41 @@ it.each(['macos', 'windows'] as const)('keeps %s priority identical before savin
+   }
+   expect(run).toHaveBeenCalledTimes(18)
+ })
++
++it('vetoes resolved keyboard and menu actions, consumes canceled keys and releases each guard independently', () => {
++  const registry = new ShortcutRegistry('desktop', 'macos')
++  const run = vi.fn(), consume = vi.fn()
++  registry.register(command({ resolve: () => ({ status: 'handled', run }) }))
++  const guard = vi.fn(() => false)
++  const first = registry.guardCommands(guard)
++  const second = registry.guardCommands(guard)
++  expect(registry.dispatch(gesture, context, consume)).toMatchObject({ status: 'blocked', reason: 'guard' })
++  expect(consume).toHaveBeenCalledOnce()
++  expect(run).not.toHaveBeenCalled()
++  first(); first()
++  registry.invoke('test.toggle' as ShortcutCommandId, context)
++  expect(guard).toHaveBeenLastCalledWith('test.toggle', { ...context, source: 'menu' })
++  expect(run).not.toHaveBeenCalled()
++  second()
++  registry.invoke('test.toggle' as ShortcutCommandId, context)
++  expect(run).toHaveBeenCalledOnce()
++})
++
++it('does not ask guards for unavailable or repeated commands and prevents execution when a guard throws', () => {
++  const registry = new ShortcutRegistry('desktop', 'macos')
++  const run = vi.fn(), consume = vi.fn(), guard = vi.fn(() => true)
++  let blocked = true
++  registry.register(command({ resolve: () => blocked ? { status: 'blocked', reason: 'fixture' } : { status: 'handled', run } }))
++  registry.guardCommands(guard)
++  registry.dispatch(gesture, context, consume)
++  registry.invoke('test.toggle' as ShortcutCommandId, context)
++  expect(guard).not.toHaveBeenCalled()
++  blocked = false
++  registry.dispatch({ ...gesture, repeat: true }, context, consume)
++  expect(guard).not.toHaveBeenCalled()
++  registry.dispatch(gesture, context, consume)
++  expect(run).toHaveBeenCalledOnce()
++  registry.guardCommands(() => { throw new Error('guard fixture failure') })
++  expect(() => registry.invoke('test.toggle' as ShortcutCommandId, context)).toThrow('guard fixture failure')
++  expect(run).toHaveBeenCalledOnce()
++})
+diff --git a/packages/client/shortcuts/tests/service.client.spec.ts b/packages/client/shortcuts/tests/service.client.spec.ts
+index 103ef2e9..0f0425ce 100644
+--- a/packages/client/shortcuts/tests/service.client.spec.ts
++++ b/packages/client/shortcuts/tests/service.client.spec.ts
+@@ -198,3 +198,22 @@ it('propagates catalog publication failures after a successful preference save',
+     .rejects.toThrow('Command label unavailable')
+   expect(f.api.edit).toHaveBeenCalledOnce()
+ })
++
++it('applies disposable guards to verified native keyboard and menu input after the Desktop handshake', async () => {
++  const f = desktop(), { service } = mount()
++  const run = vi.fn(), guard = vi.fn(() => false)
++  service.register({ ...command, resolve: () => ({ status: 'handled', run }) })
++  await vi.waitFor(() => { expect(service.config.getSnapshot().status).toBe('ready') })
++  const input = f.keyboard.subscribe.mock.calls.at(-1)![0]
++  const release = service.guardCommands(guard)
++  const revision = service.config.getSnapshot().revision
++  input({ kind: 'keyboard', revision, frameName: '', code: 'KeyB', control: false,
++    alt: false, shift: false, meta: true, repeat: false })
++  input({ kind: 'menu', revision, commandId: command.id })
++  expect(guard).toHaveBeenCalledTimes(2)
++  expect(guard).toHaveBeenLastCalledWith(command.id, expect.objectContaining({ source: 'menu' }))
++  expect(run).not.toHaveBeenCalled()
++  release()
++  input({ kind: 'menu', revision, commandId: command.id })
++  expect(run).toHaveBeenCalledOnce()
++})

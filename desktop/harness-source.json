@@ -3,5 +3,5 @@
   "version": "0.2.1-rc.3",
   "revision": "1f81c047fc48fa190a683e469daa699857e9afe8",
   "patch": "patches/harness-0.2.1-rc.3-omicos.patch",
-  "sha256": "39d8a00d7931c65e347bb70bfdd25a768c31f0cd7655ee4077360b2da36514a1"
+  "sha256": "d695a7a364ec9fb778ba4a0d238318c2ed9a5a7177bbfae0b1527947edeee37d"
 }

@@ -3,7 +3,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { LocaleDict } from '@deepseek-ai/dsh-client-locale/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { installNavigationGuard } from './unsaved-navigation.js'
+import {
+  installNavigationGuard,
+  registerUnsavedCommands
+} from './unsaved-navigation.js'
 import type {
   ILayout,
   MainPanelId
@@ -207,6 +210,7 @@ function ShellAppearance(): null {
 
 /** Brand, navigation and scientific pages live in the real Harness shell. */
 export function registerOmicosShell(ctx: Context): void {
+  registerUnsavedCommands(ctx)
   ctx.effect(
     () =>
       installNavigationGuard(() =>

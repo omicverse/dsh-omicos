@@ -1,8 +1,15 @@
 import { useEffect, useRef } from 'react'
+import type { Context } from '@deepseek-ai/cordis'
+import type {
+  Shortcuts,
+  ShortcutContext
+} from '@deepseek-ai/dsh-client-shortcuts/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 
 const COLLECT = 'omicos:collect-unsaved-editors'
 interface Collection {
   within?: Element
+  all?: boolean
   tabId?: string
   sessionId?: string
   editors: string[]
@@ -17,6 +24,10 @@ export function useUnsavedNavigation(dirty: boolean, label: string) {
       const root = ref.current
       const detail = (event as CustomEvent<Collection>).detail
       if (!root) return
+      if (detail.all) {
+        if (!detail.editors.includes(label)) detail.editors.push(label)
+        return
+      }
       if (
         detail.sessionId &&
         root
@@ -51,9 +62,10 @@ export function useUnsavedNavigation(dirty: boolean, label: string) {
 export function confirmUnsavedNavigation(
   within?: Element,
   tabId?: string,
-  sessionId?: string
+  sessionId?: string,
+  all = false
 ): boolean {
-  const detail: Collection = { within, tabId, sessionId, editors: [] }
+  const detail: Collection = { within, tabId, sessionId, all, editors: [] }
   window.dispatchEvent(new CustomEvent<Collection>(COLLECT, { detail }))
   return (
     !detail.editors.length ||
@@ -136,4 +148,51 @@ export function installNavigationGuard(
     document.removeEventListener('click', guard, true)
     menuTarget = undefined
   }
+}
+
+interface GuardExtension {
+  guardCommands(
+    guard: (id: string, input: ShortcutContext) => boolean
+  ): () => void
+}
+function hasCommandGuards(
+  shortcuts: Shortcuts
+): shortcuts is Shortcuts & GuardExtension {
+  return (
+    'guardCommands' in shortcuts &&
+    typeof shortcuts.guardCommands === 'function'
+  )
+}
+
+/** The pinned derivative exposes a command veto; published engines without it retain pointer guards. */
+export function registerUnsavedCommands(ctx: Context): void {
+  ctx.inject(['shortcuts', 'sidebarRight'], (sub) => {
+    const shortcuts = sub.shortcuts
+    if (!hasCommandGuards(shortcuts)) return
+    sub.effect(
+      () =>
+        shortcuts.guardCommands((id, input) => {
+          if (input.modal !== null) return true
+          if (id === 'session.new') return confirmUnsavedNavigation()
+          if (id !== 'page.close' && id !== 'page.refresh') return true
+          const target = sub.sidebarRight.focusedTarget(input.target)
+          if (
+            target?.tabId &&
+            (id !== 'page.close' || sub.sidebarRight.canCloseTarget(target))
+          ) {
+            return confirmUnsavedNavigation(
+              undefined,
+              target.tabId,
+              target.sessionId
+            )
+          }
+          return (
+            id !== 'page.close' ||
+            shortcuts.runtime !== 'desktop' ||
+            confirmUnsavedNavigation(undefined, undefined, undefined, true)
+          )
+        }),
+      'omicos: unsaved command navigation'
+    )
+  })
 }
