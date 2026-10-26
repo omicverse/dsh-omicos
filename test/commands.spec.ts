@@ -124,9 +124,9 @@ describe('registerOmicosCommands', () => {
     // The relay-only field must NOT be forwarded by an extension host (protocol auth.ts).
     expect((pushed as Record<string, unknown>).process_token).toBeUndefined()
 
-    const after = await status.handler({ rawInput: '' })
-    expect(after.text).toContain('已登录')
-    expect(after.text).toContain('a@b.com')
+    // The server receiving credentials precedes the client's response/flow settlement.
+    // Wait on the actual command state, rather than racing the background finally.
+    await vi.waitFor(async()=>{const after=await status.handler({rawInput:''});expect(after.text).toContain('已登录');expect(after.text).toContain('a@b.com')},{timeout:3000,interval:20})
   })
 
   it('a second login while one is pending is refused (single pending flow)', async () => {

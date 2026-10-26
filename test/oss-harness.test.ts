@@ -1,0 +1,103 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import * as Omicos from '../src/host/index.js'
+
+it('cold-loads in real rc.3 Cordis/ToolRuntime; exposes scientific tools and fails closed without approval', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'omicos-harness-'))
+  const ctx = new Context()
+  try {
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    const plugin = await ctx.plugin(Omicos, { workspace: directory, stateDir: join(directory, 'state'), backend: 'oss', upstreamBaseUrl: 'https://auth.omicos.cn', python: 'python3' })
+    const names = ctx.tools.schemas().map(schema => schema.name)
+    expect(names).toContain('omicos_run_python')
+    expect(names).toContain('omicos_runtime_capabilities')
+    expect(names).toContain('omicos_mcp_state');expect(names).not.toContain('omicos_mcp_enable');expect(names).not.toContain('omicos_mcp_reconnect')
+    expect(names).toContain('omicos_plot_anndata')
+    const deniedPlot = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('plot-denied'), name: 'omicos_plot_anndata', arguments: { settings_json: '{}', operation_id: 'unapproved-plot' } })
+    expect(JSON.stringify(deniedPlot)).toMatch(/denied|approval/i)
+
+    const capabilities = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('capabilities'), name: 'omicos_runtime_capabilities', arguments: {} })
+    expect(JSON.stringify(capabilities)).toContain('omicos.capabilities/1')
+
+    expect(names).toContain('omicos_notebook_state')
+    expect(names).toContain('omicos_notebook_update')
+    expect(names).toContain('omicos_notebook_run')
+    expect(names).toContain('omicos_pipeline_state')
+    expect(names).toContain('omicos_pipeline_start')
+    expect(names).toContain('omicos_assembly_state');expect(names).toContain('omicos_assembly_propose');expect(names).not.toContain('omicos_assembly_review')
+    const assemblyDenied=await ctx.tools.execute({signal:new AbortController().signal,callId:ToolCallId('assembly-denied'),name:'omicos_assembly_propose',arguments:{assembly_json:'{}'}});expect(JSON.stringify(assemblyDenied)).toMatch(/approval|denied/i)
+    expect(names).toContain('omicos_figure_state'); expect(names).toContain('omicos_figure_save')
+    const figureDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('figure-denied'), name: 'omicos_figure_save', arguments: { figure_json: '{}' } })
+    expect(JSON.stringify(figureDenied)).toMatch(/denied|approval/i)
+
+    expect(names).toContain('omicos_dossier_state'); expect(names).toContain('omicos_dossier_propose'); expect(names).not.toContain('omicos_dossier_review')
+    const dossierDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('dossier-denied'), name: 'omicos_dossier_propose', arguments: { entry_json: '{}' } }); expect(JSON.stringify(dossierDenied)).toMatch(/denied|approval/i)
+    expect(names).toContain('omicos_method_state'); expect(names).toContain('omicos_method_propose'); expect(names).not.toContain('omicos_method_publish'); expect(names).not.toContain('omicos_method_review')
+    const methodDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('method-denied'), name: 'omicos_method_propose', arguments: { pack_json: '{}', operation_id: 'unapproved-method' } })
+    expect(JSON.stringify(methodDenied)).toMatch(/denied|approval/i)
+    expect(names).toContain('omicos_remote_import_state');expect(names).not.toContain('omicos_remote_import_start');expect(names).not.toContain('omicos_remote_import_resume');expect(names).toContain('omicos_data_import_state'); expect(names).not.toContain('omicos_data_import_upload'); expect(names).not.toContain('omicos_data_import_cancel')
+    expect(names).toContain('omicos_managed_environment_state'); expect(names).not.toContain('omicos_managed_environment_install'); expect(names).not.toContain('omicos_managed_environment_select')
+    expect(names).toContain('omicos_research_plan_state'); expect(names).toContain('omicos_research_plan_propose')
+    expect(names).not.toContain('omicos_research_plan_decide'); expect(names).not.toContain('omicos_research_plan_approve')
+    const planDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('plan-denied'), name: 'omicos_research_plan_propose', arguments: { plan_json: '{}' } })
+    expect(JSON.stringify(planDenied)).toMatch(/denied|approval/i)
+    const plans = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('plan-list'), name: 'omicos_research_plan_state', arguments: {} })
+    expect(JSON.stringify(plans)).toContain('entries')
+    expect(names).not.toContain('omicos_analyze')
+    const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('context'), name: 'omicos_science_context', arguments: {} })
+    expect(JSON.stringify(result)).toContain('scientific')
+    const science=await ctx.omicosScience.runtime;
+    const remoteReceipts=await ctx.tools.execute({signal:new AbortController().signal,callId:ToolCallId('remote-receipts'),name:'omicos_remote_import_state',arguments:{}});expect(JSON.stringify(remoteReceipts)).toContain('entries');expect((await science.remoteImports(directory)).list().entries).toEqual([])
+    const pipelines=await science.pipelines(directory);const pinned=pipelines.define({title:'Tool history fixture',language:'python',steps:[{id:'only',code:'pass'}]});const created=pipelines.store.create(pinned.id,'tool-history').run;const seeded=pipelines.store.update(created.id,created.revision,'fixture/complete',draft=>{draft.state='succeeded';draft.attempts=Array.from({length:25},(_,index)=>({id:`attempt-${index}`,step:0,kind:'step',operationId:`attempt-${index}`,state:'succeeded',outputTail:'x'.repeat(8000)}))})
+    const windowed=await ctx.tools.execute({signal:new AbortController().signal,callId:ToolCallId('pipeline-window'),name:'omicos_pipeline_state',arguments:{run_id:seeded.id}});expect(JSON.stringify(windowed)).toContain('windowed');expect(JSON.stringify(windowed)).not.toContain('x'.repeat(1001))
+    const history=await ctx.tools.execute({signal:new AbortController().signal,callId:ToolCallId('pipeline-page'),name:'omicos_pipeline_state',arguments:{run_id:seeded.id,history_kind:'attempts',history_before:5,history_revision:seeded.revision}});expect(JSON.stringify(history)).toContain('attempt-0');expect(JSON.stringify(history)).not.toContain('attempt-24')
+    expect((await science.project(directory)).kernelState().state).toBe('cold')
+    const pipelineDenied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('pipeline-denied'), name: 'omicos_pipeline_start', arguments: { definition_id: 'not-pinned', operation_id: 'no-approval' } })
+    expect(JSON.stringify(pipelineDenied)).toMatch(/denied|approval/i)
+    const deniedNotebook = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('notebook-denied'), name: 'omicos_notebook_update', arguments: { action: 'create', title: 'Unapproved' } })
+    expect(JSON.stringify(deniedNotebook)).toMatch(/denied|approval/i)
+    const notebooks = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('notebook-list'), name: 'omicos_notebook_state', arguments: {} })
+    expect(JSON.stringify(notebooks)).not.toContain('Unapproved')
+    const denied = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('danger'), name: 'omicos_run_python', arguments: { code: 'open("should-not-exist", "w").write("bad")', operation_id: 'denied' } })
+    expect(JSON.stringify(denied)).toMatch(/denied|approval/i)
+    const context = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('after'), name: 'omicos_science_context', arguments: {} })
+    expect(JSON.stringify(context)).not.toContain('should-not-exist')
+    await plugin.dispose()
+    expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('omicos_run_python')
+  } finally { await ctx.fiber.dispose(); await rm(directory, { recursive: true, force: true }) }
+})
+
+it('keeps the explicitly selected Core tool surface without registering a second OSS scientific loop', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'omicos-core-compat-'))
+  const ctx = new Context()
+  let handler: ((request: IncomingMessage, response: ServerResponse) => Promise<void>) | undefined
+  const server = createServer((request, response) => { void handler!(request, response) })
+  try {
+    ctx.provide('sessionController', {} as never)
+    ctx.provide('connection', { authorizeIndex: () => true, requestRejection: () => undefined } as never)
+    ctx.provide('webServer', { register: (entry: any) => { if (entry.path === '/omicos/oss') handler = entry.handler; return () => {} } } as never)
+    await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)
+    const plugin = await ctx.plugin(Omicos, { workspace: directory, stateDir: join(directory, 'state'), backend: 'core', autoStart: false, upstreamBaseUrl: 'https://auth.omicos.cn', python: 'python3' })
+    const names = ctx.tools.schemas().map(schema => schema.name)
+    expect(names).toContain('omicos_analyze')
+    expect(names).not.toContain('omicos_run_python'); expect(names).not.toContain('omicos_notebook_run')
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${(server.address() as any).port}`
+    const session = await (await fetch(`${origin}/omicos/oss/api/session`)).json() as any
+    expect(session.backend).toBe('core')
+    const chat = await (await fetch(`${origin}/omicos/oss/api/project/${session.projects[0].id}/chat`)).json() as any
+    expect(chat.available).toBe(false)
+    expect(chat.reason).toContain('Core 兼容后端')
+    await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections() })
+    await plugin.dispose()
+    expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('omicos_analyze')
+  } finally { server.closeAllConnections(); server.close(); await ctx.fiber.dispose(); await rm(directory, { recursive: true, force: true }) }
+})

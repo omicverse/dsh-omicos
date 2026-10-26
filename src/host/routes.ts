@@ -84,6 +84,8 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
       json(res, 403, { error: 'loopback only' })
       return
     }
+    const rejection = ctx.get('connection')?.requestRejection(req) ?? (ctx.get('connection') === undefined ? 401 : undefined)
+    if (rejection !== undefined) { json(res, rejection, { error: 'Local owner authentication required' }); return }
     const path = (req.url ?? '').split('?')[0]
     const method = (req.method ?? 'GET').toUpperCase()
     try {
@@ -206,7 +208,7 @@ export function registerOmicosRoutes(ctx: Context, deps: RouteDeps): Array<() =>
         }
         const persistence = ctx.get('sessionPersistence')
         if (persistence !== undefined) {
-          const headers = (await persistence.list()) as Array<{ id: string; cwd?: string }>
+          const headers = (await persistence.list()).map(snapshot => snapshot.header)
           const cwd = headers.find((h) => String(h.id) === dshSessionId)?.cwd
           if (cwd !== undefined && cwd !== '') {
             const entry = deps.pool.entry(cwd)

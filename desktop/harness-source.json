@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
+  "version": "0.2.1-rc.3",
+  "revision": "1f81c047fc48fa190a683e469daa699857e9afe8",
+  "patch": "patches/harness-0.2.1-rc.3-omicos.patch",
+  "sha256": "d695a7a364ec9fb778ba4a0d238318c2ed9a5a7177bbfae0b1527947edeee37d"
+}

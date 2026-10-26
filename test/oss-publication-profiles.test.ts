@@ -1,0 +1,26 @@
+import {expect,it} from 'vitest'
+import {mkdtemp,mkdir,rm,writeFile,symlink} from 'node:fs/promises'
+import {createRequire} from 'node:module'
+import {join} from 'node:path'
+import {tmpdir} from 'node:os'
+import {PublicationProfiles} from '../src/oss/publication-profiles.js'
+import type {PublicationProfileDraft} from '../src/oss/publication-profile-types.js'
+const draft=(operationId:string):PublicationProfileDraft=>({name:'Journal draft',description:'Owner preference, not approval',profile:{dpi:180,attachments:'none',font:{path:'fonts/optional.ttf',sha256:'a'.repeat(64),licenseDeclaration:'Owner declares permission'}},operationId})
+async function directory(){const path=await mkdtemp(join(tmpdir(),'oss-publication-profiles-'));await mkdir(join(path,'.omicos-oss'));return path}
+it('persists immutable preferences, deduplicates exact saved revisions after later edits, and never reads/installs a font on save',async()=>{
+ const workspace=await directory();let profiles=await PublicationProfiles.open(workspace)
+ try{const request=draft('initial');const first=await profiles.save(request);expect(first.profile.attachments).toBe('none');expect(profiles.resolve({id:first.id,revision:1,digest:first.digest},first.profile)).toEqual(first);expect(()=>profiles.resolve({id:first.id,revision:1,digest:first.digest},{...first.profile,dpi:300})).toThrow(/match/);expect(()=>profiles.resolve({id:first.id,revision:1,digest:'0'.repeat(64)},first.profile)).toThrow(/match/);expect(first.author).toBe('user:workbench');const second=await profiles.save({...request,id:first.id,revision:1,name:'Updated',profile:{dpi:300,attachments:'provenance'},operationId:'second'});expect(second.revision).toBe(2);expect((await profiles.save(request)).digest).toBe(first.digest);expect(profiles.get(first.id).digest).toBe(second.digest);await expect(profiles.save({...request,name:'Another request'})).rejects.toMatchObject({status:409});await expect(profiles.save({...request,id:first.id,revision:1,operationId:'stale'})).rejects.toMatchObject({status:409});await profiles.dispose();profiles=await PublicationProfiles.open(workspace);expect(profiles.get(first.id,1)).toEqual(first);expect(profiles.get(first.id)).toEqual(second);expect(profiles.history(first.id).revisions.map(value=>value.revision)).toEqual([2,1]);expect(profiles.list('Updated').entries).toHaveLength(1)
+ }finally{await profiles.dispose();await rm(workspace,{recursive:true,force:true})}
+})
+it('captures inputs before queued writes, drains accepted saves on shutdown and preserves archived history',async()=>{
+ const workspace=await directory();const profiles=await PublicationProfiles.open(workspace)
+ try{const input=draft('captured');const pending=profiles.save(input);input.name='MUTATED';const first=await pending;expect(first.name).toBe('Journal draft');const archived=await profiles.save({...draft('archive'),id:first.id,revision:1,archived:true});expect(profiles.list().entries).toHaveLength(0);expect(profiles.list('',undefined,true).entries[0].archived).toBe(true);expect(profiles.get(first.id,1).archived).toBe(false);const accepted=profiles.save({...draft('restore'),id:first.id,revision:2,archived:false});await profiles.dispose();expect((await accepted).revision).toBe(3);expect(()=>profiles.get(first.id)).toThrow(/closed/);const restored=await PublicationProfiles.open(workspace);try{expect(restored.get(first.id).archived).toBe(false)}finally{await restored.dispose()}
+ }finally{await profiles.dispose();await rm(workspace,{recursive:true,force:true})}
+})
+it('bounds discovery/history and rejects unknown policy fields, stale cursors, invalid databases and symlinks',async()=>{
+ const workspace=await directory();const profiles=await PublicationProfiles.open(workspace)
+ try{for(let i=0;i<51;i++)await profiles.save({...draft('profile-'+i),name:'Profile '+i});const page=profiles.list('Profile');expect(page.entries).toHaveLength(50);expect(profiles.list('Profile',page.next).entries).toHaveLength(1);const id=page.entries[0].id;for(let i=1;i<=51;i++){const current=profiles.get(id);await profiles.save({...draft('revision-'+i),id,revision:current.revision})}const history=profiles.history(id);expect(history.revisions).toHaveLength(50);expect(profiles.history(id,history.next).revisions).toHaveLength(2);await expect(profiles.save({...draft('bad'),profile:{dpi:180,attachSources:false} as any})).rejects.toMatchObject({status:400});expect(()=>profiles.list('',0)).toThrow();expect(()=>profiles.get(id,0)).toThrow();
+ }finally{await profiles.dispose();await rm(workspace,{recursive:true,force:true})}
+ const invalid=await directory();const {DatabaseSync}=createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');const path=join(invalid,'.omicos-oss','publication-profiles.sqlite');const db=new DatabaseSync(path);db.exec('PRAGMA user_version=2');db.close();try{await expect(PublicationProfiles.open(invalid)).rejects.toMatchObject({status:409})}finally{await rm(invalid,{recursive:true,force:true})}
+ const linked=await directory();await writeFile(join(linked,'unrelated'),'keep');await symlink(join(linked,'unrelated'),join(linked,'.omicos-oss','publication-profiles.sqlite'));try{await expect(PublicationProfiles.open(linked)).rejects.toThrow()}finally{await rm(linked,{recursive:true,force:true})}
+})

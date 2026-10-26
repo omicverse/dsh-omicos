@@ -1,115 +1,650 @@
-# @omicverse/dsh-omicos
+# OmicOS OSS
 
-Run [OmicVerse](https://github.com/Starlitnightly/omicverse)/OmicOS bioinformatics
-analyses from inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-The dsh agent keeps the wheel; this plugin gives it a persistent Python kernel
-(scanpy / omicverse / R) plus the catalog of analysis skills that OmicOS ships.
+A research application built on open-source Harness: native conversations, Agents,
+approvals and plugins, with persistent Python/R, data, notebooks, figures, project
+memory, scientific workflows and an optional OmicOS cloud subscription store.
 
-> 中文简介：把 OmicOS 的生信分析能力接进 dsh。DeepSeek 负责对话与规划，
-> OmicOS 负责跑分析——持久 Python 内核，`adata` 等状态跨轮累积；
-> 另带账号/订阅标签页与实时执行过程可视化。
+**Development preview (0.3.0).** This branch implements the first scientific and
+commerce vertical slice. It does not yet provide all OmicOS Core capabilities.
+See [implementation status](IMPLEMENTATION_STATUS.md) and the
+[complete migration design](OMICOS_OSS_DESIGN.md). No private Core binary is
+required by the OSS backend; the old Core adapter remains opt-in.
+
+## Run the OmicOS application
+
+The primary UI is the complete Harness application, restyled and composed as OmicOS:
+a narrow function rail, the native workspace/session browser, central conversations,
+and dockable scientific side tabs. Data, Notebook, Figures, Memory, Pipelines,
+Methods/Evidence, Runtime and Store open inside the application. The conversation's
+OmicOS view also contains these project tools directly; no iframe or separate dashboard
+is needed. The stock Agent, streaming, model selection, approval, settings and plugin
+mechanisms remain available. The deployment default is OmicOS Scientist; a user's
+chosen default in native Settings takes precedence.
+
+Use Node.js 24+ (the Harness minimum also accepts Node.js 22.19+) and pnpm:
 
 ```sh
-dsh plugin --profile web add @omicverse/dsh-omicos
+pnpm install --frozen-lockfile
+pnpm build
+pnpm start:app --workspace /absolute/path/to/research-project
 ```
 
-## Tools
+The command installs the pinned published Harness engine into an isolated OmicOS
+profile and opens its actual root application on loopback. Its default home is
+`~/.omicos-oss/application`; `--home`, `--python`, `--rscript`, `--port`, `--locale en|zh`
+and `--no-open` are available. Initial engine installation requires npm registry access.
+Models are configured through native settings; the launcher does not synthesize a key
+or copy model/cloud credentials from the environment. OmicOS cloud accounts and
+subscriptions are managed separately in the Store.
 
-One tool runs an analysis; the rest are direct reads of the local kernel that
-cost neither a turn nor a token.
+The selected directory is the initial working directory, not a global override of
+other conversations: scientific tools and docked panes follow each native Session's
+workspace. Main scientific pages also expose their project selector. Default language
+and Scientist selection are contributed by a private application defaults bundle,
+below the native user profile patch. Native Settings can change them
+and retain those choices across restart; `--locale` sets the deployment default.
+The generated scientific-runtime overlay is separate from user profile patches and
+model settings. An exclusive profile lease rejects duplicate launch before changing its configuration;
+graceful shutdown releases the lease. Native approvals still govern Agent actions,
+and data reads never start an analysis or purchase.
 
-| Tool | What it does |
-| --- | --- |
-| `omicos_analyze` | Runs a full OmicOS turn in a persistent kernel bound to the workspace. Repeated calls in one dsh session land on the same OmicOS conversation, so state accumulates. `background: true` hands it to `ctx.jobs` with live tqdm progress. |
-| `omicos_capabilities` | Searches the installed skill/agent catalog (several hundred skills and ~100 agents on a full install) and returns a ranked, bounded projection. Use it to decide whether a task is worth delegating. Omit the query for a category overview. |
-| `omicos_list_variables` | What currently lives in the kernel — name, type, shape, size. |
-| `omicos_query_variable` | One variable in detail. For an AnnData this includes the preprocessing state (`is_int` / `is_normalized` / `is_log1p` / `is_scaled`), which is what decides whether the next step is legal. |
-| `omicos_list_generated_files` | Every file the analyses of this conversation produced. |
+Notebook edits are temporarily retained in this browser tab across native navigation.
+Restoring a draft is explicit and does not execute its cells; saving still uses the
+server's revision checks. Closing the browser tab can discard this temporary copy.
+Tracked edits in the scientific editors prompt before pointer navigation or closing
+an edited docked or floating scientific tab, including its context-menu close action. Canceling leaves the editor untouched; accepting
+discards the local changes without canceling already submitted work. Multiple dirty
+editors share one reminder. Initial untouched Pipeline examples do not prompt.
+This guard does not copy proposal text or MCP configuration into browser storage;
+keyboard/programmatic navigation remains under audit.
 
-## Commands
+On compact windows, scientific navigation moves to a scrollable bottom bar while
+the native session/workspace rail remains available. The main frame reserves the
+bar's height, including the bottom safe-area inset, rather than squeezing the page
+between two vertical rails.
 
-`/omicos-help` (what the plugin adds, and where to look), `/omicos-login`
-(device-code pairing — sign in with phone or email in the browser),
-`/omicos-status`, `/omicos-account`, `/omicos-logout`, `/omicos-stop-kernel`.
+### Native macOS development preview
 
-Deliberately short: commands are for what the agent *cannot* do for you.
-Listing variables, browsing capabilities or finding outputs is better asked
-of the agent, which has tools for exactly that.
+The native preview uses public `deepseek-ai/deepseek-harness` revision
+`1f81c047fc48fa190a683e469daa699857e9afe8`, not a BrowserWindow around the web preview.
+First run `pnpm prepare:desktop-source --source /absolute/path/to/deepseek-harness`
+from this package. This applies the reviewable [MIT native product derivative](desktop/README.md).
+In that checkout run `pnpm install --frozen-lockfile`, `pnpm run build:artifacts`,
+`pnpm run build:check`, and
+`pnpm --filter @deepseek-ai/dsh-desktop exec install-electron`, using its pinned pnpm 11.28.5.
+Then from this package run:
 
-## UI
+```sh
+pnpm start:desktop-preview --source /absolute/path/to/deepseek-harness
+```
 
-The client bundle adds two surfaces to the web profile:
+The launcher isolates Harness home, Agents and Electron user data under
+`test-results/desktop-preview`; `--home`, `--python` and `--rscript` override these defaults.
+First launch prepares and validates the official locked Office runtime. Configure the
+workspace through native workspace controls. The Electron-managed desktop profile
+rejects ordinary CLI plugin edits, so use its Plugins page to install and enable the
+two local package paths printed by the launcher, in order. The second is an owned
+application-defaults bundle; saved user preferences keep normal precedence.
+No model key or cloud account is supplied by the launcher. The native welcome screen
+opens the local workspace directly without saving credentials. DeepSeek account/API-key
+actions remain available as explicit provider connections.
 
-- an **OmicOS tab** next to the conversation — a small console: sign-in state,
-  plan and expiry with links to subscribe or manage; which kernels are attached,
-  where, at what version, and what is bound in them right now; and a search box
-  over the installed capability catalog;
-- a **live tool view** on `omicos_analyze` calls — the steps, tool calls and
-  stdout tail as the analysis runs, instead of a spinner that ends in a wall of
-  text. Generated figures render in the settled card.
+`pnpm test:desktop-application` inspects this running macOS preview over its local
+9222 development endpoint: actual `dsh-app` renderer, macOS preload, all eight native
+scientific pages, conversation return, title, no iframe and no observed page errors.
+It leaves the window open. These developer inspection ports are inherited from the
+official source launcher. Native Dock artwork, keyboard draft safety,
+release packaging and the final application audit remain pending; this is
+not the final branded installer.
 
-If [dsh-better-sidebar](https://github.com/dsh-external/dsh-better-sidebar) is
-installed, an "OmicOS 产物" tab is registered there too; the integration is
-optional and detected at runtime.
+`pnpm test:desktop-notebook` explicitly creates two test Notebooks in the selected
+workspace and approves harmless Python/R calculations (42 and mean 4). It verifies
+actual custom-scheme writes, confirmation, fresh Notebook/execution IDs and visible
+outputs. Run it only in the isolated preview, with Python/R configured. No provider
+model or cloud account is used.
 
-## Requirements
+The pinned native derivative also offers disposable resolved-command guards, used by
+OmicOS for unsaved main-editor navigation and scoped scientific-tab closure. Earlier
+published engines retain pointer protection. `pnpm test:desktop-commands` requires the
+native preview to be focused on an unlocked desktop; it checks this before modifying
+editors, drives real Electron input and temporarily supplies controlled discard choices.
+Physical acceptance remains pending while the development desktop is locked.
+`pnpm test:shared-host-commands` exercises the same assembled OmicOS root through the
+existing native Host's loopback URL. It tests real browser key bindings, cancel/accept
+for main navigation and scoped scientific tab close, with no model/account fixture or
+memory submission. The browser is a second frontend to the same Host, not a second
+scientific runtime. This can validate UI wiring while native foreground input is
+unavailable, but it does not replace the physical native acceptance check.
+Stop the development preview before rebuilding its source/client files; a partially
+replaced development module graph is not a supported live-update deployment.
 
-- **omicos-core comes with the install.** `@omicverse/omicos` is a dependency,
-  so the ~21 MB platform binary lands in node_modules alongside the plugin
-  rather than being fetched by `npx` in the middle of your first tool call.
-  At run time the plugin still attaches to a kernel you already have running
-  (desktop app or terminal) if there is one, spawns the bundled binary only
-  when there is not, and only ever stops a kernel it started itself.
-- An **OmicOS account** for cloud-backed models and the higher plan tiers.
-  Sign in with `/omicos-login`; no token is ever persisted by this plugin — the
-  approved login is handed to the local core, which keeps it.
-- dsh `0.1.0-rc.6`. Note that some `@deepseek-ai/dsh-*` packages have a stale
-  `latest` dist-tag pointing at `0.0.1-rc.x`, so every dsh dependency here is
-  pinned exactly.
+The independent workbench remains a diagnostic/compatibility entry below, rather than
+the main OmicOS application. Native Electron packaging and broader UI refinements are
+still tracked in [implementation status](IMPLEMENTATION_STATUS.md).
 
-## Configuration
+## Run the standalone workspace
 
-Override in your profile's own `cordis.patch.yml`. A patch **replaces** the
-row's whole config — there is no deep merge — so restate every key you care
-about:
+Requirements: Node.js 22.13+ or Node.js 24+, pnpm, and either Python 3 available as `python3` or an explicitly installed base Python runtime. The workbench can open before Python is installed. Optional R cells require Rscript and jsonlite.
+Scientific packages are optional and must be installed in your chosen environment.
+The runtime does **not** silently install dependencies, upload data or replay cells.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm start:oss --workspace /absolute/path/to/research-project
+```
+
+Open the full launch link printed by the command. It contains a private, per-process
+owner credential that is exchanged for an HttpOnly browser cookie and removed from
+the address bar. Keep this link private. The store opens from the workbench.
+When hosted by Harness, both windows use its existing local owner authentication.
+
+Normal snapshots contain the latest 100 executions, not the complete archive.
+Use the history browser or `omicos_execution_history` to page earlier summaries;
+exact receipt IDs, operation deduplication, original images and Notebook exports
+remain available. Older Notebook cells can load their archived result explicitly.
+The complete legacy Notebook download streams all cells in bounded pages, without
+replaying code. See [execution history decisions](docs/adr/0009-execution-history-windows.md).
+
+Notebook documents are stored in each project's private runtime directory. Create or
+import an `.ipynb`, edit/reorder cells, save and explicitly approve individual runs.
+Imports never execute. Python and R use their respective shared project kernels;
+changing a cell invalidates its displayed/exported execution output. Revision
+conflicts require reloading and merging, so another window's edits are not overwritten.
+Imported rich outputs are retained for export with an unverified marker and are
+never executed as browser HTML. The current import limit is 2 MB / 500 cells.
+
+The data browser can import local files with verified resumable uploads. It hashes
+4 MiB slices, preserves confirmed offsets across reloads and requires the same source
+bytes before resuming. Finalization records the whole-file SHA-256; you can supply an
+independent expected digest. Existing project files are never overwritten. Pause or
+explicitly cancel private staging; after commit, cancellation cannot delete the
+project file. Limits are 10 GiB/file and four active imports. The destination must
+support atomic no-overwrite hard links on the project filesystem. No data is parsed,
+loaded or sent to the cloud by this upload channel. CSV/TSV/H5AD/RDS loading still
+uses prepared code and a separate execution approval. See
+[data import decisions](docs/adr/0013-resumable-project-data-import.md).
+
+The remote-data pane imports HTTPS sources into the same project publication
+mechanism. Approve the source URL, explicit redirect origins, destination and
+optional independent byte count/SHA-256. It never forwards cloud authorization or
+browser cookies. Unknown-length transfers are bounded to 10 GiB; non-identity
+content encodings and unapproved redirects are rejected. Missing expected hashes
+are labelled as transport-only receipts, not independently verified source data.
+
+Downloads persist 4 MiB chunk hashes before advancing their offset. Pause/restart
+preserves committed bytes; resuming is explicit and first verifies those bytes.
+Partial Range continuation requires a stable strong ETag and known total, and a
+changed/ignored range is rejected instead of silently replacing the prefix. Reads
+and Host restart never resume downloads. Complete streams are reverified and
+adopted by the normal no-overwrite publisher without a second large disk copy;
+publication cannot be paused halfway through a commit. Cancel removes private
+staging, never project files. Source URL queries stay out of ordinary receipt UI
+and `omicos_remote_import_state` output. Signed URLs remain in the owner-private
+ledger for explicit resume; renewal/authenticated connector flows are separate.
+No automatic parsing, unpacking, loading or execution occurs. See
+[remote import decisions](docs/adr/0032-remote-project-data-import.md).
+
+The AnnData explorer inspects the current Python object, then previews an existing
+embedding, obs distribution or one explicitly selected X/layer/raw feature. Every
+inspection/plot requires approval. Seeded uniform sampling is capped at 10000 rows;
+sparse/backed reads use small row chunks and never densify the full expression
+matrix. More than 20 sampled categories reject. Missing coordinates/colors and the
+preview-subset hash are recorded in the execution; no normalization, logarithm,
+filtering or embedding computation is implicit. See
+[AnnData exploration boundaries](docs/adr/0008-bounded-anndata-exploration.md).
+
+Figure Studio curates actual Python/R and Pipeline artifacts with versioned captions,
+declared methods/data references and explicit human review. Every edit resets review
+to draft; old captions and assessments remain in history. Download the original figure
+and its version-specific provenance JSON. Byte size/SHA-256 are checked on every
+download; a changed source is rejected and never regenerated automatically. Python
+plots include PNG/PDF/SVG, R retains PNG/PDF, and Notebook cells show their actual PNG
+outputs. Vector files are downloads, not executable inline documents. See
+[Figure Studio architecture](docs/adr/0005-figure-studio.md).
+
+Figure Studio also supports source-pinned multi-panel PNG assemblies. Choose exact
+curated figure versions, arrange a grid or edit panel coordinates, then save/review
+in **Figure Studio 多面板组图**. Exported SVG embeds exact original PNGs and source
+provenance, without regenerating analysis. Fresh review requires current individually
+approved sources; later edits leave old assessments historical and are reported by
+integrity checks. Missing/changed original bytes block image export. Captions and
+execution metadata are preserved without automatic redaction. Owner-confirmed PDF
+embeds a checked label font and maps physical size explicitly. Choose original
+PNG/provenance attachments, or page-only output with no source attachments or
+assembly title/caption/date metadata. Visible pixels and internal font/ICC data
+remain; page-only is not automatic anonymization. Save/reuse project publication
+preferences with immutable history and archive/restore. Loading or editing a
+preference never carries export consent; font/source bytes are checked again at
+export, and applied saved versions are bound by exact revision/digest. Select the bundled OFL font or a
+checksum-pinned static project TTF/OTF with an embedding-license declaration.
+CFF/no-subsetting fonts embed in full; missing glyphs reject. PNG samples
+(including 16-bit, alpha and Adam7) retain their represented precision, with a
+96 MB per-image decoded sample bound. Embedded ICC, sRGB and supported gAMA/cHRM
+map to PDF color spaces; missing gAMA primaries explicitly assume sRGB/D65 in
+the confirmation UI and provenance. Undeclared color stays unmanaged. Animated,
+HDR, unsupported color declarations or nonidentity EXIF orientation reject;
+identity/absent EXIF and actual R PNGs are supported. Vector/JPEG composition,
+broader proofing and journal-specific exports remain pending; see the
+[assembly design and limits](docs/adr/0017-source-pinned-figure-assemblies.md).
+
+PDF rendering uses bounded, cancellable local Node workers, not a scientific
+kernel or a second model. The selected attachment policy is acknowledged by the Host and checked before
+download; source-attached exports retain original image/records without redaction; current font/physical-size export choices do not
+inherit prior assembly approval. The bundled original Source Sans 3 font remains
+separately licensed under OFL with its notice and source/checksum manifest in
+`runtime/fonts`. See [PDF rendering/font scope](docs/adr/0018-font-aware-assembly-pdf.md) and
+[PNG color interpretation and bounds](docs/adr/0019-png-color-managed-publication.md),
+[attachment policy and sharing limits](docs/adr/0020-pdf-attachment-policy.md),
+[saved publication preferences](docs/adr/0021-saved-publication-profiles.md).
+
+Project MCP connections reuse the optional published Harness
+`@deepseek-ai/dsh-mcp-client@0.2.1-rc.3` peer. Install that exact package in the
+Harness profile/package environment with its package manager, then use **科研 MCP
+扩展连接** in the workbench. Do not add a second global client entry for a managed
+connection. `mcpResources` is needed for resource tools and is included in shipped
+Harness profiles. Standalone mode can save configurations but does not run servers.
+
+Connections default to disabled; edits revoke activation. Human enablement/reconnect
+and individual tool/resource approvals are separate. Servers mount only inside
+concrete Scientist agents for the project. Current grants are stored separately in
+the Host, so copying/restoring project files does not transfer or restore access.
+Credential objects use environment references, e.g.
+`{"environment":"RESEARCH_TOKEN","prefix":"Bearer "}`; allow the variable name in
+the OmicOS Host plugin's `mcpSecretEnvNames` configuration. Values never enter the
+project config/export; do not put secrets in command arguments or URLs. Local
+servers run with normal Host-user permissions under Harness subprocess behavior.
+No server packages are automatically installed. See the
+[MCP architecture and verification scope](docs/adr/0016-project-mcp-connections.md).
+
+Project research dossiers retain authored findings, limitations and explicit source
+snapshots from execution/import receipts, methods, figures, Notebooks and plans.
+Snapshots and revisions are hashed; current-source checks are separate from historical
+human review. Changed/missing evidence blocks a new review until you explicitly
+recapture it. Export downloads the exact saved revision without rerunning analyses,
+copying private session memory or uploading to cloud. Import receipt pins do not
+verify later dataset bytes; figure capture checks artifact bytes without embedding
+them. JSON export contains original execution text/paths and is not automatically
+redacted. Limits are 1–10 sources and 2 MB/entry. See
+[dossier decisions](docs/adr/0015-project-research-dossier.md).
+
+The scientific method library accepts plaintext method packs with exact versions,
+authors, source URLs and license declarations. New methods remain drafts until you
+publish them locally; exporting/importing never transfers approval. A key/version
+cannot be overwritten with changed bytes. The four original public checklists can
+be explicitly prepared as a reviewable pack; no external source is fetched or run.
+
+Pipeline can append an exact published method reference to its current draft without
+replacing steps or parameters. Managed pins are rechecked at define/start/recovery
+and actual dispatch. Withdrawing a method blocks future use while retaining earlier
+results/review revisions. Already-running code is not automatically killed. Normal
+tool/execution approval still applies, and publication is not independent scientific
+or legal validation. See [method version decisions](docs/adr/0014-versioned-scientific-methods.md).
+
+Scientific plans now retain a pinned objective, ordered steps, inputs/outputs,
+method references, risks and acceptance criteria. The Agent can read/propose; you
+approve/reject in the workbench. Task completion needs your assessment and an actual
+successful project or Pipeline execution receipt. Editing resets approval and current
+assessments; reopening a step clears downstream assessments while preserving history.
+Plan approval never executes code or bypasses tool approval, and declared methods and
+human acceptance are not independent scientific validation. See
+[research plan decisions](docs/adr/0011-human-governed-research-plans.md).
+
+Research memory now has a topic tree with sourced facts, session-private notes and
+project-local long-term entries. Save a proposal, review its sources and explicitly
+confirm its version before the Scientist can use it. Summaries pin source revisions;
+changing or withdrawing a source removes dependent stale summaries from automatic
+context. Consolidation retains all original history. Promoting private session content
+requires a separate sharing approval. Long-term memory is currently scoped to one
+project. Declared file/citation references are not automatically read or verified.
+See [memory architecture](docs/adr/0004-scoped-revisioned-memory.md).
+
+The **base Python runtime** panel can install an independent CPython archive on
+macOS/Linux without a preinstalled Python. The built-in pin is currently CPython
+3.12.15 / python-build-standalone 20261021 for macOS arm64; other supported targets
+require an owner-supplied descriptor. Review the exact version/platform, HTTPS
+origin allowlist, archive byte length, SHA-256 and upstream license notices, then
+explicitly approve installation and native interpreter verification. An absolute
+`archiveFile` enables offline installation with identical size/hash checks.
+
+Downloads never receive cloud authorization/cookies. Redirects must stay within
+the approved origin set. Extraction uses a private staging directory and bounded
+worker, rejects traversal/case aliases/devices and escaping/dangling/cyclic links,
+and records the full file/link/directory inventory. Files remain in the Host state
+cache, outside project browsing/import destinations. Cancellation waits for owned
+work to stop; cleanup removes only failed/canceled/interrupted partial files while
+preserving receipts. Another live Host cannot take over an active installation.
+No read or Agent tool automatically installs or activates a runtime.
+
+Select a verified ready base runtime for the **next Host start**, or roll back to
+external Python. An explicit `--python`/Harness `python` setting takes precedence;
+leave Harness `python` empty to use the selection. Current kernels remain intact.
+Startup and selection verify the complete inventory before executing downloaded
+Python. Changed/missing files block Python execution/provisioning and preserve the
+workbench rollback entry; they never silently invoke a replacement interpreter.
+Native distributions run with OS-user permissions, not in a security sandbox.
+See [base runtime decisions](docs/adr/0031-base-python-runtime-bootstrap.md).
+
+The Python environment panel can explicitly create an independent managed venv.
+Provide exact package versions and SHA-256 wheel hashes, including all dependencies;
+leave the package array empty for a base environment. Only binary wheels install,
+from public PyPI or a project-relative offline wheel directory. Nothing installs on
+reads or Agent calls. Installations show bounded logs and can be canceled; unfinished
+files can be explicitly removed while keeping receipts. Failures never replace the
+previous environment. No interpreter binary is bundled in the npm package; base Python is an optional explicit download. An R installer is not implemented.
+
+Select a ready environment (or external Python for rollback) for the **next Host
+start**. The current kernel and its variables stay intact. Selected files are checked
+before selection/startup; changed/missing environments block new Python work while
+the workbench remains available for rollback. Python Pipeline defaults follow the
+next-start choice and recovery retains environment checks. This currently has POSIX
+coverage; Windows/Electron and public scientific lock catalogs remain unverified/unimplemented. See
+[managed environment decisions](docs/adr/0012-managed-python-environments.md).
+`pnpm test:provisioning` checks forced Host death/recovery; the optional
+`pnpm test:provisioning:online` explicitly downloads one small pinned PyPI fixture
+into a temporary environment. Neither uses official cloud credentials or payments.
+
+Other flags: `--python /path/to/venv/bin/python`, `--port 18620`,
+`--rscript /path/to/Rscript`, `--pass-env NCBI_API_KEY,CUSTOM_DATA_VAR`, `--state-dir /private/state/directory`, and `--cloud-base https://auth.omicos.cn`.
+The service binds only to loopback; exposing it as a public server is unsupported.
+
+The standalone CLI runs explicit Python cells without Harness. When this same
+workspace is opened from the DSH OmicOS entry, it also provides Agent chat through
+the existing Harness session controller. Each project keeps one fixed Scientist
+session; no second LLM loop is started. Without a Harness connection, the chat
+panel explains how to connect and local Python remains available. Tool approval
+is currently completed in the Harness main window.
+
+The cloud window also lists each service domain's membership and server-provided
+expiry reminders, with purchase/trial/grant/seat labels. Renewal selects the correct
+catalog and requires a separate order confirmation. Cancel/restore names the target
+domain; older servers that do not acknowledge it are rejected before mutation.
+Unknown/offline membership status is never treated as a downgrade, and local work
+remains independent. See [membership boundaries](docs/adr/0006-domain-memberships.md).
+
+## Install in Harness
+
+The baseline is the official `dsh-v0.2.1-rc.3` release, Cordis 4.0.5, and
+Schemastery 3.18.5. The obsolete `dsh-client-runtime` dependency is removed.
+Build this checkout, then add its absolute path to your web profile:
+
+```sh
+dsh plugin --profile web add /absolute/path/to/dsh-omicos
+```
+
+The OmicOS conversation tab opens the independent workspace and store. Scientific
+tools use the calling session's workspace; an explicit config workspace takes
+precedence. An initial project also follows the Host working directory.
 
 ```yaml
 - id: omicos
   config:
-    workspace: /path/to/project   # '' = follow each dsh session's own cwd
-    autoStart: true               # spawn a kernel when none is attachable
+    backend: oss
+    workspace: /absolute/path/to/research-project
+    python: /absolute/path/to/venv/bin/python
+    workerEnvNames: []
     upstreamBaseUrl: https://auth.omicos.cn
-    npmRegistry: ''               # mirror knob for the kernel spawn
 ```
 
-## Security posture
+The web profile also gains an **OmicOS Scientist** Agent preset. Select it for
+scientific conversations; other presets do not inherit its persona. It shares
+the same Host model loop and project kernels.
 
-- Tools run in core with `permission_mode: "full"`. A single-shot tool result
-  has no room for a mid-flight approval prompt, and blocking on one deadlocks
-  the turn; bridging dsh's approval UI into an OmicOS turn is planned, not done.
-- Catalog search projects before it answers: the skill `source_path` (an
-  absolute local path) and the verbatim `use_when` routing text are indexed but
-  never returned, so they do not travel to the model.
-- The plugin's HTTP routes are pinned to loopback.
+The OSS tool surface is:
 
-## Development
+- `omicos_science_context`: variables, recent scientific executions and project memory.
+- `omicos_run_python`: approved Python execution, optionally asynchronous.
+- `omicos_run_r`: approved persistent R execution with PDF/PNG capture.
+- `omicos_execution_status`: actual execution state and bounded output.
+- `omicos_cancel_execution`: request cancellation, then query the terminal state.
+- `omicos_project_memory_write`: approved changes to sourced project facts.
+- `omicos_workspace_files`: bounded project data inventory with private-path protection.
+- `omicos_inspect_anndata`: approved metadata-only audit without changing expression values.
+- `omicos_scientific_skill`: public AnnData/QC/differential-expression/figure checklists.
+- `omicos_environment`: interpreter and installed scientific package metadata.
+- `omicos_notebook_state`: list/read/export persistent Notebook documents and execution references.
+- `omicos_notebook_update`: approved create/import/save with exact revision checks.
+- `omicos_notebook_run`: approved saved-cell execution with stable retry IDs.
+- `omicos_cloud_store`: cloud account and store/workspace entry points; no payment tool.
+
+Python and memory-write tools use Harness's pre-execution approval mechanism.
+Without an approval service/channel they fail closed. Other tool-policy denials
+are preserved. Workers receive a deliberate OS/scientific runtime environment instead of the
+Host’s whole environment. Arbitrary model keys/tokens are not inherited by default.
+Use `workerEnvNames` (or CLI `--pass-env`) to explicitly forward additional variable
+names required by a scientific integration; their values are not logged.
+Python runs with your operating-system permissions; this is a
+trusted research environment, **not a Python security sandbox**.
+
+## Scientific state and recovery
+
+One project owns one Python namespace and an optional separate R namespace, shared by their cells and bound sessions.
+Each project has a single execution queue. Different projects use separate
+workers. A project lock prevents competing runtime processes from corrupting its
+metadata; close the original runtime before opening the same project elsewhere.
+
+- `.omicos-oss/project.sqlite`: transactional executions, bounded stdout, sourced memory and sequenced scientific receipts (SQLite WAL).
+- `.omicos-oss/artifacts/`: generated figures, recorded with SHA-256 and byte size.
+- Existing `executions.json` / `memories.json`: retained as migration backups; imported once and never used to overwrite newer database records.
+- `.omicos-oss/runtime.lock/`: process ownership and heartbeat, not project data.
+
+Use stable operation IDs when retrying a request. Reusing an ID with different
+code/session is rejected. Host restarts preserve history, artifacts and memory,
+**not live Python objects**. Unfinished executions become `interrupted`, never
+silently rerun. A failed/canceled cell can leave partial variable or file changes.
+R history and variables are separate from Python; both languages use the project ledger. The interface makes this distinction explicit. Notebook export preserves source,
+outputs, execution identity, kernel generation and artifact references.
+
+Figures created with matplotlib are saved after successful cells; R graphics are captured as PDF with a PNG preview when supported. Figures are displayed
+in the workspace. The file endpoint checks workspace containment and integrity.
+No object pickle is automatically loaded on restart.
+
+The data browser previews bounded text and prepares CSV/TSV/H5AD/RDS loading code
+for review; it does not execute or deserialize a dataset just because it is selected.
+AnnData inspection reports layers, raw/embedding metadata and uniqueness, leaving
+normalization/log state explicitly unknown unless supported by separate evidence.
+
+Project references persist in the Host state directory and reopen lazily after a restart.
+Deleted/moved projects are not recreated by addressing an old project ID.
+The workspace follows durable scientific events over SSE and resumes after the last
+committed event ID, with polling as a recovery path. Host restart refreshes the
+CSRF nonce only after an explicit pre-dispatch rejection; unknown execution or
+checkout outcomes are never automatically retried.
+
+Each execution also records its actual interpreter/package versions and a kernel
+environment fingerprint; it does not dump process environment variables or keys.
+
+The ledger uses the [Node SQLite API](https://nodejs.org/api/sqlite.html). Its
+receipts establish execution/code/artifact identity, not full I/O provenance or
+scientific validity.
+
+## Official cloud store
+
+Local work does not require an OmicOS account. The store supports device-code
+login, live server catalog prices, monthly/quarterly/yearly selection, order
+confirmation, WeChat/Alipay QR, order polling/recovery, current subscription,
+and cancel/restore subscription management. Unsupported sales-only combinations
+are disabled or rejected by the server. The store also provides paid-order records,
+order-bound invoice applications/withdrawals, live lab seat pricing and owner-only
+seat changes. Seat expansion orders use the same payment panel. Advanced cloud
+resource/usage management remains in the migration queue.
+
+Credentials stay in the Host's private state directory (`~/.omicos-oss/cloud.json`
+by default), in an owner-readable file. They are not put in browser storage,
+URLs or Agent responses. This preview uses a private credential file rather
+than an OS keychain. Device approval happens in the official browser page; the
+workspace never requests passwords or SMS codes.
+
+Only official server order status activates the displayed cloud entitlement.
+The client does not call payment webhooks, support mock payment activation, or
+restart charged analysis after purchase. Closing an order panel stops its polls,
+not the cloud order itself. Account changes invalidate quotes and stale responses.
+If order creation times out, do not repeatedly create or pay orders; verify order
+state through the official account before retrying.
+
+Commerce UI and protocol were exercised against an isolated mock cloud and real
+browser. Production checkout, merchant callbacks and real account entitlement
+renewal have **not** been validated by these tests.
+
+## Legacy Core compatibility
+
+Set `backend: core` to use the original delegated Core Agent tools. Install the
+Core package separately if desired; it is no longer downloaded as an OSS package
+dependency. The legacy adapter may attach to/start Core according to its config.
+It has a separate Core-managed cloud identity; OSS login does not migrate it.
+Read [legacy Core instructions](LEGACY_CORE.md) for the existing tool/command
+surface. This compatibility backend is not the standalone open-source path.
+
+## Verify
+
+Browser and package checks are reproducible from this repository. For browser checks,
+install a Playwright Chromium build (`pnpm exec playwright install chromium`) or
+set `OMICOS_BROWSER_EXECUTABLE` to an existing compatible Chrome executable.
+`OMICOS_SCIENCE_TEST_PYTHON` selects an environment with AnnData/pandas for the
+optional full scientific checks. R checks run when Rscript/jsonlite are available.
+Screenshots contain synthetic test data and go to ignored `test-results/`.
+
 
 ```sh
-pnpm install
-pnpm build       # tsc + the client bundle
 pnpm typecheck
-pnpm test        # 89 tests against the real dsh defineTool and a mock core
+pnpm test
+pnpm build
+pnpm test:browser
+pnpm test:package
 ```
 
-This package publishes as ONE dependency-light artifact: the `@omicverse/omicos-*`
-SDK is inlined by `esbuild.host.mjs` and kept as devDependencies, while
-`@deepseek-ai/*` stays external (the harness supplies it, and a second copy of
-Schema would fail config validation) and `@omicverse/omicos` stays a real
-dependency (it is spawned as a child process, never imported).
+Tests include real Python processes, project isolation and ownership, cancellation,
+restart recovery, actual Harness rc.3 tool runtime/approval denial, cloud account
+isolation, one-use checkout confirmations, CSRF/origin/Host checks and notebook
+export. A green test suite is not evidence that every Core capability has migrated.
 
-`src/host/dsh-compat.ts` is the only module allowed to import `@deepseek-ai/*`.
-`bridge.ts` / `kernel.ts` / `runner.ts` / `auth.ts` have no dsh dependency at
-all, so a dsh API change is absorbed in the compat layer plus `tools.ts`,
-`commands.ts` and `index.ts`.
+## License
 
-GPL-3.0-only
+GPL-3.0-only, retained from this plugin. Build-generated `lib/third-party-*.txt`
+files include the exact license notices for inlined npm dependencies; build/test
+scripts and source are included in the package. New OSS runtime code does not copy private
+Core implementation files. Official cloud service availability, paid resources,
+third-party data and models have their own terms; they are not included by the
+plugin license. Review each proposed Core extraction before public distribution.
+
+The full published Harness Web integration can be reproduced with
+`pnpm test:harness-browser` (Playwright Chromium must be installed). It creates
+an isolated temporary DSH profile, installs this local plugin, uses a local synthetic
+model key and model server, and verifies owner authentication, the OmicOS entry,
+fixed Scientist chat, and approval in the actual main window before real Python
+execution. It does not use your normal DSH profile or call a paid model.
+
+Orders created on this device are recorded in a private, account-and-origin-scoped
+SQLite recovery ledger. The store can reopen them after a window close or restart.
+The local list omits payment links and labels status as the last check; reopening
+requires a fresh official query and matching amount/provider/expiry before showing
+a saved QR. Paid or expired orders never regain a payable QR. A failed local save
+after checkout reports a recovery warning with the successful order; it never
+repeats the purchase. This is local recovery history, not a complete cross-device
+cloud order listing.
+
+With `backend: core`, the OmicOS tab retains its original account, kernel and
+capability console and delegated Core tools. Its optional local workbench does
+not advertise the OSS Scientist preset; use the original Harness/Core conversation
+or select the OSS backend. The OSS backend never needs a private Core binary.
+
+Cloud mutations are bound to the account and login generation visible when the
+form was opened. If another window switches accounts, the Host rejects stale
+subscription, invoice and seat actions before contacting the cloud, refreshes the
+UI, and asks the user to review the current account. It never silently replays
+those actions. Local execution and workspace resolution remain account-independent.
+
+## Local Pipelines
+
+The workbench can save fixed ordered Python/R definitions and run them in independent
+project workers. Each definition pins code, JSON parameters, declared data paths,
+optional versioned reference text and its content hash. Editing creates a new hash.
+Saving never executes; the Run button approves execution, and `gate: true` pauses
+before that step for a separate human decision. These workers do not inherit ad hoc
+variables; they use the project working directory and configured interpreter.
+
+Checkpoints declare durable files and explicit `restoreCode`. The Host records hashes
+after successful execution. Recovery verifies original inputs/checkpoints, starts a
+fresh namespace, compares actual environment metadata, and runs the pinned restore
+source only after approval. Changed environments need explicit acceptance. Failure,
+cancellation or interruption never triggers an automatic replay; review partial
+side effects before restoring or recomputing. Four runs may hold local kernels at
+once; overlapping declared output/input paths are reserved to prevent collisions.
+
+Pipeline tools: `omicos_pipeline_state`, `omicos_pipeline_define`,
+`omicos_pipeline_start`, and `omicos_pipeline_control`. Definition/start/recovery
+actions use Harness approval; cancellation requests stop the named run. Full
+receipts, file/artifact hashes and sequenced recovery logs remain accessible after
+workers stop. The current executor is local and ordered, with one language per
+definition; remote/mixed-language orchestration remains in the migration plan.
+
+On POSIX, a bundled Node supervisor owns each scientific process group and monitors
+a separate Host-lifetime socket. Abrupt Host death terminates the owned family, even
+when Python/R are busy in native code. This is lifecycle management rather than a
+sandbox: trusted code has OS-user permissions and can deliberately escape the group
+or leave external side effects. Windows and Electron-host lifecycle behavior are
+not yet verified. See [Pipeline decisions](docs/adr/0002-persistent-local-pipelines.md)
+and [worker ownership](docs/adr/0003-scientific-worker-ownership.md).
+
+Pipeline definitions and runs also have independent 50-summary pages and search/
+state filters. The current pinned draft and run stay selected while browsing other
+pages; a known definition SHA-256 or full run UUID can be opened directly. Older
+runs keep the same start-operation deduplication and explicit recovery requirements.
+Collection paging does not truncate an individual run's full evidence journal. See
+[Pipeline collection decisions](docs/adr/0010-pipeline-collection-paging.md).
+
+## Capability discovery
+
+Run `omicos-oss --version` to inspect the installed version without opening a project.
+The owner-authenticated `GET /omicos/oss/api/capabilities` describes the runtime
+version, supported scientific protocol and implemented/optional/unverified features.
+It never starts interpreters or contacts cloud. Send `x-omicos-protocol: 1` to API
+requests; an unsupported explicit version returns HTTP 426 before dispatch. Discovery
+remains accessible after owner authentication even with a mismatched header. Existing
+clients without the header retain protocol-1 behavior. The workbench footer and
+`omicos_runtime_capabilities` Agent tool expose the same contract.
+
+The pinned Harness rc.3 adapter has native unload/remount and WebServer-replacement
+coverage, including actual worker ownership, interrupted receipts and SSE cleanup.
+Concurrent startup requests share one handler/CSRF generation; retired routes fail
+before dispatch. Full plugin unload restarts an arbitrary Python namespace cold;
+carrier-only replacement preserves it. See [lifecycle evidence and remaining
+platform limits](docs/adr/0022-harness-generation-lifecycle.md).
+
+Retained Scientist preset bindings also follow the current Host provider after
+remount: the next context prepares authorized MCP tools and refreshes the public
+prompt assembly, while current memory stays literal and approvals remain required.
+Cold transcript reads do not start transports. See [retained-scope evidence and
+remaining live-streaming limits](docs/adr/0023-retained-scientist-context.md).
+
+Scientist chat now streams visible text through the same Harness controller, with
+partial reconnect baselines and committed history. Closing the window stops only
+its observer; explicit Stop retains the existing cancel path. Reasoning, tool
+arguments and injected context are not relayed to this chat surface. Text windows
+are bounded and full history remains Harness-owned. See [stream protocol, limits
+and verification](docs/adr/0024-fixed-conversation-stream.md).
+
+固定科研会话支持“浏览固定会话历史”：按页读取 Harness 已保存的公开文本，
+不会创建 Agent 或发起模型调用。每页最多 50 条消息，采用固定历史边界；
+历史面板独立于实时回复。跨页修订可能保留旧版本，工具参数、推理和注入上下文不显示。
+
+工作台提供“跨项目检索记忆与科研档案”：仅扫描 Host 已登记的项目元数据，
+默认排除会话私有笔记和未确认提案。每页最多扫描一个项目的一类记录 50 条，
+没有匹配也可继续扫描。结果保留项目、版本和状态，不会启动科研进程或自动进入 Agent 上下文。
+
+Pipeline 运行详情采用最近 20 条摘要窗口，支持分页读取全部执行尝试、检查点与恢复记录。
+旧尝试可按需打开完整收据和图表；旧检查点可选入恢复表单，仍需重新确认和通过文件校验。
+分页修订过期时会要求重新读取，不会自动恢复或重跑。单条元数据读取上限为 2 MB。
+
+Pipeline 支持按精确修订下载完整运行元数据：固定定义、所有尝试/检查点/恢复决策和事件日志。
+下载从一致的 SQLite 快照分块生成，响应提供长度与 SHA-256，供独立校验。
+它会保留原有代码、参数和路径，不额外打包外部数据集、图像文件或另存的完整执行收据；
+不是脱敏文件或可自动执行的完整科研回放包。关闭下载不会取消分析。
+
+AnnData 探索支持分组多特征点图：选择 1–20 个精确特征 ID、分类 obs 字段、X/layer/raw 和阈值，
+批准后从现有对象采样绘图。颜色为有限值均值，点面积为有限值中严格大于阈值的比例；
+回执保留分母、缺失值、分组规模、来源和采样哈希。不会自动变换数据或进行差异表达检验。
+
+分组箱线图和小提琴图支持数值 obs 或单个特征的 X/layer/raw 数据。回执保留分位数、
+须线、离群值和有限样本量；小提琴明确标注 Scott 密度估计与逐组宽度缩放，
+单值/常量组以线标记显示。所有图表均需明确批准，不自动变换数据或进行假设检验。

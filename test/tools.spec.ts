@@ -166,7 +166,7 @@ describe('registerOmicosTools', () => {
     registerOmicosTools(bare.ctx, deps(mock))
     await expect(byName(bare.tools, 'omicos_analyze').execute({ request: 'x', background: true }, EXEC)).rejects.toThrow(/dsh-jobs/)
 
-    let captured: { kind: string; label: string; run: () => { done: Promise<unknown>; readOutput?: () => string } } | undefined
+    let captured: { kind: string; label: string; run: (job: { updateProgress: (text: string) => void; append: (text: string) => void }) => { done: Promise<unknown> } } | undefined
     const withJobs = fakeCtx({
       jobs: {
         start(spec: typeof captured) {
@@ -181,11 +181,13 @@ describe('registerOmicosTools', () => {
     expect(captured?.kind).toBe('omicos-analysis')
     expect(captured?.label).toContain('long analysis')
 
-    const hooks = captured!.run()
-    expect(hooks.readOutput?.()).toMatch(/running/)
+    const progress: string[] = []
+    const output: string[] = []
+    const hooks = captured!.run({ updateProgress: text => progress.push(text), append: text => output.push(text) })
+    expect(progress[0]).toMatch(/running/)
     const outcome = (await hooks.done) as { status: string; output?: string }
     expect(outcome.status).toBe('completed')
-    expect(outcome.output).toBe('Hello, world')
+    expect(output.join('')).toBe('Hello, world')
   })
 
   it('workspace routing (regression: host cwd spawned a stray core): config override > session.header.cwd > host cwd', async () => {

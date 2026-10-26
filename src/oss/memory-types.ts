@@ -1,0 +1,7 @@
+import type { Memory } from './types.js'
+export interface MemoryAccess { sessionId?: string; owner?: boolean; actor?: string }
+export interface MemorySource { kind: 'user' | 'legacy' | 'external' | 'file' | 'execution' | 'memory'; ref: string; note?: string; digest?: string; revision?: number; verification: 'declared' | 'local-receipt' | 'pinned-memory'; scope?: 'project' | 'session' | 'longterm'; sessionId?: string }
+export interface MemoryNode extends Memory { schema: 2; title: string; kind: 'topic' | 'fact' | 'summary'; scope: 'project' | 'session' | 'longterm'; sessionId?: string; originSessionId?: string; parentId: string | null; state: 'proposed' | 'confirmed' | 'withdrawn' | 'superseded'; revision: number; createdAt: string; sources: MemorySource[]; digest: string; approvedBy?: string; approvedAt?: string; scopePromotionApproved?: boolean; promotionRequired?: boolean; changeReason?: string }
+export interface MemoryDraft { id?: string; revision?: number; title: string; kind: MemoryNode['kind']; scope: MemoryNode['scope']; sessionId?: string; parentId?: string | null; text: string; sources: Array<{ kind: MemorySource['kind']; ref: string; note?: string; digest?: string; revision?: number }>; operationId: string }
+export interface MemoryView { node: MemoryNode; effective: boolean; issues: string[] }
+export class MemoryError extends Error { constructor(readonly status: number, message: string) { super(message) } }

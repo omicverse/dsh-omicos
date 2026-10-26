@@ -1,0 +1,9 @@
+# Project Research Dossier Implementation Plan
+
+Goal: persistent searchable research findings with source-pinned snapshots, explicit human review, immutable history and portable local JSON export.
+
+Architecture: project-exclusive SQLite stores revisioned entries, current pointers and stable actor-bound operation receipts. Entries combine title/finding/limitations/tags with 1–10 explicit project source references. The Host resolves actual committed execution/import receipts, current method/Figure/Notebook/plan records or a specific Pipeline execution. No chat/session-private memory is automatically copied and no second model loop or scientific execution is started.
+
+Decisions: snapshots are content-hashed and capped at 2 MB/entry. Editing/recapturing resets human review. Human review checks current source identities before recording an assessment; changed/missing sources require explicit recapture and review. Older accepted snapshots remain historical and never silently update. Export remains available offline from saved snapshots, names its verification scope and never uploads data. Import receipt sources prove commit-time file identity only; current file bytes are not implicitly read. Figure sources explicitly verify their artifact bytes. Human review is compilation/interpretation, not independent scientific validity.
+
+Tasks: implement source resolver/store and native revision/replay/staleness/export tests; add owner/CSRF HTTP and read/propose-only Agent surface; add workbench finding editor, source lookup, integrity/history and explicit review/export; exercise actual Python/Figure/source changes plus browser reload/export; typecheck/native Node 22.13/build/package and update capability/status docs. Global cross-project indexing, automatic dossier generation, isolated scientific review and sanitized replay bundles remain separate migration work.

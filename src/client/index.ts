@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 /**
  * Browser half of @omicverse/dsh-omicos: contributes the「OmicOS」tab to
  * the session view strip. The strip IS the `conversation.view` list slot
@@ -14,10 +15,10 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the slots-service Context merge (ctx.slots) and the
 // 'conversation.view' SlotMap row (declared by the slot's owning package)
 // into the program so the register call types.
-import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
-import { AccountTab } from './AccountTab.js'
+import { registerOmicosShell } from './OmicosShell.js'
+import { OssEntry } from './OssEntry.js'
 import { registerBetterSidebarTab } from './betterSidebar.js'
 import { OmicosToolView } from './OmicosToolView.js'
 
@@ -26,6 +27,7 @@ export const name = 'omicos-client'
 export const inject = ['slots']
 
 export function apply(ctx: Context): void {
+  registerOmicosShell(ctx)
   ctx.slots.inject('conversation.view', () =>
     ctx.slots.register(
       {
@@ -33,8 +35,9 @@ export function apply(ctx: Context): void {
         id: 'omicos',
         order: 20,
         label: () => 'OmicOS',
+        inject: (sessionId: string) => ({ sessionId }),
       },
-      AccountTab,
+      OssEntry,
     ),
   )
   // Take over the omicos_analyze card (keyed toolview, D8): live nested-

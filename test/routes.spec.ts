@@ -19,6 +19,7 @@ function fakeCtx(): { ctx: Context; routes: Array<{ kind: string; path: string; 
   const routes: Array<{ kind: string; path: string; handler: Handler }> = []
   const ctx = {
     get(name: string) {
+      if (name === 'connection') return { requestRejection: () => undefined }
       if (name === 'webServer') {
         return { register: (r: (typeof routes)[number]) => (routes.push(r), () => {}) }
       }

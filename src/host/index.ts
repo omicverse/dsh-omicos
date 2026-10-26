@@ -1,23 +1,20 @@
+import {ownedRoute} from './owned-route.js'
+import type {} from './oss-service.js'
+import type {} from '@deepseek-ai/dsh-client-connection'
+import type {} from '@deepseek-ai/dsh-api-session-controller'
+import { HarnessScienceChat } from './oss-chat.js'
+import { HarnessProjectMcp } from './oss-mcp.js'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import { OssRuntime } from '../oss/runtime.js'
+import { createOssHandler } from '../oss/http.js'
+import { registerOssTools } from './oss-tools.js'
 /**
- * `@omicverse/dsh-omicos` — OmicOS as a deepseek-harness plugin, Mode A
- * (DSH-PLUGIN.md §3): the dsh/DeepSeek agent keeps the wheel; omicos is a
- * capability (tools + background jobs + login commands + an account tab).
- *
- * The host half is the whole plugin on a headless profile; the client
- * bundle (`dsh.client`) only adds surfaces — the OmicOS account tab and
- * the live-activity tool view. Figures reach the user through
- * `presentationMeta` + the `/omicos/figure` route, NOT as ImageBlocks in
- * the tool result: tool-result content is replayed into the model, and
- * dsh's DeepSeek adapter fails the whole turn on image content.
- *
- * Entry-point shape is the VERIFIED loader contract: named exports
- * `name` / `inject` / `Config` / `apply(ctx, config)`, NO default export
- * (`unwrapExports` would take the default INSTEAD of the namespace).
- *
- * Teardown is ONE generator effect: disposers run LIFO, so yielding the
- * kernel-stop first and the registrations after means unload unregisters
- * tools/commands BEFORE SIGTERMing a self-spawned core (D1 — parallel
- * async disposers would race those).
+ * OmicOS OSS Harness Host plugin. The default backend registers explicit
+ * scientific tools and a shared Python/R runtime. Harness remains the sole
+ * Agent loop. Official cloud commerce is optional and Host-owned.
+ * `backend: core` retains the original delegated Core adapter for migration.
+ * Every registration is lifecycle-owned; teardown waits for startup and
+ * worker quiescence before releasing project ownership.
  */
 import { AccountService } from './account.js'
 import { ActivityStore } from './activity-store.js'
@@ -33,6 +30,12 @@ export const name = 'omicos'
 export const inject = ['tools']
 
 export interface Config {
+  backend: 'oss' | 'core'
+  python: string
+  rscript: string
+  workerEnvNames: string[]
+  mcpSecretEnvNames: string[]
+  stateDir: string
   /** Explicit workspace override; empty = follow each dsh session's own workspace (`session.header.cwd`). */
   workspace: string
   /** Spawn a local kernel via `npx @omicverse/omicos` when none is attachable. */
@@ -45,7 +48,13 @@ export interface Config {
   maxAttachmentBytes: number
 }
 
-export const Config: Schema<Config> = Schema.object({
+export const Config = Schema.object({
+  backend: Schema.union(['oss', 'core']).default('oss'),
+  python: Schema.string().default(''),
+  rscript: Schema.string().default('Rscript'),
+  workerEnvNames: Schema.array(Schema.string()).default([]),
+  mcpSecretEnvNames: Schema.array(Schema.string()).default([]),
+  stateDir: Schema.string().default(''),
   workspace: Schema.string().default(''),
   autoStart: Schema.boolean().default(true),
   upstreamBaseUrl: Schema.string().default('https://auth.omicos.cn'),
@@ -54,6 +63,44 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
+  const runtime = OssRuntime.open({ python: config.python, rscript: config.rscript, workerEnvNames: config.workerEnvNames, stateDir: config.stateDir || undefined, cloudBase: config.upstreamBaseUrl }).then(async service => {
+    try { await service.project(config.workspace || process.cwd()); return service }
+    catch (error) { await service.dispose(); throw error }
+  })
+  const mcp = config.backend !== 'core' ? new HarnessProjectMcp(runtime, config.workspace, config.mcpSecretEnvNames || []) : undefined
+  if (mcp) void runtime.then(service => { service.mcpHost = mcp }).catch(() => {})
+  ctx.provide('omicosScience', { runtime, workspace: config.workspace, mcp })
+  // Attach rejection handling immediately; lifecycle cleanup still awaits it.
+  void runtime.catch(error => console.error('OmicOS OSS startup failed:', String(error)))
+  ctx.effect(function* () {
+    yield async () => { await (await runtime).dispose() }
+    if (mcp) yield async () => { await mcp.dispose(); const service = await runtime; if (service.mcpHost === mcp) service.mcpHost = undefined }
+    if (config.backend !== 'core') for (const dispose of registerOssTools(ctx, runtime, config.workspace)) yield dispose
+  }, 'omicos: OSS scientific service')
+  ctx.inject(['webServer', 'connection'], sub => {
+    const route=ownedRoute(async()=>createOssHandler(await runtime,{authorizePage:(req,res)=>sub.connection.authorizeIndex(req,res),requestRejection:req=>sub.connection.requestRejection(req)},{backend:config.backend}))
+    sub.effect(()=>{const unregister=sub.webServer.register({kind:'prefix',path:'/omicos/oss',handler:route.handle});return ()=>{route.close();unregister()}})
+  })
+  ctx.inject(['sessionController'], sub => {
+    sub.effect(async function* () {
+      const service = await runtime
+      const chat = new HarnessScienceChat(sub.sessionController)
+      if (config.backend !== 'core') service.chat = chat
+      const resolveWorkspace = async (sessionId: string, signal: AbortSignal) => { const cwd = await chat.workspaceForSession(sessionId, signal); return config.workspace || cwd }
+      service.resolveSessionWorkspace = resolveWorkspace
+      yield async () => { if (service.chat === chat) service.chat = undefined; if (service.resolveSessionWorkspace === resolveWorkspace) service.resolveSessionWorkspace = undefined;await chat.dispose() }
+    }, 'omicos: Harness conversation bridge')
+  })
+  if (config.backend !== 'core') {
+    ctx.inject(['agentPresets'], sub => {
+      sub.effect(async function* () {
+        yield await sub.agentPresets.register({ id: 'omicos', name: 'OmicOS Scientist', description: 'Bioinformatics research with a persistent project kernel and sourced memory.', order: 15,
+          plugins: [{ id: 'omicos-scientist', name: '@omicverse/dsh-omicos/scientist' }] })
+      }, 'omicos: scientist preset')
+    })
+    return
+  }
+
   const pool = new OmicosPool({
     autoStart: config.autoStart,
     npmRegistry: config.npmRegistry || undefined,
@@ -93,7 +140,7 @@ export function apply(ctx: Context, config: Config): void {
     }, 'omicos: commands')
   })
 
-  ctx.inject(['webServer'], (sub) => {
+  ctx.inject(['webServer', 'connection'], (sub) => {
     sub.effect(function* () {
       for (const dispose of registerOmicosRoutes(sub, { account, activity, pool })) {
         yield dispose

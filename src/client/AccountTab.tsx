@@ -199,8 +199,7 @@ function KernelPane(): JSX.Element {
       {kernels === undefined && <div style={S.dim}>加载中…</div>}
       {kernels?.length === 0 && (
         <div style={S.dim}>
-          还没有连接内核。第一次调用 omicos 工具（或运行 <code>/omicos-login</code>）时会自动挂载已在运行的内核，
-          没有就用随插件装好的二进制启动一个。
+          尚未连接 Core 内核。调用分析工具时会按配置挂载已有实例；允许自动启动时才会启动 Core。
         </div>
       )}
       {kernels?.map((k) => (

@@ -1,26 +1,9 @@
 /**
- * 🔴 THE anti-corruption layer (DSH-PLUGIN.md §4): every `@deepseek-ai/*`
- * import in this package goes through this module and nowhere else. dsh is
- * a days-old developer preview pinned EXACTLY (0.1.0-rc.6, no `^`) — when
- * it churns, the breakage surfaces here first and the rest of the plugin
- * (and everything under `bridge.ts`/`runner.ts`/`kernel.ts`, which import
- * no dsh at all) stays untouched.
- *
- * Verified against the local clone @47f9438 (DSH-PLUGIN.md appendix facts
- * D1-D15 + this session's line-by-line re-verification):
- *  - plugin entry = named exports `name`/`inject`/`Config`/`apply(ctx, config)`
- *    (loader `unwrapExports` treats the module namespace as a Plugin.Object
- *    when there is no default export — do not add one).
- *  - tool parameter schemas are dsh-tools' OWN JSON-schema DSL
- *    (`ParameterSchemaSpec`, per-property `required: true`, objects must
- *    write `additionalProperties` explicitly) — NOT Schemastery, which is
- *    only for the plugin `Config`.
- *  - `ContentBlock`/`ImageBlock` come from `@deepseek-ai/dsh-llm`
- *    (dsh-tools does not re-export them).
- *  - command names must match `/^[a-z][a-z0-9_-]*$/` — the design doc's
- *    `omicos:login` spelling is NOT registrable; we use `omicos-login`.
- *  - job labels are immutable after `start()`; live progress goes through
- *    `JobHooks.readOutput()` instead.
+ * Harness Host compatibility boundary, verified against dsh-v0.2.1-rc.3.
+ * Tool parameters use the Harness JSON-schema DSL; plugin configuration uses
+ * the Host-provided Schemastery instance. Optional services are injected by
+ * lifecycle scopes. Jobs use session-id ownership and JobHandle progress/output.
+ * Third-party plugins must not write internal experimental Session records.
  */
 
 export type { Context } from '@deepseek-ai/cordis'
@@ -85,3 +68,5 @@ export function dshSessionIdOf(exec: { agent?: { id: string } }): string | undef
 export function sessionCwdOf(exec: { agent?: { session?: { header?: { cwd?: string } } } }): string | undefined {
   return exec.agent?.session?.header?.cwd
 }
+
+export type { JsonValue } from '@deepseek-ai/dsh-util-values'
