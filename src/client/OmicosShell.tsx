@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { registerOmicosLanguageRow } from './OmicosLanguage.js'
 import { OmicosPanel, type OmicosPage } from './OmicosPanel.js'
 import { OmicosSidebarHeader } from './OmicosSidebar.js'
+import { OmicosStarters } from './OmicosStarters.js'
 import componentStyles from './oss.css?inline'
 import shellStyles from './omicos-shell.css?inline'
 
@@ -482,6 +483,12 @@ export function registerOmicosShell(ctx: Context): void {
     ctx.slots.register(
       { name: 'shell.overlay', id: 'omicos-sidebar-header' },
       OmicosSidebarHeader
+    )
+  )
+  ctx.slots.inject('shell.overlay', () =>
+    ctx.slots.register(
+      { name: 'shell.overlay', id: 'omicos-starters' },
+      OmicosStarters
     )
   )
   ctx.slots.inject('sidebar.brand.mark', () =>
