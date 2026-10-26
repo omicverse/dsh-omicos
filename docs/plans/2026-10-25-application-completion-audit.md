@@ -1,6 +1,6 @@
 # OmicOS OSS application completion audit
 
-Status: incomplete; preserve the full application objective.
+Status: incomplete; waiting for external foreground-window action. Preserve the full application objective.
 
 | Requirement | Current authoritative evidence | Assessment |
 | --- | --- | --- |
@@ -19,3 +19,19 @@ Status: incomplete; preserve the full application objective.
 Release signing/installers and production billing are not represented as completed
 by a development preview. The active goal is not complete until the remaining app
 context/visual/workflow checks are resolved and the evidence is reviewed again.
+
+
+## Foreground acceptance handoff
+
+The same native input preflight refusal has been confirmed in three consecutive
+goal turns: the assembly/aggregate acceptance turn, the native-page visual audit
+turn, and the final foreground recheck. The running native preview responds to its
+inspector, but its main window is not focused. The input test stops before editing
+any fields. The user foreground request remains unanswered.
+
+Next action: unlock macOS if needed, bring the existing OmicOS OSS preview window
+to the foreground, then run `pnpm test:desktop-commands`. Do not start another
+scientific runtime or treat browser keyboard tests as proof of this native path.
+If the input test passes, inspect its receipts and re-audit the complete objective
+before marking the goal complete. Existing implementation and nine-step workflow
+acceptance are preserved; the worktree is committed.
