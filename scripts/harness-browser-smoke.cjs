@@ -12,13 +12,17 @@ const root = path.resolve(__dirname, '..');
 const redact = text => text.replace(/([?&](?:token|omicos_token)=)[^\s&]+/g, '$1[redacted]');
 const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const args = ['--yes', `--package=@deepseek-ai/dsh@${version}`, 'dsh'];
+function stopGroup(child, signal) {
+  if (!child?.pid) return;
+  try { process.platform === 'win32' ? child.kill(signal) : process.kill(-child.pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+}
 function run(arguments_, env, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args, ...arguments_], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, [...args, ...arguments_], { env, cwd, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; const capture = chunk => { output = (output + chunk).slice(-12000) };
     child.stdout.on('data', capture); child.stderr.on('data', capture);
-    const timer = setTimeout(() => child.kill('SIGTERM'), 120000);
-    child.once('error', reject); child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(Error(`Harness profile setup failed (${code}): ${redact(output)}`)) });
+    const timer = setTimeout(() => { stopGroup(child, 'SIGKILL'); reject(Error(`Harness profile setup timed out: ${redact(output)}`)); }, 120000);
+    child.once('error', error => { clearTimeout(timer); reject(error); }); child.once('exit', code => { clearTimeout(timer); stopGroup(child, 'SIGKILL'); code === 0 ? resolve() : reject(Error(`Harness profile setup failed (${code}): ${redact(output)}`)) });
   });
 }
 (async () => {
@@ -61,7 +65,7 @@ function run(arguments_, env, cwd) {
       '- id: llm-deepseek-account', '  disabled: true', '',
     ].join('\n');
     await fs.writeFile(path.join(env.DSH_HOME, 'profiles', 'web', 'cordis.patch.yml'), config);
-    child = spawn(command, [...args, '--profile', 'web', '--no-open', '--host', '127.0.0.1', '--port', '0'], { env, cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(command, [...args, '--profile', 'web', '--no-open', '--host', '127.0.0.1', '--port', '0'], { env, cwd: directory, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     let diagnostics = ''; child.stderr.on('data', chunk => { diagnostics = (diagnostics + chunk).slice(-8000) });
     const launch = await new Promise((resolve, reject) => {
       let output = ''; const timer = setTimeout(() => reject(Error(`Harness startup timeout: ${redact(diagnostics)}`)), 45000);
@@ -254,9 +258,13 @@ function run(arguments_, env, cwd) {
     assert.deepEqual(errors, [])
     console.log(JSON.stringify({ harness: version, ownerAuth: 'unauthenticated 401; Harness owner cookie 200', approval: 'no side effect before Allow once; real Python writes 42 afterwards', dataImport: 'actual Harness owner cookie/CSRF binary PUT, verified file hash and no automatic execution', mcp: 'real Scientist-scoped stdio plugin, UI enable/disable, actual separate call approval and immutable history', scientist: 'scoped persona and Notebook tools', entry: 'native OmicOS conversation tools and main panels; real Notebook Python 42; unsaved draft restored after navigation without execution', legacyUi: 'Core console DTO fixture retains account/kernel/catalog panes', conversation: 'formal controller follow -> visible partial text -> reload/reconnect partial baseline without another model call -> one committed assistant message -> reload; no second model loop', pageErrors: errors }));
   } finally {
+    console.log('Closing isolated browser…');
     await browser?.close();
-    if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }
+    console.log('Stopping isolated Harness process group…');
+    if (child) { const exited = child.exitCode === null && child.signalCode === null ? new Promise(resolve => child.once('exit', resolve)) : Promise.resolve(); stopGroup(child, 'SIGTERM'); const force = setTimeout(() => stopGroup(child, 'SIGKILL'), 3000); await exited; clearTimeout(force); stopGroup(child, 'SIGKILL'); }
+    console.log('Closing synthetic model connections…');
     model.closeAllConnections();
     await new Promise(resolve => model.close(resolve)); await fs.rm(directory, { recursive: true, force: true });
+    console.log('Harness fixture cleanup complete.');
   }
 })().catch(error => { console.error(redact(String(error))); process.exitCode = 1 });
