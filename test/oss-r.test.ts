@@ -22,7 +22,7 @@ describe.skipIf(!rAvailable)('real persistent R worker', () => {
       const r = await runtime.rProject(workspace)
       const first = await r.submit('values <- c(1,2,3,4)\nmean(values)', 'one', 'session')
       const result = await settled(r, first.id)
-      expect(result.environment?.language).toBe('r'); expect(result.environment?.packages.jsonlite).toBeTruthy(); expect(result.state).toBe('succeeded'); expect(result.output).toContain('2.5')
+      expect(result.environment?.language, result.error).toBe('r'); expect(result.environment?.packages.jsonlite).toBeTruthy(); expect(result.state).toBe('succeeded'); expect(result.output).toContain('2.5')
       expect(result.artifacts).toHaveLength(0)
       const plot = await r.submit('plot(values, type="b", main="OmicOS R")', 'plot', 'session')
       const figure = await settled(r, plot.id)

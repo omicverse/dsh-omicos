@@ -3,7 +3,9 @@ if (!requireNamespace('jsonlite', quietly = TRUE)) stop('R worker requires jsonl
 args <- commandArgs(trailingOnly = TRUE)
 workspace <- normalizePath(args[[1]], mustWork = TRUE)
 setwd(workspace)
-wire <- file('/dev/fd/3', open = 'w')
+# R cannot reopen Node's Unix-domain socket via /dev/fd on Linux.
+# popen supplies a real pipe; the Node relay writes the inherited private fd.
+wire <- if (length(args) >= 3) pipe(paste('ELECTRON_RUN_AS_NODE=1', shQuote(args[[2]]), shQuote(args[[3]])), open = 'w') else file('/dev/fd/3', open = 'w')
 input <- file('stdin', open = 'r')
 emit <- function(value) { writeLines(jsonlite::toJSON(value, auto_unbox = TRUE, null = 'null', na = 'null'), wire); flush(wire) }
 namespace <- new.env(parent = globalenv())

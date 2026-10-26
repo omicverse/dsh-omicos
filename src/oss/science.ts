@@ -149,7 +149,7 @@ export class ScienceService extends EventEmitter {
     return pending
   }
   private async startWorker(): Promise<void> {
-    const args = this.language === 'python' ? [...(this.isolatedPython ? ['-I'] : []), '-B', '-u', workerPaths.python, this.workspace] : ['--vanilla', workerPaths.r, this.workspace]
+    const args = this.language === 'python' ? [...(this.isolatedPython ? ['-I'] : []), '-B', '-u', workerPaths.python, this.workspace] : ['--vanilla', workerPaths.r, this.workspace, process.execPath, fileURLToPath(new URL('../../runtime/r_protocol_relay.cjs', import.meta.url))]
     const child = spawn(process.execPath, [supervisor, this.interpreter, ...args], { cwd: this.workspace, detached: process.platform !== 'win32', stdio: ['pipe', this.language === 'python' ? 'ignore' : 'pipe', 'pipe', 'pipe', 'pipe'], env: { ...workerEnvironment(process.env, this.envNames), ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) } })
     child.stdin?.on('error', error => { if (this.child === child) { this.child = undefined; this.failWorker(`Worker input failed: ${error.message}`); this.signalWorker(child, 'SIGKILL') } })
     this.child = child; this.generation = randomUUID()
