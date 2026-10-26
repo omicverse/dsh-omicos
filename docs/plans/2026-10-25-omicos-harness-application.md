@@ -239,3 +239,20 @@ The native command-input preflight was rechecked against the running preview and
 refused before editing because the native window was not focused. The user was
 asked to bring the preview to the foreground, unlocking macOS if necessary; this
 request remains separate from the automated browser acceptance.
+
+
+## 20. Native main-page visual acceptance
+
+The native application smoke captures every scientific/Store page after its real
+Session response and concrete feature controls are ready, and asserts each main
+panel fits without horizontal overflow. Eight actual Electron screenshots
+(`test-results/omicos-native-page-{data,notebook,figures,memory,pipelines,methods,runtime,store}.png`)
+were inspected: consistent sage surfaces, visible workspace identity, readable
+forms and cards, progressive method/runtime sections, and the explicit unsigned-in
+cloud Store state. The same run passes product/menu identity, both theme palette
+checks, all eight pages, and zero renderer errors.
+
+The nine-step sequential application runner also passed in full; its structured
+receipt is `test-results/application-acceptance.json`. Source-level native adapter
+and browser command evidence does not replace the separate actual foreground
+input acceptance. The outstanding user foreground request is still pending.

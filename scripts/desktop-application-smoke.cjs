@@ -152,6 +152,21 @@ async function inspectNativeShell() {
         await panel.locator('.omicos-panel-content > [role="alert"]').count(),
         0
       )
+      const bounds = await panel.evaluate((element) => ({
+        width: element.clientWidth,
+        scroll: element.scrollWidth
+      }))
+      assert(
+        bounds.width > 0 && bounds.scroll <= bounds.width + 1,
+        `Native ${id} must fit its panel without horizontal overflow`
+      )
+      await page.screenshot({
+        path: path.resolve(
+          __dirname,
+          `../test-results/omicos-native-page-${id}.png`
+        ),
+        animations: 'disabled'
+      })
     }
     await rail.getByRole('button', { name: '对话', exact: true }).click()
     assert.equal(await page.locator('iframe').count(), 0)
