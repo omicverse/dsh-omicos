@@ -72,6 +72,8 @@ function run(arguments_, env, cwd) {
     for (const route of ['/api', '/omicos/oss', '/omicos/oss/api/session', '/omicos/oss/workbench.js']) assert.equal((await fetch(origin + route, { redirect: 'manual' })).status, 401, route);
     browser = await chromium.launch({ headless: true, ...(process.env.OMICOS_BROWSER_EXECUTABLE ? { executablePath: process.env.OMICOS_BROWSER_EXECUTABLE } : {}) });
     const context = await browser.newContext({ reducedMotion: 'reduce' });
+    context.setDefaultTimeout(30000);
+    console.log('Harness launched; checking scientific workbench and owner auth…');
     const page = await context.newPage(); page.on('pageerror', error => errors.push(String(error)));
     await page.goto(launch); await page.goto(origin + '/omicos/oss');
     const mcp = page.locator('article').filter({ has: page.getByText('科研 MCP 扩展连接', { exact: true }) });
@@ -106,6 +108,7 @@ function run(arguments_, env, cwd) {
     const sent = await sendResult; assert.equal(sent.status(), 200, await sent.text());
     const binding = await page.evaluate(async () => { const session = await (await fetch('/omicos/oss/api/session')).json(); return (await fetch(`/omicos/oss/api/project/${session.projects[0].id}/chat`)).json() });
     assert(binding.sessionId);
+    console.log('Workbench import and Scientist session created; checking native approvals…');
     const main = await context.newPage(); main.on('pageerror', error => errors.push(String(error)));
     await main.goto(origin);
     const notice = main.getByRole('button', { name: /^(Continue|继续)$/ });
@@ -143,6 +146,7 @@ function run(arguments_, env, cwd) {
     const output = path.resolve(process.env.OMICOS_SCREENSHOT_DIR || 'test-results/oss-browser'); await fs.mkdir(output, { recursive: true });
     await page.screenshot({ path: path.join(output, 'harness-scientist.png'), fullPage: true });
     await main.screenshot({ path: path.join(output, 'harness-main.png'), fullPage: true });
+    console.log('Native streaming and MCP approval passed; checking Notebook and editor guards…');
     await main.getByRole('tab', { name: 'OmicOS', exact: true }).click();
     const entry = main.locator('.omicos-conversation-tools'); await entry.waitFor();
     assert.equal(await entry.locator('a[target="_blank"][href^="/omicos/oss"]').count(), 0, 'Scientific tools must stay inside the real application');
@@ -252,6 +256,7 @@ function run(arguments_, env, cwd) {
   } finally {
     await browser?.close();
     if (child && child.exitCode === null && child.signalCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGTERM'); const force = setTimeout(() => child.kill('SIGKILL'), 3000); await exited; clearTimeout(force) }
+    model.closeAllConnections();
     await new Promise(resolve => model.close(resolve)); await fs.rm(directory, { recursive: true, force: true });
   }
 })().catch(error => { console.error(redact(String(error))); process.exitCode = 1 });

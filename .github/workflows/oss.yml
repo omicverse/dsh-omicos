@@ -69,6 +69,7 @@ jobs:
         env:
           OMICOS_SCIENCE_TEST_PYTHON: python
       - name: Published Harness Web integration
+        timeout-minutes: 5
         if: matrix.node == '24'
         run: pnpm test:harness-browser
         env:
