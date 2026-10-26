@@ -192,3 +192,25 @@ PNG digest matched the source, and no renderer errors occurred. Evidence:
 `test-results/application-figure.log` and `application-approved-figure.png` (visually
 inspected). No fake model/account or second runtime was used. The early HTTP
 Notebook response can be queued/running; it is not used as proof of completion.
+
+
+## 18. Plan acceptance and four-source Dossier
+
+`test:shared-host-plan-dossier` follows `test:shared-host-figure` and explicitly
+requires its successful receipt log plus the corresponding real project records.
+It creates and saves a synthetic research plan, approves the fixed version, and
+records a completed assessment using the actual plotting execution. The recorded
+evidence must contain the exact execution ID and PNG digest.
+
+The method/evidence main page then captures a Dossier with four sources: that
+execution, its saved Notebook, the approved figure and the accepted plan. The
+returned source pins must match the requested identities. Explicit owner review
+checks all four current sources and produces a reviewed revision. Downloading the
+actual export link returns `omicos.dossier/1` with the exact reviewed digest.
+The test returns to the default conversation workspace without executing more code.
+
+Result: passed with four pinned/rechecked sources and zero renderer errors.
+`test-results/application-plan-dossier.log` records identities/digest and
+`application-reviewed-dossier.png` was visually inspected. This verifies owner
+assessment and historical evidence capture; synthetic fixtures make no scientific
+claims.
