@@ -609,4 +609,10 @@ html[data-omicos-shell] [class*='_sidebarCol'] [class*='_panelList'] {
   font-style: normal;
   line-height: 15px;
   text-align: center;
+/* Harness's transcript width handles are absolutely positioned inside the conversation
+   column and can land on the first science tabs when the rail width shifts the column.
+   The tools view has no transcript to resize, so keep it above them. */
+.omicos-conversation-tools {
+  position: relative;
+  z-index: 1;
 }
