@@ -46,3 +46,9 @@
 - Scope dirty tab collection by native Session and tab IDs. Track the actual context-menu origin, including inactive tabs; float close resolves its own native title/body marker. Keep native close handlers authoritative.
 - Verify cancellation retains text and acceptance closes the actual tab in a running Harness. Native keyboard and programmatic transitions remain a separate unresolved surface.
 - Build the pinned public Harness desktop source through its prescribed build and development launcher; retain Electron host and native bridge.
+
+## 8. Actual native preview
+- Pinned public source build:artifacts and build:check passed; Electron 44.7.0 and the official locked Office runtime are prepared.
+- Use the official start:desktop launcher with isolated home/user data. Desktop profiles are Electron-owned: install OmicOS and the printed defaults bundle through the native Plugins page, never by bypassing CLI ownership checks.
+- Actual native dsh-app renderer and macOS preload passed eight scientific panels, conversation return, title/no-iframe/error checks; screenshot inspected.
+- Pending: native welcome/menu/Dock branding, keyboard/programmatic draft safety, actual scientific execution under Electron and final packaging/fidelity audit.

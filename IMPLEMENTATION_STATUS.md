@@ -70,11 +70,26 @@ claim is implied by the UI integration.
   streaming, scoped MCP and Core compatibility. Typecheck/build and client/Harness
   unit checks passed. Existing app smokes now capture settled animation frames.
 
-Remaining application work: audit keyboard/programmatic navigation and floating or
-context-menu close paths; broaden native scientific-page journeys, verify true
-Electron window chrome/packaging, and finish the requirement-by-requirement visual
-and behavioral audit. The new goal remains active. Real provider credentials and
-production payment transactions were not exercised or fabricated.
+Native close follow-up: menu origins now carry Session and tab IDs; float close
+resolves its own native marker. Actual browser gestures verify right-click menu
+cancellation, docked X cancellation, dragging into a float and float cancellation /
+acceptance, retaining the target's text until accepted. Full Harness Python/R / MCP /
+streaming regression, client bundle tests, typecheck and build passed.
+
+Native macOS development preview: public pinned Harness source `build:artifacts`
+(seven gates) and `build:check` (two gates) passed. The official `start:desktop` prepared
+its locked Office runtime and passed document round-trip/dependency checks. Via the
+actual native Plugins page, installed/enabled OmicOS and the owned defaults bundle;
+the Electron `dsh-app` renderer exposes macOS preload, OmicOS title and all eight
+scientific main panels, returning to the native conversation with no iframe or
+observed page errors. `scripts/desktop-application-smoke.cjs` records the same path
+and a visually inspected screenshot. The isolated keyless preview remains running.
+
+Remaining application work: audit keyboard/programmatic navigation; finish native
+welcome/menu/Dock branding, scientific execution under Electron, packaging and the
+requirement-by-requirement visual/behavioral audit. The new goal remains active.
+Real provider credentials and production payment transactions were not exercised
+or fabricated.
 
 ## Implemented and verified
 

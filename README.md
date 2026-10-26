@@ -52,16 +52,47 @@ Notebook edits are temporarily retained in this browser tab across native naviga
 Restoring a draft is explicit and does not execute its cells; saving still uses the
 server's revision checks. Closing the browser tab can discard this temporary copy.
 Tracked edits in the scientific editors prompt before pointer navigation or closing
-an edited docked scientific tab. Canceling leaves the editor untouched; accepting
+an edited docked or floating scientific tab, including its context-menu close action. Canceling leaves the editor untouched; accepting
 discards the local changes without canceling already submitted work. Multiple dirty
 editors share one reminder. Initial untouched Pipeline examples do not prompt.
 This guard does not copy proposal text or MCP configuration into browser storage;
-keyboard/programmatic navigation and other close paths remain under audit.
+keyboard/programmatic navigation remains under audit.
 
 On compact windows, scientific navigation moves to a scrollable bottom bar while
 the native session/workspace rail remains available. The main frame reserves the
 bar's height, including the bottom safe-area inset, rather than squeezing the page
 between two vertical rails.
+
+### Native macOS development preview
+
+The native preview uses public `deepseek-ai/deepseek-harness` revision
+`1f81c047fc48fa190a683e469daa699857e9afe8`, not a BrowserWindow around the web preview.
+In that checkout run `pnpm install --frozen-lockfile`, `pnpm run build:artifacts`,
+`pnpm run build:check`, and
+`pnpm --filter @deepseek-ai/dsh-desktop exec install-electron`, using its pinned pnpm 11.28.5.
+Then from this package run:
+
+```sh
+pnpm start:desktop-preview --source /absolute/path/to/deepseek-harness
+```
+
+The launcher isolates Harness home, Agents and Electron user data under
+`test-results/desktop-preview`; `--home`, `--python` and `--rscript` override these defaults.
+First launch prepares and validates the official locked Office runtime. Configure the
+workspace through native workspace controls. The Electron-managed desktop profile
+rejects ordinary CLI plugin edits, so use its Plugins page to install and enable the
+two local package paths printed by the launcher, in order. The second is an owned
+application-defaults bundle; saved user preferences keep normal precedence.
+No model key or cloud account is supplied by the launcher. The native welcome screen
+allows **Add API Key → Set up later** without saving credentials.
+
+`pnpm test:desktop-application` inspects this running macOS preview over its local
+9222 development endpoint: actual `dsh-app` renderer, macOS preload, all eight native
+scientific pages, conversation return, title, no iframe and no observed page errors.
+It leaves the window open. These developer inspection ports are inherited from the
+official source launcher. Native welcome/menu/Dock branding, keyboard draft safety,
+scientific execution under Electron and release packaging remain pending; this is
+not the final branded installer.
 
 The independent workbench remains a diagnostic/compatibility entry below, rather than
 the main OmicOS application. Native Electron packaging and broader UI refinements are

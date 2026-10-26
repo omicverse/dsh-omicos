@@ -57,6 +57,8 @@
     "test:harness-browser": "pnpm build && node scripts/harness-browser-smoke.cjs",
     "start:app": "node scripts/launch-application.cjs",
     "start:preview": "node scripts/launch-harness-preview.cjs",
+    "start:desktop-preview": "node scripts/launch-desktop-preview.cjs",
+    "test:desktop-application": "node scripts/desktop-application-smoke.cjs",
     "test:application-browser": "node scripts/harness-application-smoke.cjs",
     "test:application-preferences": "pnpm build && node scripts/application-preferences-smoke.cjs"
   },
