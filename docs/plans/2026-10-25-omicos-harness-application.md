@@ -109,3 +109,22 @@ conversation/sidebar was inspected in `workspace-session-scope.png`.
 Visual follow-up: the actual macOS frame retains an upstream blue/violet wash in
 the workspace column. The browser frontend uses the sage palette, but native
 visual acceptance still needs this frame detail corrected.
+
+
+## 14. Native workspace palette
+
+The owned rail effect tags the actual workspace column in the pinned Harness
+frame and restores its prior attribute on disposal. A scoped product style paints
+that column using the current OmicOS surface token, overriding macOS's upstream
+blue/violet vibrancy wash without changing native workspace/session owners or
+editing hashed upstream CSS classes. The opaque fill also remains appropriate
+when Reduce Transparency is enabled.
+
+Verification: typecheck/build and three client bundle/Harness tests pass. The
+native application smoke passes eight functional pages and toggles both themes
+through the real appearance control. It asserts `background-image: none` and
+computed backgrounds `rgb(238, 244, 241)` / `rgb(37, 40, 36)`, captures settled
+light/dark screenshots, and restores the original appearance. Both native images
+were inspected; no renderer errors occurred. Evidence:
+`test-results/workspace-palette-native.log`, `omicos-native-light.png`, and
+`omicos-native-dark.png`.

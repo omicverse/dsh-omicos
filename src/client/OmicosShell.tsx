@@ -107,9 +107,21 @@ function OmicosRail({
   useEffect(() => {
     const frame = rail.current?.closest('[data-shell-overlay]')?.parentElement
     if (!frame) return
+    const workspaceColumn = frame.firstElementChild
+    const previousWorkspace = workspaceColumn?.getAttribute(
+      'data-omicos-workspace-column'
+    )
+    workspaceColumn?.setAttribute('data-omicos-workspace-column', '')
     const previous = frame.getAttribute('data-omicos-frame')
     frame.setAttribute('data-omicos-frame', '')
     return () => {
+      if (previousWorkspace == null)
+        workspaceColumn?.removeAttribute('data-omicos-workspace-column')
+      else
+        workspaceColumn?.setAttribute(
+          'data-omicos-workspace-column',
+          previousWorkspace
+        )
       if (previous === null) frame.removeAttribute('data-omicos-frame')
       else frame.setAttribute('data-omicos-frame', previous)
     }

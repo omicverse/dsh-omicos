@@ -263,6 +263,12 @@ html[data-omicos-shell] body[data-ds-dark-theme] {
   background: var(--omicos-surface);
   color: var(--omicos-brand);
 }
+/* Own the workspace tint as well as the frame tokens: macOS upstream adds a
+   separate blue/violet vibrancy wash that would otherwise bypass these tokens.
+   An opaque sage surface also respects reduced-transparency preferences. */
+html[data-omicos-shell] body [data-omicos-frame] > [data-omicos-workspace-column] {
+  background: var(--omicos-surface);
+}
 [data-omicos-frame] {
   margin-left: 68px;
   width: calc(100% - 68px);

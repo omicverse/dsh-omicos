@@ -5,7 +5,7 @@ Status: incomplete; preserve the full application objective.
 | Requirement | Current authoritative evidence | Assessment |
 | --- | --- | --- |
 | Transform the real Harness app, not a separate workbench | Native `dsh-app` renderer, root HTTP frontend of that same Host, own slots and native frame; inspected screenshots | Proven for the running preview |
-| OmicOS navigation and visual language | Sage/charcoal tokens, helix brand, main rail, source welcome/menu derivative; desktop and narrow screenshots | Implemented and visually inspected; macOS still inherits a blue/violet sidebar wash from the upstream frame, which should be brought into the sage palette before final visual acceptance |
+| OmicOS navigation and visual language | Sage/charcoal tokens, helix brand, main rail, source welcome/menu derivative; desktop and narrow screenshots | Native light/dark screenshots inspected; computed workspace backgrounds are sage `rgb(238,244,241)` and charcoal `rgb(37,40,36)` with no gradient; final cross-surface visual audit pending |
 | Native session list and central conversation | Original workspace/session owner and conversation renderer; full isolated Harness streaming/approval/MCP smoke; native Scientist selector | Preserved; no second Agent loop |
 | Scientific sidebars | Native dock registry and real Session IDs, retained panes and visibility-paused streams; actual scoped memory tab tests | Integrated and exercised |
 | Local Python/R and Notebook | Actual Electron confirmed-run writes and fresh Notebook/execution IDs, Python 42 and R mean 4 | Proven; saved receipts remain available |

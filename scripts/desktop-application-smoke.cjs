@@ -157,6 +157,55 @@ async function inspectNativeShell() {
     assert.equal(await page.locator('iframe').count(), 0)
     assert.equal(await page.title(), 'OmicOS OSS')
     assert.deepEqual(errors, [])
+    const originallyDark = await page.evaluate(() =>
+      document.body.hasAttribute('data-ds-dark-theme')
+    )
+    const palette = []
+    for (const dark of [false, true]) {
+      if (
+        (await page.evaluate(() =>
+          document.body.hasAttribute('data-ds-dark-theme')
+        )) !== dark
+      )
+        await rail
+          .getByRole('button', { name: '切换深浅外观', exact: true })
+          .click()
+      await page.waitForFunction(
+        (dark) => document.body.hasAttribute('data-ds-dark-theme') === dark,
+        dark
+      )
+      const workspacePalette = await page
+        .locator('[data-omicos-workspace-column]')
+        .evaluate((element) => {
+          const style = getComputedStyle(element)
+          return {
+            background: style.backgroundColor,
+            image: style.backgroundImage
+          }
+        })
+      assert.equal(workspacePalette.image, 'none')
+      assert.equal(
+        workspacePalette.background,
+        dark ? 'rgb(37, 40, 36)' : 'rgb(238, 244, 241)'
+      )
+      palette.push({ dark, ...workspacePalette })
+      await page.screenshot({
+        path: path.resolve(
+          __dirname,
+          `../test-results/omicos-native-${dark ? 'dark' : 'light'}.png`
+        ),
+        animations: 'disabled'
+      })
+    }
+    if (
+      (await page.evaluate(() =>
+        document.body.hasAttribute('data-ds-dark-theme')
+      )) !== originallyDark
+    )
+      await rail
+        .getByRole('button', { name: '切换深浅外观', exact: true })
+        .click()
+    assert.deepEqual(errors, [])
     const output = path.resolve(
       __dirname,
       '../test-results/omicos-native-application.png'
@@ -168,6 +217,7 @@ async function inspectNativeShell() {
         runtime: 'native dsh-app scheme, macOS preload',
         nativeShell,
         welcomeVerified,
+        palette,
         pages: pages.map(([, id]) => id),
         title: await page.title(),
         pageErrors: errors,
